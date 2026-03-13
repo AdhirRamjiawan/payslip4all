@@ -1,443 +1,409 @@
-# ARCHITECTURE.md
+# ARCHITECTURE.md - Payslip4All Blazor Server Edition
 
 ## Overview
 
-This repository contains a full-stack web application consisting of:
+This repository contains a full-stack web application built with:
 
--   Backend: ASP.NET Core Web API (.NET 8)
--   Frontend: Angular
--   Authentication: Username/password with JWT tokens
--   Communication: REST API over HTTPS
--   Data Storage: SQLite database accessed via Entity Framework Core
+- **Backend & Frontend**: ASP.NET Core 8 Blazor Server
+- **Authentication**: Cookie-based with custom AuthenticationStateProvider
+- **Data Storage**: SQLite database accessed via Entity Framework Core
+- **Architecture**: Layered architecture with separation of concerns
 
-The architecture follows a layered approach to ensure separation of
-concerns and maintainability.
+The application is a **unified single-tier solution** where Blazor Server handles all UI rendering on the server while communicating with the client via WebSocket.
 
 High-level structure:
 
-Angular SPA\
-→ REST API (HTTPS)\
-→ ASP.NET Core Web API\
-→ Application Layer\
-→ Domain Layer\
-→ Infrastructure Layer\
-→ SQLite Database
+```
+Blazor Server (net8.0)
+  ├── Razor Components (Pages, Shared)
+  ├── Application Services (Authentication, Company, Employee)
+  └── Infrastructure Layer
+       ├── DbContext (Entity Framework Core)
+       └── SQLite Database
+```
 
-Copilot should follow the patterns described in this document when
-generating new code.
+---
 
-------------------------------------------------------------------------
+## Architecture Layers
 
-# Backend Architecture (ASP.NET Core)
+### Web/Presentation Layer (Payslip4All.Web)
 
-## Project Structure
-
-/src /Api Controllers Middleware Filters Program.cs
-
-/Application Services DTOs Interfaces Validators
-
-/Domain Entities ValueObjects Enums
-
-/Infrastructure Persistence Repositories Authentication ExternalServices
-
-## Layer Responsibilities
-
-### API Layer
-
-Responsible for HTTP concerns.
+Responsible for UI rendering and user interaction.
 
 Contains:
+- **Pages/**: Routable Razor components (@page directive)
+- **Shared/**: Layout components (MainLayout.razor, NavMenu.razor, etc.)
+- **Services/**: BlazorAuthenticationStateProvider for authentication state
+- **App.razor**: Root component with cascading parameters
 
--   Controllers
--   Request/response mapping
--   Authorization attributes
--   Model binding
+Key features:
+- Server-side Razor components with event binding
+- Built-in cascading authentication state
+- Bootstrap CSS framework for styling
+- Two-way data binding with @bind directive
 
-Controllers must remain thin and delegate work to application services.
+### Application/Infrastructure Service Layer
 
-### Application Layer
+Manages business logic and data access.
 
-Contains business logic.
+Contains:
+- **Services/** in Infrastructure project:
+  - `IAuthenticationService`: User registration and login
+  - `ICompanyService`: Company CRUD operations  
+  - `IEmployeeService`: Employee CRUD operations
+- Each service implements repository pattern with DbContext
 
-Includes:
+Services are:
+- Registered in DI container as Scoped
+- Injected into Razor components via @inject directive
+- Database-agnostic (LINQ to Entities)
 
--   Application services
--   DTOs
--   Validation
--   Interfaces for repositories
+### Domain Layer (Payslip4All.Domain)
 
-Services orchestrate use cases but should not contain database access
-logic.
+Core domain model and business rules.
 
-### Domain Layer
+Contains:
+- **Entities/**:
+  - `User`: Application users with credentials
+  - `Company`: Company records with registration details
+  - `Employee`: Employee records with contact and employment info
+  - `EmployeeStatus`: Enum for employee states
 
-Contains the core domain model.
+Characteristics:
+- No dependencies on infrastructure or web frameworks
+- Pure C# classes with navigation properties
+- Validation rules and constraints defined via EF Core
 
-Includes:
+### Infrastructure Layer (Payslip4All.Infrastructure)
 
--   Entities
--   Value objects
--   Enums
--   Domain rules
+Data persistence and external dependencies.
 
-This layer must not depend on infrastructure or ASP.NET.
+Contains:
+- **Persistence/PayslipDbContext**: EF Core DbContext for SQLite
+- **Services/**: Application service implementations
+- **Migrations/**: (Future) EF Core database migrations
 
-### Infrastructure Layer
+Characteristics:
+- Depends on Domain and Application layers
+- Implements repository interfaces
+- Configures EF Core entity relationships
+- Manages database initialization
 
-Implements external dependencies.
+---
 
-Includes:
+## Authentication Architecture
 
--   EF Core DbContext
--   Repository implementations
--   Authentication services
--   External integrations
+### Authentication Flow
 
-Infrastructure depends on the domain and application layers.
+1. User navigates to `/login` or `/register`
+2. Register page: Creates new User entity with hashed password
+3. Login page: Validates credentials, retrieves User from database
+4. `BlazorAuthenticationStateProvider.LoginAsync()` called with authenticated User
+5. Provider creates claims and signs in with ASP.NET Core Cookie authentication
+6. `AuthenticationState` notified, UI updates based on authenticated user
 
-------------------------------------------------------------------------
+### Authentication Components
 
-# Authentication Architecture
+**BlazorAuthenticationStateProvider** (src/Payslip4All.Web/Services/):
+- Extends `AuthenticationStateProvider`
+- Manages login/logout operations
+- Tracks authenticated user claims
+- Notifies Blazor of authentication state changes
 
-Authentication uses JWT tokens.
+**Login & Register Pages** (src/Payslip4All.Web/Pages/):
+- Form-based user input
+- Call `IAuthenticationService` for validation
+- Redirect to dashboard on success
+- Display errors on failure
 
-Flow:
+### Security
 
-User submits username + password\
-→ POST /api/auth/login\
-→ Server validates credentials\
-→ JWT token issued\
-→ Angular stores token\
-→ Token attached to Authorization header
+- Passwords hashed with SHA256
+- Cookie-based session management (30-day expiry)
+- Claims-based authorization with @attribute [Authorize]
+- HTTPS enforced in production
 
-Example header:
+---
 
-Authorization: Bearer `<jwt-token>`{=html}
+## Data Access
 
-JWT tokens should contain:
+### Entity Framework Core with SQLite
 
--   userId
--   username
--   roles
--   expiration
-
-Passwords must be stored using secure hashing such as BCrypt or ASP.NET
-Identity password hasher.
-
-Never store plaintext passwords.
-
-------------------------------------------------------------------------
-
-# API Design Guidelines
-
-Endpoints follow REST conventions.
-
-Example structure:
-
-/api/auth/login\
-/api/users\
-/api/users/{{id}}\
-/api/products
-
-Controllers should:
-
--   return ActionResult`<T>`{=html}
--   use DTOs instead of domain entities
--   validate input using model validation
-
-Example:
-
-\[HttpPost("login")\] public async
-Task\<ActionResult`<AuthResponseDto>`{=html}\> Login(LoginRequestDto
-request)
-
-------------------------------------------------------------------------
-
-# Dependency Injection
-
-ASP.NET Core dependency injection must be used.
-
-Services should be registered in Program.cs.
-
-Example:
-
-services.AddScoped\<IUserService, UserService\>();
-services.AddScoped\<IUserRepository, UserRepository\>();
-
-Controllers must depend on interfaces, not concrete implementations.
-
-------------------------------------------------------------------------
-
-# Data Access
-
-Use Entity Framework Core.
-
-Guidelines:
-
--   DbContext lives in Infrastructure
--   Entities live in Domain
--   Repositories live in Infrastructure
--   Application layer depends on repository interfaces
-
-Example repository interface:
-
-public interface IUserRepository { Task\<User?\>
-GetByUsernameAsync(string username); Task`<User>`{=html} AddAsync(User
-user); }
-
-------------------------------------------------------------------------
-
-# Angular Architecture
-
-The Angular application is a Single Page Application (SPA).
-
-Structure:
-
-/src/app /core services interceptors guards
-
-    /features
-        auth
-        users
-        dashboard
-
-    /shared
-        components
-        models
-        utilities
-
-### Core Module
-
-Contains global services such as:
-
--   AuthService
--   HTTP interceptors
--   Route guards
-
-### Feature Modules
-
-Each feature contains:
-
--   components
--   services
--   routing
--   models
-
-Example:
-
-features/auth\
-login.component\
-auth.service.ts\
-auth.models.ts
-
-------------------------------------------------------------------------
-
-# Angular Authentication Flow
-
-Authentication uses JWT.
-
-Flow:
-
-User logs in\
-→ AuthService calls /api/auth/login\
-→ Token stored in memory or localStorage\
-→ HTTP interceptor attaches token to requests
-
-Interceptor adds:
-
-Authorization: Bearer `<token>`{=html}
-
-Protected routes use an AuthGuard.
-
-------------------------------------------------------------------------
-
-# HTTP Communication
-
-Angular services should call backend endpoints via HttpClient.
-
-Example:
-
-login(request: LoginRequest): Observable`<AuthResponse>`{=html} { return
-this.http.post`<AuthResponse>`{=html}("/api/auth/login", request); }
-
-All API calls should be centralized in services.
-
-Components must not call HTTP directly.
-
-------------------------------------------------------------------------
-
-# Error Handling
-
-Backend:
-
--   Use middleware for global exception handling
--   Return consistent error responses
-
-Example format:
-
-{ "message": "Invalid credentials", "status": 401 }
-
-Frontend:
-
--   Use an HTTP interceptor to handle errors
--   Display user-friendly messages
-
-------------------------------------------------------------------------
-
-# Security Guidelines
-
-Always follow these rules:
-
--   Never expose internal entities directly through the API
--   Always validate input
--   Use HTTPS only
--   Use password hashing
--   Use JWT expiration
--   Validate tokens on every request
-
-------------------------------------------------------------------------
-
-# Coding Guidelines
-
-Backend:
-
--   Prefer async/await
--   Use DTOs for API communication
--   Keep controllers thin
--   Business logic belongs in services
-
-Frontend:
-
--   Components should remain presentation-focused
--   Services handle data access
--   Use strong typing with interfaces
-
-------------------------------------------------------------------------
-
-# Copilot Instructions
-
-When generating code:
-
-1.  Follow the layered architecture defined here.
-2.  Place business logic in Application services.
-3.  Do not place database logic in controllers.
-4.  Use DTOs between API and frontend.
-5.  Use JWT authentication patterns described above.
-6.  Use dependency injection for services.
-7.  Follow Angular feature module structure.
-
-------------------------------------------------------------------------
-
-# Database Architecture (SQLite)
-
-## Overview
-
-The application uses **SQLite** as the database engine, providing a lightweight,
-file-based relational database that requires no server installation.
-
-## Database File
-
-- **Location**: `payslip4all.db` (in application root directory)
-- **Type**: File-based SQLite database
-- **Creation**: Automatically created on first run via Entity Framework Core migrations
-
-## Connection String
-
+**Connection String**:
 ```
 Data Source=payslip4all.db
 ```
 
-## Why SQLite?
+**DbContext** (Payslip4All.Infrastructure/Persistence/PayslipDbContext.cs):
+- Manages all entity relationships
+- Configures foreign keys and cascading deletes
+- Initialized on application startup
 
-### Advantages
-- ✅ **Zero Configuration**: No server setup required
-- ✅ **Portability**: Single file database, easy to backup and distribute
-- ✅ **Development**: Perfect for local development without external dependencies
-- ✅ **Deployment**: Can be included in deployment package
-- ✅ **Cross-Platform**: Works on Windows, Linux, macOS
-- ✅ **Performance**: Sufficient for small to medium organizations
-- ✅ **Reliability**: ACID-compliant transactions
+**Key Relationships**:
+- User has many Companies (1:N)
+- Company has many Employees (1:N)
+- Cascading delete: Company deletion removes related Employees
 
-### Limitations
-- ⚠️ **Concurrency**: Limited for high-concurrency scenarios (designed for moderate concurrent access)
-- ⚠️ **Scalability**: Not suitable for extremely large datasets (typically >10GB)
-- ⚠️ **User Management**: No built-in user authentication (handled by application)
+### LINQ Queries in Services
 
-## When to Consider SQL Server
+All data access through Entity Framework Core LINQ:
 
-If the application scales to require:
-- Multiple concurrent users (>100 simultaneous)
-- Distributed database replicas
-- Complex administration and monitoring
-- Datasets exceeding 10GB
-- High-availability requirements
-
-Migration to SQL Server is straightforward as Entity Framework Core abstracts the database provider.
-
-## Entity Framework Core Configuration
-
-### Database Provider
 ```csharp
-options.UseSqlite(connectionString)
+// Example from CompanyService
+var companies = await _dbContext.Companies
+    .Where(c => c.UserId == userId && c.IsActive)
+    .OrderByDescending(c => c.CreatedAt)
+    .ToListAsync();
 ```
 
-### Data Types
-SQLite supports standard data types:
-- INTEGER (int, long)
-- REAL (decimal, float, double)
-- TEXT (string)
-- BLOB (byte arrays)
+### Database Migrations
 
-### Constraints
-- Foreign Keys: Supported (enabled by default)
-- Unique Indexes: Supported
-- Check Constraints: Supported
-- Default Values: Supported
-
-## Migrations
-
-### Create Migration
+Future migrations (when schema changes):
 ```bash
-dotnet ef migrations add MigrationName
+dotnet ef migrations add MigrationName -p src/Payslip4All.Infrastructure
+dotnet ef database update -p src/Payslip4All.Infrastructure
 ```
 
-### Apply Migration
+---
+
+## Dependency Injection
+
+Services registered in Program.cs:
+
+```csharp
+builder.Services.AddScoped<PayslipDbContext>();
+builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<BlazorAuthenticationStateProvider>();
+```
+
+**Scoped lifetime**: New instance per HTTP request (ideal for DbContext)
+
+Injected into Razor components:
+```razor
+@inject ICompanyService CompanyService
+@inject IAuthenticationService AuthService
+```
+
+---
+
+## Razor Components
+
+### Page Components (@page directive)
+
+Located in `src/Payslip4All.Web/Pages/`:
+- `/login` - User login form
+- `/register` - User registration form
+- `/` - Dashboard (future)
+- `/companies` - Company list and CRUD (future)
+- `/employees` - Employee management (future)
+
+### Shared Layout Components
+
+Located in `src/Payslip4All.Web/Shared/`:
+- `MainLayout.razor` - Root layout with sidebar
+- `NavMenu.razor` - Navigation menu
+- `SurveyPrompt.razor` - Placeholder component
+
+### Component Features
+
+- **Two-way binding**: `@bind="Property"`
+- **Event handlers**: `@onclick`, `@onsubmit`
+- **Cascading parameters**: `[CascadingParameter]`
+- **Dependency injection**: `@inject IService`
+- **Authorization**: `@attribute [Authorize]`
+- **Conditional rendering**: `@if`, `@foreach`
+
+---
+
+## Project Structure
+
+```
+Payslip4All/
+├── src/
+│   ├── Payslip4All.Domain/                (net8.0)
+│   │   └── Entities/
+│   │       ├── User.cs
+│   │       ├── Company.cs
+│   │       └── Employee.cs
+│   │
+│   ├── Payslip4All.Application/           (net8.0, future use)
+│   │   └── (Placeholder for shared logic)
+│   │
+│   ├── Payslip4All.Infrastructure/        (net8.0)
+│   │   ├── Persistence/
+│   │   │   └── PayslipDbContext.cs
+│   │   └── Services/
+│   │       ├── AuthenticationService.cs
+│   │       ├── CompanyService.cs
+│   │       └── EmployeeService.cs
+│   │
+│   └── Payslip4All.Web/                   (net8.0 Blazor Server)
+│       ├── Components/
+│       ├── Pages/
+│       │   ├── Login.razor
+│       │   ├── Register.razor
+│       │   └── Index.razor
+│       ├── Shared/
+│       │   ├── MainLayout.razor
+│       │   └── NavMenu.razor
+│       ├── Services/
+│       │   └── BlazorAuthenticationStateProvider.cs
+│       ├── Program.cs
+│       ├── App.razor
+│       ├── appsettings.json
+│       └── wwwroot/
+│           ├── css/
+│           └── js/
+│
+├── payslip4all.db                         (SQLite database)
+├── Payslip4All.sln
+├── global.json
+└── ARCHITECTURE.md
+```
+
+---
+
+## Why Blazor Server Instead of Angular + API?
+
+### Benefits of Unified Architecture
+
+| Aspect | Blazor Server | Angular + API |
+|--------|---------------|---------------|
+| **Language** | C# throughout | TypeScript + C# |
+| **Build Complexity** | Single dotnet build | npm + dotnet |
+| **Startup Scripts** | 1 command | 2+ commands |
+| **Code Reuse** | Domain entities directly in components | API DTOs + frontend models |
+| **Deployment** | Single deployable project | Frontend SPA + API server |
+| **Learning Curve** | Single language/framework | Multiple paradigms |
+| **Real-time** | Built-in WebSocket | Requires SignalR library |
+| **Bundle Size** | ~5MB app | Angular SPA |
+
+### Trade-offs
+
+**Advantages**:
+- Simpler architecture
+- Faster development
+- No API contract management
+- Single technology stack
+- Easier deployment
+
+**Limitations**:
+- Server-side rendering (not suitable for very high concurrency)
+- Less client-side flexibility
+- Blazor Server requires persistent WebSocket connections
+
+---
+
+## Configuration Files
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=payslip4all.db"
+  },
+  "Logging": { ... },
+  "AllowedHosts": "*"
+}
+```
+
+### Program.cs
+
+Configures:
+- Razor Pages and Blazor services
+- Entity Framework Core with SQLite
+- Authentication and authorization
+- Dependency injection
+- Database initialization
+
+---
+
+## Coding Guidelines
+
+### Backend (C#)
+
+- Prefer async/await for I/O operations
+- Use DTOs/ViewModels for complex data transfer
+- Keep controllers (API endpoints) thin
+- Business logic in services
+- Domain rules in entities
+
+### Frontend (Razor)
+
+- Components remain presentation-focused
+- Inject services for data access
+- Use @bind for two-way binding
+- Implement loading states
+- Show validation errors to user
+
+### Database
+
+- Use EF Core for data access
+- No raw SQL (use LINQ)
+- Define relationships in DbContext.OnModelCreating
+- Use migrations for schema changes
+
+---
+
+## Deployment
+
+### Local Development
+
 ```bash
-dotnet ef database update
+cd src/Payslip4All.Web
+dotnet run
 ```
 
-### View Migrations
-```bash
-dotnet ef migrations list
-```
+Runs on: `https://localhost:7035` (or next available port)
 
-The SQLite database is automatically created on first migration application.
-
-## Backup & Restore
-
-### Backup
-Simply copy the `payslip4all.db` file to a backup location.
+### Production
 
 ```bash
-cp payslip4all.db payslip4all.backup.db
+dotnet publish -c Release
 ```
 
-### Restore
-Replace the current database file with the backup.
+Deploy the `bin/Release/net8.0/publish` folder to hosting provider.
 
-```bash
-cp payslip4all.backup.db payslip4all.db
-```
+---
 
-## File Size Management
+## Future Enhancements
 
-SQLite includes built-in transaction management. Database files may grow with operations
-and can be optimized using:
+- [ ] Payslip generation module
+- [ ] Employee search and filtering
+- [ ] Bulk employee import (CSV)
+- [ ] Attendance tracking
+- [ ] Role-based authorization (Admin, Manager, Employee)
+- [ ] Email notifications
+- [ ] Audit logging
+- [ ] API export (JSON/CSV)
 
-```sql
-VACUUM;
-```
+---
 
-This rebuilds the database and reclaims unused space. EF Core does not expose this directly,
-so it would need custom migration or direct SQL execution.
+## Migrations to SQL Server (if needed)
 
-------------------------------------------------------------------------
+If scaling to SQL Server in future:
+
+1. Install NuGet package: `Microsoft.EntityFrameworkCore.SqlServer`
+2. Update Program.cs connection string and provider:
+   ```csharp
+   options.UseSqlServer(connectionString)
+   ```
+3. Update database migrations
+4. No code changes needed (EF Core abstraction)
+
+---
+
+## Support & Documentation
+
+- **EF Core**: https://learn.microsoft.com/en-us/ef/core/
+- **Blazor**: https://learn.microsoft.com/en-us/aspnet/core/blazor/
+- **ASP.NET Core**: https://learn.microsoft.com/en-us/aspnet/core/
+
+---
+
+**Last Updated**: March 13, 2026  
+**Architecture**: Blazor Server (Unified Single-Tier)  
+**Status**: Phase 3 Complete - Authentication & Infrastructure
