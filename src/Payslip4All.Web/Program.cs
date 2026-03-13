@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Services;
+using Payslip4All.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddHttpContextAccessor();
 
 // Add DbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=payslip4all.db";
@@ -19,6 +22,8 @@ builder.Services.AddDbContext<PayslipDbContext>(options =>
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<BlazorAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<BlazorAuthenticationStateProvider>());
 
 // Add authentication
 builder.Services.AddAuthentication()

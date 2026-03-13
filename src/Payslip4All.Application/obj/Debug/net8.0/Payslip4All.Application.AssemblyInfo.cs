@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Payslip4All.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+31624c76bf9e0c3b9bc12aa1444518c37d4f1298")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+78e92cd7e123341faeb9fda012eab76916f37484")]
 [assembly: System.Reflection.AssemblyProductAttribute("Payslip4All.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Payslip4All.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
