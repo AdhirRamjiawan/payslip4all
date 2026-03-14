@@ -1,0 +1,165 @@
+@page "/companies/{companyId:guid}/employees/{employeeId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Employee
+@using Payslip4All.Application.DTOs.Loan
+@using Payslip4All.Application.DTOs.Payslip
+@using Payslip4All.Application.Interfaces
+@inject IEmployeeService EmployeeService
+@inject ILoanService LoanService
+@inject IPayslipService PayslipService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Employee Details - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && _employee != null)
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>@_employee.FirstName @_employee.LastName</h2>
+            <div class="d-flex gap-2">
+                <a href="/companies/@CompanyId/employees/@EmployeeId/edit" class="btn btn-outline-secondary">Edit</a>
+                <a href="/companies/@CompanyId/employees/@EmployeeId/payslips/generate" class="btn btn-primary">Generate Payslip</a>
+                <button class="btn btn-outline-danger" @onclick="ShowDeleteConfirm">Delete</button>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Employee Info</h5>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Employee #</dt><dd class="col-sm-7">@_employee.EmployeeNumber</dd>
+                            <dt class="col-sm-5">ID Number</dt><dd class="col-sm-7">@_employee.IdNumber</dd>
+                            <dt class="col-sm-5">Occupation</dt><dd class="col-sm-7">@_employee.Occupation</dd>
+                            <dt class="col-sm-5">Start Date</dt><dd class="col-sm-7">@_employee.StartDate.ToString("dd MMM yyyy")</dd>
+                            <dt class="col-sm-5">Monthly Salary</dt><dd class="col-sm-7">R @_employee.MonthlyGrossSalary.ToString("N2")</dd>
+                            @if (!string.IsNullOrEmpty(_employee.UifReference))
+                            {
+                                <dt class="col-sm-5">UIF Ref</dt><dd class="col-sm-7">@_employee.UifReference</dd>
+                            }
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>Loans (@_loans.Count)</h4>
+            <a href="/companies/@CompanyId/employees/@EmployeeId/loans/create" class="btn btn-sm btn-outline-primary">+ Add Loan</a>
+        </div>
+
+        @if (_loans.Any())
+        {
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Description</th><th>Total</th><th>Monthly</th><th>Terms</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var loan in _loans)
+                        {
+                            <tr>
+                                <td>@loan.Description</td>
+                                <td>R @loan.TotalLoanAmount.ToString("N2")</td>
+                                <td>R @loan.MonthlyDeductionAmount.ToString("N2")</td>
+                                <td>@loan.TermsCompleted / @loan.NumberOfTerms</td>
+                                <td><span class="badge @(loan.Status == "Active" ? "bg-success" : "bg-secondary")">@loan.Status</span></td>
+                                <td><a href="/companies/@CompanyId/employees/@EmployeeId/loans/@loan.Id/edit" class="btn btn-xs btn-outline-secondary btn-sm">Edit</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>Payslips (@_payslips.Count)</h4>
+        </div>
+
+        @if (_payslips.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net Pay</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _payslips)
+                        {
+                            <tr>
+                                <td>@(new System.Globalization.DateTimeFormatInfo().GetMonthName(p.PayPeriodMonth)) @p.PayPeriodYear</td>
+                                <td>R @p.GrossEarnings.ToString("N2")</td>
+                                <td>R @p.TotalDeductions.ToString("N2")</td>
+                                <td>R @p.NetPay.ToString("N2")</td>
+                                <td><a href="/payslips/@p.Id/download" class="btn btn-xs btn-sm btn-outline-secondary" target="_blank">Download PDF</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
+    <ConfirmDialog @ref="_confirmDialog"
+        Title="Delete Employee"
+        Message="Are you sure you want to delete this employee?"
+        OnConfirm="HandleDelete"
+        OnCancel="@(() => { })" />
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+    [Parameter] public Guid EmployeeId { get; set; }
+
+    private EmployeeDto? _employee;
+    private List<LoanDto> _loans = new();
+    private List<PayslipDto> _payslips = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private ConfirmDialog? _confirmDialog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+
+            _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
+            if (_employee == null) { Nav.NavigateTo($"/companies/{CompanyId}"); return; }
+
+            var loans = await LoanService.GetLoansForEmployeeAsync(EmployeeId, userId.Value);
+            _loans = loans.ToList();
+
+            var payslips = await PayslipService.GetPayslipsForEmployeeAsync(EmployeeId, userId.Value);
+            _payslips = payslips.ToList();
+        }
+        catch { _errorMessage = "Failed to load employee details."; }
+        finally { _isLoading = false; }
+    }
+
+    private void ShowDeleteConfirm() => _confirmDialog?.Show();
+
+    private async Task HandleDelete()
+    {
+        var userId = await GetUserIdAsync();
+        if (!userId.HasValue) return;
+        var deleted = await EmployeeService.DeleteEmployeeAsync(EmployeeId, userId.Value);
+        if (deleted) Nav.NavigateTo($"/companies/{CompanyId}");
+        else _errorMessage = "Cannot delete employee with payslips.";
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+}

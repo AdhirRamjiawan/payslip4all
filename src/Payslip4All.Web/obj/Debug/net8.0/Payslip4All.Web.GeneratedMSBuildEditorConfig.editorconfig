@@ -22,24 +22,68 @@ build_property._RazorSourceGeneratorDebug =
 build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Companies/CompanyDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQ29tcGFuaWVzL0NvbXBhbnlEZXRhaWwucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Companies/CreateCompany.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQ29tcGFuaWVzL0NyZWF0ZUNvbXBhbnkucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Companies/EditCompany.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQ29tcGFuaWVzL0VkaXRDb21wYW55LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
 [/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Counter.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQ291bnRlci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/FetchData.razor]
-build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRmV0Y2hEYXRhLnJhem9y
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Dashboard.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRGFzaGJvYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Employees/CreateEmployee.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRW1wbG95ZWVzL0NyZWF0ZUVtcGxveWVlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Employees/EditEmployee.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRW1wbG95ZWVzL0VkaXRFbXBsb3llZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Employees/EmployeeDetail.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRW1wbG95ZWVzL0VtcGxveWVlRGV0YWlsLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Employees/Loans/CreateLoan.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRW1wbG95ZWVzL0xvYW5zL0NyZWF0ZUxvYW4ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Employees/Loans/EditLoan.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRW1wbG95ZWVzL0xvYW5zL0VkaXRMb2FuLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
 [/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Index.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXMvSW5kZXgucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Login.razor]
-build_metadata.AdditionalFiles.TargetPath = UGFnZXMvTG9naW4ucmF6b3I=
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvUGF5c2xpcHMvR2VuZXJhdGVQYXlzbGlwLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Register.razor]
-build_metadata.AdditionalFiles.TargetPath = UGFnZXMvUmVnaXN0ZXIucmF6b3I=
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/ConfirmDialog.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkL0NvbmZpcm1EaWFsb2cucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/ErrorBanner.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkL0Vycm9yQmFubmVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/LoadingSpinner.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkL0xvYWRpbmdTcGlubmVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/SectionTitle.razor]
+build_metadata.AdditionalFiles.TargetPath = U2hhcmVkL1NlY3Rpb25UaXRsZS5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
 [/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/SurveyPrompt.razor]
@@ -57,6 +101,18 @@ build_metadata.AdditionalFiles.CssScope = b-2422kd4olp
 [/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Shared/NavMenu.razor]
 build_metadata.AdditionalFiles.TargetPath = U2hhcmVkL05hdk1lbnUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-uzuqu0735g
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Auth/Login.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQXV0aC9Mb2dpbi5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Auth/Logout.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQXV0aC9Mb2dvdXQuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Auth/Register.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXMvQXV0aC9SZWdpc3Rlci5jc2h0bWw=
+build_metadata.AdditionalFiles.CssScope = 
 
 [/Users/adhirramjiawan/projects/payslip4all/src/Payslip4All.Web/Pages/Error.cshtml]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXMvRXJyb3IuY3NodG1s

@@ -1,68 +1,110 @@
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Payslip4All.Application.Interfaces;
+using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Application.Services;
+using Payslip4All.Infrastructure.Auth;
 using Payslip4All.Infrastructure.Persistence;
+using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
-using Payslip4All.Web.Services;
+using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// QuestPDF community licence
+QuestPDF.Settings.License = LicenseType.Community;
+
+// Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddCascadingAuthenticationState();
 
-// Add DbContext
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=payslip4all.db";
+// Database provider switching
+var provider = builder.Configuration["DatabaseProvider"] ?? "sqlite";
+var connStr = provider == "mysql"
+    ? builder.Configuration.GetConnectionString("MySqlConnection")
+    : builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=payslip4all.db";
+
 builder.Services.AddDbContext<PayslipDbContext>(options =>
-    options.UseSqlite(connectionString));
+{
+    if (provider == "mysql")
+        options.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
+    else
+        options.UseSqlite(connStr);
+});
 
-// Add application services
-builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
-builder.Services.AddScoped<ICompanyService, CompanyService>();
-builder.Services.AddScoped<IEmployeeService, EmployeeService>();
-builder.Services.AddScoped<BlazorAuthenticationStateProvider>();
-builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<BlazorAuthenticationStateProvider>());
-
-// Add authentication
-builder.Services.AddAuthentication()
-    .AddCookie("BlazorAuth", options =>
+// Cookie authentication
+var expireDays = builder.Configuration.GetValue<int>("Auth:Cookie:ExpireDays", 30);
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
     {
         options.LoginPath = "/login";
         options.LogoutPath = "/logout";
-        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = TimeSpan.FromDays(expireDays);
+        options.SlidingExpiration = true;
     });
 builder.Services.AddAuthorization();
-builder.Services.AddCascadingAuthenticationState();
+
+// Auth state provider
+builder.Services.AddScoped<CookieAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<CookieAuthenticationStateProvider>());
+
+// Repositories
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<ILoanRepository, LoanRepository>();
+builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
+
+// Infrastructure services
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IPdfGenerationService, PdfGenerationService>();
+
+// Application services
+builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<ILoanService, LoanService>();
+builder.Services.AddScoped<IPayslipService, PayslipGenerationService>();
+builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<PayslipDbContext>());
 
 var app = builder.Build();
 
-// Ensure database is created
+// Apply pending migrations on startup
 using (var scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<PayslipDbContext>();
-    dbContext.Database.EnsureCreated();
+    var db = scope.ServiceProvider.GetRequiredService<PayslipDbContext>();
+    await db.Database.MigrateAsync();
 }
 
-// Configure the HTTP request pipeline.
+// Configure pipeline
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
-
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-app.Run();
+// PDF download endpoint
+app.MapGet("/payslips/{payslipId:guid}/download",
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+    async (Guid payslipId, IPayslipService svc, HttpContext ctx) =>
+    {
+        var userIdStr = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Results.Unauthorized();
+        var pdf = await svc.GetPdfAsync(payslipId, userId);
+        if (pdf == null) return Results.NotFound();
+        return Results.File(pdf, "application/pdf", $"payslip-{payslipId}.pdf");
+    });
+
+await app.RunAsync();

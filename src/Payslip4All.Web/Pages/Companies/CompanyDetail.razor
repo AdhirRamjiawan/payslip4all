@@ -1,0 +1,126 @@
+@page "/companies/{companyId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Company
+@using Payslip4All.Application.DTOs.Employee
+@using Payslip4All.Application.Interfaces
+@inject ICompanyService CompanyService
+@inject IEmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Company Details - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && _company != null)
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>@_company.Name</h2>
+                @if (!string.IsNullOrEmpty(_company.Address))
+                {
+                    <p class="text-muted">@_company.Address</p>
+                }
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/companies/@CompanyId/edit" class="btn btn-outline-secondary">Edit Company</a>
+                <button class="btn btn-outline-danger" @onclick="ShowDeleteConfirm">Delete</button>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>Employees (@_employees.Count)</h4>
+            <a href="/companies/@CompanyId/employees/create" class="btn btn-primary btn-sm">+ Add Employee</a>
+        </div>
+
+        @if (!_employees.Any())
+        {
+            <p class="text-muted">No employees yet. Add your first employee.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Employee #</th>
+                            <th>Occupation</th>
+                            <th>Salary</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var emp in _employees)
+                        {
+                            <tr>
+                                <td>@emp.FirstName @emp.LastName</td>
+                                <td>@emp.EmployeeNumber</td>
+                                <td>@emp.Occupation</td>
+                                <td>R @emp.MonthlyGrossSalary.ToString("N2")</td>
+                                <td>
+                                    <a href="/companies/@CompanyId/employees/@emp.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
+    <ConfirmDialog @ref="_confirmDialog"
+        Title="Delete Company"
+        Message="Are you sure you want to delete this company? This cannot be undone."
+        OnConfirm="HandleDelete"
+        OnCancel="@(() => { })" />
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+
+    private CompanyDto? _company;
+    private List<EmployeeDto> _employees = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private ConfirmDialog? _confirmDialog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+
+            _company = await CompanyService.GetCompanyByIdAsync(CompanyId, userId.Value);
+            if (_company == null) { Nav.NavigateTo("/"); return; }
+
+            var employees = await EmployeeService.GetEmployeesForCompanyAsync(CompanyId, userId.Value);
+            _employees = employees.ToList();
+        }
+        catch { _errorMessage = "Failed to load company details."; }
+        finally { _isLoading = false; }
+    }
+
+    private void ShowDeleteConfirm() => _confirmDialog?.Show();
+
+    private async Task HandleDelete()
+    {
+        var userId = await GetUserIdAsync();
+        if (!userId.HasValue) return;
+        var deleted = await CompanyService.DeleteCompanyAsync(CompanyId, userId.Value);
+        if (deleted) Nav.NavigateTo("/");
+        else _errorMessage = "Cannot delete company with employees.";
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+}

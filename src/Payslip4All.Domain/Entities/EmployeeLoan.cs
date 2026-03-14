@@ -1,0 +1,41 @@
+using Payslip4All.Domain.Enums;
+namespace Payslip4All.Domain.Entities;
+public class EmployeeLoan
+{
+    public Guid Id { get; private set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal TotalLoanAmount { get; set; }
+    public int NumberOfTerms { get; set; }
+    public decimal MonthlyDeductionAmount { get; set; }
+    public DateOnly PaymentStartDate { get; set; }
+    public int TermsCompleted { get; private set; }
+    public LoanStatus Status { get; private set; }
+    public Guid EmployeeId { get; set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+    public Employee Employee { get; set; } = null!;
+    
+    public EmployeeLoan()
+    {
+        Id = Guid.NewGuid();
+        Status = LoanStatus.Active;
+        TermsCompleted = 0;
+        CreatedAt = DateTimeOffset.UtcNow;
+    }
+    
+    public void IncrementTermsCompleted()
+    {
+        if (Status == LoanStatus.Completed)
+            throw new InvalidOperationException("Cannot increment a completed loan.");
+        TermsCompleted++;
+        if (TermsCompleted == NumberOfTerms)
+            Status = LoanStatus.Completed;
+    }
+    
+    public bool IsActiveForPeriod(int month, int year)
+    {
+        var periodDate = new DateOnly(year, month, 1);
+        return Status == LoanStatus.Active
+            && periodDate >= PaymentStartDate
+            && TermsCompleted < NumberOfTerms;
+    }
+}

@@ -1,0 +1,17 @@
+<div>
+    @if (IsLoading)
+    {
+        <div class="d-flex align-items-center gap-2">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                <span>@Message</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? Message { get; set; }
+}

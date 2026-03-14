@@ -1,0 +1,132 @@
+@page "/companies/{companyId:guid}/employees/{employeeId:guid}/loans/{loanId:guid}/edit"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Loan
+@using Payslip4All.Application.Interfaces
+@inject ILoanService LoanService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Edit Loan - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Edit Loan</h2>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && _model != null)
+    {
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+            <div class="mb-3">
+                <label class="form-label">Description *</label>
+                <InputText class="form-control" @bind-Value="_model.Description" />
+                <ValidationMessage For="@(() => _model.Description)" />
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Total Loan Amount (R) *</label>
+                    <InputNumber class="form-control" @bind-Value="_model.TotalLoanAmount" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Number of Terms *</label>
+                    <InputNumber class="form-control" @bind-Value="_model.NumberOfTerms" />
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Monthly Deduction (R) *</label>
+                    <InputNumber class="form-control" @bind-Value="_model.MonthlyDeductionAmount" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Payment Start Date</label>
+                    <InputDate class="form-control" @bind-Value="_model.PaymentStartDate" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@_isSaving">
+                @if (_isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                Save Changes
+            </button>
+            <a href="/companies/@CompanyId/employees/@EmployeeId" class="btn btn-secondary ms-2">Cancel</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+    [Parameter] public Guid EmployeeId { get; set; }
+    [Parameter] public Guid LoanId { get; set; }
+
+    private FormModel? _model;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+
+            var loan = await LoanService.GetLoanByIdAsync(LoanId, userId.Value);
+            if (loan == null || loan.TermsCompleted > 0)
+            {
+                _errorMessage = loan == null ? "Loan not found." : "Cannot edit a loan with completed terms.";
+                _isLoading = false;
+                return;
+            }
+
+            _model = new FormModel
+            {
+                Description = loan.Description, TotalLoanAmount = loan.TotalLoanAmount,
+                NumberOfTerms = loan.NumberOfTerms, MonthlyDeductionAmount = loan.MonthlyDeductionAmount,
+                PaymentStartDate = loan.PaymentStartDate
+            };
+        }
+        catch { _errorMessage = "Failed to load loan."; }
+        finally { _isLoading = false; }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (_model == null) return;
+        _isSaving = true;
+        _errorMessage = null;
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { _errorMessage = "Not authenticated."; return; }
+
+            await LoanService.UpdateLoanAsync(new UpdateLoanCommand
+            {
+                LoanId = LoanId, UserId = userId.Value,
+                Description = _model.Description, TotalLoanAmount = _model.TotalLoanAmount,
+                NumberOfTerms = _model.NumberOfTerms, MonthlyDeductionAmount = _model.MonthlyDeductionAmount,
+                PaymentStartDate = _model.PaymentStartDate
+            });
+            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+        }
+        catch (ArgumentException ex) { _errorMessage = ex.Message; }
+        catch { _errorMessage = "Failed to update loan."; }
+        finally { _isSaving = false; }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+
+    public class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required] public string Description { get; set; } = "";
+        public decimal TotalLoanAmount { get; set; }
+        public int NumberOfTerms { get; set; }
+        public decimal MonthlyDeductionAmount { get; set; }
+        public DateOnly PaymentStartDate { get; set; }
+    }
+}
