@@ -117,4 +117,45 @@ public class CompanyServiceTests
 
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task GetCompanyByIdAsync_ExistingCompany_ReturnsDto()
+    {
+        var userId = Guid.NewGuid();
+        var company = new Company { Name = "Test Co", UserId = userId };
+        _mockRepo.Setup(r => r.GetByIdAsync(company.Id, userId)).ReturnsAsync(company);
+
+        var result = await _service.GetCompanyByIdAsync(company.Id, userId);
+
+        Assert.NotNull(result);
+        Assert.Equal("Test Co", result!.Name);
+    }
+
+    [Fact]
+    public async Task GetCompanyByIdAsync_NotFound_ReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        _mockRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), userId)).ReturnsAsync((Company?)null);
+
+        var result = await _service.GetCompanyByIdAsync(Guid.NewGuid(), userId);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UpdateCompanyAsync_ExistingCompany_UpdatesAndReturnsDto()
+    {
+        var userId = Guid.NewGuid();
+        var company = new Company { Name = "Old Name", UserId = userId };
+        _mockRepo.Setup(r => r.GetByIdAsync(company.Id, userId)).ReturnsAsync(company);
+        _mockRepo.Setup(r => r.UpdateAsync(company)).Returns(Task.CompletedTask);
+
+        var result = await _service.UpdateCompanyAsync(new UpdateCompanyCommand
+        {
+            Id = company.Id, Name = "New Name", Address = "123 St", UserId = userId
+        });
+
+        Assert.NotNull(result);
+        Assert.Equal("New Name", result!.Name);
+    }
 }

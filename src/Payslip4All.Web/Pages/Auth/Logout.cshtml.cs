@@ -8,6 +8,6 @@ public class LogoutModel : PageModel
     public async Task<IActionResult> OnGetAsync()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Redirect("/login");
+        return Redirect("/Auth/Login");
     }
 }

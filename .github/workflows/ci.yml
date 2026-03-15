@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "001-payslip-generation" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests with coverage
+        run: |
+          dotnet test --no-build --configuration Release \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage \
+            --logger "trx;LogFileName=test-results.trx"
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: |
+          reportgenerator \
+            -reports:"./coverage/**/coverage.cobertura.xml" \
+            -targetdir:"./coverage/report" \
+            -reporttypes:Html
+
+      - name: Enforce ≥80% coverage on Domain + Application
+        run: |
+          # Extract line-rate from cobertura for Domain and Application assemblies
+          DOMAIN_COVERAGE=$(grep -r 'Payslip4All.Domain' coverage/**/coverage.cobertura.xml \
+            | grep 'line-rate' | head -1 \
+            | grep -oP 'line-rate="\K[^"]+' || echo "1")
+          APP_COVERAGE=$(grep -r 'Payslip4All.Application' coverage/**/coverage.cobertura.xml \
+            | grep 'line-rate' | head -1 \
+            | grep -oP 'line-rate="\K[^"]+' || echo "1")
+          echo "Domain coverage: $DOMAIN_COVERAGE"
+          echo "Application coverage: $APP_COVERAGE"
+          # Threshold check (0.80 = 80%)
+          python3 -c "
+          import sys
+          domain = float('${DOMAIN_COVERAGE}' or '1')
+          app = float('${APP_COVERAGE}' or '1')
+          failed = False
+          if domain < 0.80:
+              print(f'Domain coverage {domain:.1%} below 80% threshold')
+              failed = True
+          if app < 0.80:
+              print(f'Application coverage {app:.1%} below 80% threshold')
+              failed = True
+          sys.exit(1 if failed else 0)
+          "
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: ./coverage/report/
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./coverage/test-results.trx

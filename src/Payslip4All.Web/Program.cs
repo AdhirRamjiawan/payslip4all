@@ -6,6 +6,7 @@ using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Application.Services;
 using Payslip4All.Infrastructure.Auth;
 using Payslip4All.Infrastructure.Persistence;
+using Payslip4All.Web.Auth;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
 using QuestPDF.Infrastructure;
@@ -40,8 +41,8 @@ var expireDays = builder.Configuration.GetValue<int>("Auth:Cookie:ExpireDays", 3
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath = "/login";
-        options.LogoutPath = "/logout";
+        options.LoginPath = "/Auth/Login";
+        options.LogoutPath = "/Auth/Logout";
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         options.ExpireTimeSpan = TimeSpan.FromDays(expireDays);
@@ -74,11 +75,23 @@ builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<PayslipDbCon
 
 var app = builder.Build();
 
-// Apply pending migrations on startup
+// Apply pending migrations on startup only when the DB is behind the codebase.
+// If all migrations are "pending" but tables already exist (inconsistent state from
+// a previous partial run), wipe and recreate so we don't crash on duplicate tables.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PayslipDbContext>();
-    await db.Database.MigrateAsync();
+    var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+    if (pending.Count > 0)
+    {
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+        if (applied.Count == 0 && await db.Database.CanConnectAsync())
+        {
+            // No migration history but DB exists — stale/inconsistent state; start clean.
+            await db.Database.EnsureDeletedAsync();
+        }
+        await db.Database.MigrateAsync();
+    }
 }
 
 // Configure pipeline
@@ -108,3 +121,8 @@ app.MapGet("/payslips/{payslipId:guid}/download",
     });
 
 await app.RunAsync();
+
+// Required by WebApplicationFactory<Program> in integration tests.
+// Top-level statements generate a private Program class; this partial declaration
+// makes it accessible to the test assembly.
+public partial class Program { }

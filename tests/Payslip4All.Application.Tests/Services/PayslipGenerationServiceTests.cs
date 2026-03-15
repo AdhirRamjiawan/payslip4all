@@ -119,4 +119,71 @@ public class PayslipGenerationServiceTests
         _mockPayslipRepo.Verify(r => r.AddAsync(It.IsAny<Payslip>()), Times.Once);
         _mockUnitOfWork.Verify(u => u.CommitTransactionAsync(), Times.Once);
     }
+
+    [Fact]
+    public async Task GetPayslipsForEmployeeAsync_ReturnsPayslips()
+    {
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var payslip = new Payslip
+        {
+            EmployeeId = employeeId, PayPeriodMonth = 1, PayPeriodYear = 2024,
+            GrossEarnings = 10000m, UifDeduction = 100m, NetPay = 9900m,
+            TotalDeductions = 100m, TotalLoanDeductions = 0m
+        };
+        _mockPayslipRepo.Setup(r => r.GetAllByEmployeeIdAsync(employeeId, userId))
+            .ReturnsAsync(new List<Payslip> { payslip });
+
+        var result = await _service.GetPayslipsForEmployeeAsync(employeeId, userId);
+
+        Assert.Single(result);
+        Assert.Equal(1, result[0].PayPeriodMonth);
+    }
+
+    [Fact]
+    public async Task GetPdfAsync_ExistingPayslip_ReturnsPdfBytes()
+    {
+        var payslipId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var payslip = new Payslip
+        {
+            EmployeeId = Guid.NewGuid(), PdfContent = new byte[] { 1, 2, 3 }
+        };
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
+
+        var result = await _service.GetPdfAsync(payslipId, userId);
+
+        Assert.NotNull(result);
+        Assert.Equal(3, result!.Length);
+    }
+
+    [Fact]
+    public async Task GetPdfAsync_NotFound_ReturnsNull()
+    {
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync((Payslip?)null);
+
+        var result = await _service.GetPdfAsync(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task PreviewPayslipAsync_ZeroSalaryEmployee_ReturnsError()
+    {
+        var employee = new Employee
+        {
+            FirstName = "Jane", LastName = "Doe", IdNumber = "456", EmployeeNumber = "E002",
+            Occupation = "Intern", MonthlyGrossSalary = 0m, CompanyId = Guid.NewGuid()
+        };
+        _mockEmployeeRepo.Setup(r => r.GetByIdWithLoansAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(employee);
+
+        var result = await _service.PreviewPayslipAsync(new PreviewPayslipQuery
+        {
+            EmployeeId = employee.Id, UserId = Guid.NewGuid(), PayPeriodMonth = 1, PayPeriodYear = 2024
+        });
+
+        Assert.False(result.Success);
+    }
 }

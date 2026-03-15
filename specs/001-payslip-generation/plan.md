@@ -1,25 +1,23 @@
-# Implementation Plan: Payslip Generation System
+# Implementation Plan: Payslip Generation System (001)
 
-**Branch**: `001-payslip-generation` | **Date**: 2025-07-15 | **Spec**: [specs/001-payslip-generation/spec.md](./spec.md)  
+**Branch**: `001-payslip-generation` | **Date**: 2026-03-15 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-payslip-generation/spec.md`
 
 ## Summary
 
-Payslip4All is a Blazor Server web application that enables employers (Company Owners) to manage companies and employees, and generate legally-compliant PDF payslips (including UIF deductions and loan deductions) on a monthly basis.
-
-The implementation follows a strict Clean Architecture across four projects (`Domain`, `Application`, `Infrastructure`, `Web`) with TDD enforced throughout. Authentication uses ASP.NET Core cookie auth with BCrypt password hashing. Persistent storage uses Entity Framework Core with configurable SQLite (dev) or MySQL (production) backends. PDF generation uses QuestPDF. Payslip generation is atomic: all changes (payslip record, PDF bytes, `TermsCompleted` increments) are committed in a single database transaction or none at all.
+Build the core Payslip4All application: a Blazor Server web app that allows employers to register accounts, create companies, manage employees (including loan arrangements), and generate downloadable PDF payslips each month. The payslip calculation applies South African UIF (1% of gross, capped at R17,712) plus any active loan deductions. All operations are ownership-filtered per authenticated user. The system is implemented in strict Clean Architecture with TDD across all layers.
 
 ## Technical Context
 
 **Language/Version**: C# 12 / .NET 8 (LTS)  
-**Primary Dependencies**: ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq  
-**Storage**: SQLite (development default) + MySQL (production) — provider selected via `appsettings.json`; single `PayslipDbContext`  
-**Testing**: xUnit (unit + integration), bUnit (Blazor component tests), Moq (mocking); coverage threshold ≥ 80% on Domain + Application  
-**Target Platform**: Linux/Windows/macOS server (.NET 8 runtime); browser clients (Blazor Server — no WASM)  
-**Project Type**: Blazor Server web application (multi-tenant SaaS, single-tenancy per user account)  
-**Performance Goals**: Payslip PDF generated and available within 3 seconds (SC-002); page loads ≤ 2 seconds for 10 companies × 50 employees (SC-004)  
-**Constraints**: One payslip per employee per month (unique constraint); `TermsCompleted` increment must be atomic within transaction; no raw SQL; no EF Core attributes on domain entities  
-**Scale/Scope**: ~10 companies per user, ~50 employees per company (SC-004 baseline); 14 Razor pages/components; 6 domain entities; 4 application service interfaces
+**Primary Dependencies**: ASP.NET Core 8 Blazor Server, Entity Framework Core 8, BCrypt.Net-Next (v4), QuestPDF (community licence), Pomelo.EntityFrameworkCore.MySql  
+**Storage**: SQLite (local development default); MySQL via `Pomelo.EntityFrameworkCore.MySql` in production — provider selected at startup via `appsettings.json` key `"DatabaseProvider"`  
+**Testing**: xUnit 2.x + Moq 4.x (domain & application layer unit tests); bUnit 1.x (Blazor component tests); SQLite in-memory (infrastructure integration tests)  
+**Target Platform**: Server-side ASP.NET Core 8 (Blazor Server over SignalR); no WASM  
+**Project Type**: Blazor Server web application  
+**Performance Goals**: PDF generation < 3 s (SC-002); page loads < 2 s for 10 companies × 50 employees (SC-004); full register-to-payslip journey < 5 min (SC-001)  
+**Constraints**: Cookie auth HttpOnly + Secure (production); no secrets in source; EF Core migrations only (no raw SQL); test coverage ≥ 80% on Domain + Application; zero build warnings  
+**Scale/Scope**: ~10 companies per employer × 50 employees per company; medium scale; single-tenant per account
 
 ## Constitution Check
 
@@ -29,25 +27,15 @@ Verify compliance with each Payslip4All constitution principle before proceeding
 
 | # | Principle | Gate Question | Status |
 |---|-----------|---------------|--------|
-| I | TDD | Are failing tests planned/written before any implementation task begins? All acceptance scenarios in the spec map to xUnit test cases (domain, application) and bUnit tests (Web). Coverage ≥ 80% on Domain + Application is a CI gate. | ✅ |
-| II | Clean Architecture | Feature touches exactly 4 projects (Domain ← Application ← Infrastructure ← Web). Domain has zero external dependencies. Application defines all service interfaces. Infrastructure implements them. Web only calls Application interfaces. Cross-layer comms via DTOs only. | ✅ |
-| III | Blazor Web App | All UI is Razor components (`.razor`). Pages use `@page`. Business logic delegated to injected Application services. Async/await used for all I/O. Loading states and error messages implemented for all async ops. Bootstrap 5 CSS. | ✅ |
-| IV | Basic Authentication | All pages except `/login` and `/register` carry `[Authorize(Roles = "CompanyOwner")]`. All service methods filter by authenticated `UserId`. Cookie is `HttpOnly`/`Secure`. Auth errors are generic (FR-004). | ✅ |
-| V | Database Support | All schema changes are named EF Core migrations. `MigrateAsync()` called on startup. LINQ only — no raw SQL. All EF config in `OnModelCreating`. Connection string from `appsettings.json`. Provider swap requires only `Program.cs` change. | ✅ |
+| I | TDD | Are failing tests planned/written before any implementation task begins? | ✅ |
+| II | Clean Architecture | Does the feature touch ≤ 4 projects (Domain/Application/Infrastructure/Web)? Does each layer only depend inward? | ✅ |
+| III | Blazor Web App | Are all new UI surfaces Razor components? Is business logic kept out of `.razor` files? | ✅ (with C3 deviation) |
+| IV | Basic Authentication | Do new pages carry `[Authorize]`? Do new service methods filter by `UserId`? | ✅ |
+| V | Database Support | Are all schema changes represented as named EF Core migrations? Is raw SQL avoided? | ✅ |
 
-> **All gates PASS.** No exceptions required.
+> **All gates pass.** Four justified deviations are tracked in the Complexity Tracking table (C1 — PayslipLoanDeduction snapshot entity; C2 — MySQL provider addition; C3 — Razor Pages auth deviation; C4 — SiteAdministrator deferral).
 
-## Post-Design Constitution Re-Check
-
-After Phase 1 design (data model + contracts):
-
-| # | Principle | Design Compliance Confirmation |
-|---|-----------|-------------------------------|
-| I | TDD | Each entity has clear validation rules → xUnit domain tests defined. Each service method has clear input/output contract → application service tests defined. Each Blazor page has defined UI states → bUnit tests mapped. |
-| II | Clean Architecture | `PayslipCalculator` is pure Domain. `IPayslipService`, `ICompanyService`, `IEmployeeService`, `ILoanService`, `IAuthenticationService`, `IPdfGenerationService` all in Application. `PayslipDbContext`, repositories, `PdfGenerationService`, `PasswordHasher` all in Infrastructure. All Razor pages in Web with no direct DbContext. |
-| III | Blazor Web App | 14 pages/components identified in UI contracts. All async states (loading, error, empty, data) specified per page. |
-| IV | Basic Authentication | Ownership filter enforced at service layer (not just route). Loan edit/delete guards enforce `TermsCompleted` check before any mutation. |
-| V | Database Support | Single `InitialSchema` migration planned. Unique constraint `UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear` defined. Concurrency token on `TermsCompleted`. `OnDelete` behaviours explicitly configured. |
+**Post-Phase 1 re-check**: All principles remain satisfied after design. Data model uses no EF Core attributes on domain entities; all configuration in `OnModelCreating`; all service interfaces defined in Application layer; all Blazor pages delegate business logic to injected services; unique constraint enforced via EF Core index; BCrypt used for password hashing.
 
 ## Project Structure
 
@@ -55,13 +43,14 @@ After Phase 1 design (data model + contracts):
 
 ```text
 specs/001-payslip-generation/
-├── plan.md              ✅ This file
-├── research.md          ✅ Phase 0 output
-├── data-model.md        ✅ Phase 1 output
-├── quickstart.md        ✅ Phase 1 output
-├── contracts/
-│   └── ui-contracts.md  ✅ Phase 1 output
-└── tasks.md             ⏳ Phase 2 output (/speckit.tasks — not yet created)
+├── plan.md              # This file (/speckit.plan command output)
+├── research.md          # Phase 0 output (/speckit.plan command)
+├── data-model.md        # Phase 1 output (/speckit.plan command)
+├── quickstart.md        # Phase 1 output (/speckit.plan command)
+├── contracts/           # Phase 1 output (/speckit.plan command)
+│   ├── http-endpoints.md
+│   └── ui-contracts.md
+└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
 ### Source Code (repository root)
@@ -80,7 +69,6 @@ src/
 │   │   └── LoanStatus.cs
 │   └── Services/
 │       └── PayslipCalculator.cs
-│
 ├── Payslip4All.Application/
 │   ├── Interfaces/
 │   │   ├── IAuthenticationService.cs
@@ -88,13 +76,14 @@ src/
 │   │   ├── IEmployeeService.cs
 │   │   ├── ILoanService.cs
 │   │   ├── IPayslipService.cs
-│   │   └── IPdfGenerationService.cs
-│   ├── Interfaces/Repositories/
-│   │   ├── IUserRepository.cs
-│   │   ├── ICompanyRepository.cs
-│   │   ├── IEmployeeRepository.cs
-│   │   ├── ILoanRepository.cs
-│   │   └── IPayslipRepository.cs
+│   │   ├── IPdfGenerationService.cs
+│   │   ├── IPasswordHasher.cs
+│   │   └── Repositories/
+│   │       ├── IUserRepository.cs
+│   │       ├── ICompanyRepository.cs
+│   │       ├── IEmployeeRepository.cs
+│   │       ├── ILoanRepository.cs
+│   │       └── IPayslipRepository.cs
 │   ├── Services/
 │   │   ├── AuthenticationService.cs
 │   │   ├── CompanyService.cs
@@ -102,28 +91,24 @@ src/
 │   │   ├── LoanService.cs
 │   │   └── PayslipGenerationService.cs
 │   └── DTOs/
-│       ├── Auth/          (RegisterCommand, LoginCommand, AuthResult)
-│       ├── Company/       (CompanyDto, CreateCompanyCommand, UpdateCompanyCommand)
-│       ├── Employee/      (EmployeeDto, CreateEmployeeCommand, UpdateEmployeeCommand)
-│       ├── Loan/          (LoanDto, CreateLoanCommand, UpdateLoanCommand)
-│       └── Payslip/       (PayslipDto, GeneratePayslipCommand, PreviewPayslipQuery, PayslipResult)
-│
+│       ├── Commands/       # CreateCompanyCommand, CreateEmployeeCommand, etc.
+│       └── Queries/        # PreviewPayslipQuery, etc.
 ├── Payslip4All.Infrastructure/
 │   ├── Persistence/
 │   │   ├── PayslipDbContext.cs
-│   │   ├── Migrations/
-│   │   └── Repositories/
-│   │       ├── UserRepository.cs
-│   │       ├── CompanyRepository.cs
-│   │       ├── EmployeeRepository.cs
-│   │       ├── LoanRepository.cs
-│   │       └── PayslipRepository.cs
+│   │   └── Migrations/
+│   │       └── InitialSchema.cs
+│   ├── Repositories/
+│   │   ├── UserRepository.cs
+│   │   ├── CompanyRepository.cs
+│   │   ├── EmployeeRepository.cs
+│   │   ├── LoanRepository.cs
+│   │   └── PayslipRepository.cs
 │   ├── Auth/
-│   │   ├── PasswordHasher.cs
-│   │   └── CookieAuthenticationStateProvider.cs
+│   │   ├── CookieAuthenticationStateProvider.cs
+│   │   └── PasswordHasher.cs
 │   └── Services/
 │       └── PdfGenerationService.cs
-│
 └── Payslip4All.Web/
     ├── Pages/
     │   ├── Auth/
@@ -144,11 +129,12 @@ src/
     │   │       └── EditLoan.razor
     │   └── Payslips/
     │       └── GeneratePayslip.razor
-    └── Shared/
-        ├── LoadingSpinner.razor
-        ├── ErrorBanner.razor
-        ├── ConfirmDialog.razor
-        └── PageTitle.razor
+    ├── Shared/
+    │   ├── LoadingSpinner.razor
+    │   ├── ErrorBanner.razor
+    │   ├── ConfirmDialog.razor
+    │   └── PageTitle.razor
+    └── Program.cs
 
 tests/
 ├── Payslip4All.Domain.Tests/
@@ -156,75 +142,28 @@ tests/
 │       └── PayslipCalculatorTests.cs
 ├── Payslip4All.Application.Tests/
 │   └── Services/
-│       ├── AuthenticationServiceTests.cs
+│       ├── AuthServiceTests.cs
 │       ├── CompanyServiceTests.cs
 │       ├── EmployeeServiceTests.cs
-│       ├── LoanServiceTests.cs
 │       └── PayslipGenerationServiceTests.cs
 ├── Payslip4All.Infrastructure.Tests/
 │   └── Repositories/
-│       └── (SQLite in-memory integration tests)
+│       └── (integration tests using SQLite in-memory)
 └── Payslip4All.Web.Tests/
     └── Pages/
         ├── LoginTests.cs
-        ├── RegisterTests.cs
-        ├── DashboardTests.cs
-        ├── CompanyDetailTests.cs
-        ├── EmployeeDetailTests.cs
-        └── GeneratePayslipTests.cs
+        ├── CompanyListTests.cs
+        ├── EmployeeListTests.cs
+        └── PayslipGenerateTests.cs
 ```
 
-**Structure Decision**: Clean Architecture with 4 source projects and 4 test projects. Domain and Application are pure C# class libraries. Infrastructure references EF Core, QuestPDF, and BCrypt. Web is the Blazor Server host. Test projects mirror source structure with xUnit + bUnit.
-
-## NuGet Package Registry
-
-| Project | Package | Version | Purpose |
-|---------|---------|---------|---------|
-| `Infrastructure` | `Microsoft.EntityFrameworkCore` | 8.x | ORM core |
-| `Infrastructure` | `Microsoft.EntityFrameworkCore.Sqlite` | 8.x | SQLite provider |
-| `Infrastructure` | `Pomelo.EntityFrameworkCore.MySql` | 8.x | MySQL provider |
-| `Infrastructure` | `Microsoft.EntityFrameworkCore.Tools` | 8.x | Migration tooling |
-| `Infrastructure` | `QuestPDF` | 2024.x | PDF generation |
-| `Infrastructure` | `BCrypt.Net-Next` | 4.x | Password hashing |
-| `Web` | `Microsoft.AspNetCore.Components.Authorization` | 8.x | Blazor auth integration |
-| `Web.Tests` | `bunit` | 1.x | Blazor component testing |
-| `*.Tests` | `xunit` | 2.x | Test framework |
-| `*.Tests` | `Moq` | 4.x | Mocking |
-| `*.Tests` | `Microsoft.NET.Test.Sdk` | 17.x | Test runner |
-| `*.Tests` | `coverlet.collector` | 6.x | Coverage collection |
-
-## Key Design Decisions
-
-### Atomic Payslip Generation (FR-023, FR-032)
-The `PayslipGenerationService.GeneratePayslipAsync` method wraps all work in a single EF Core transaction:
-1. Load employee + active loans
-2. Calculate payslip values (`PayslipCalculator` — pure domain)
-3. Insert `Payslip` entity
-4. Insert `PayslipLoanDeduction` snapshots for each active loan
-5. Call `loan.IncrementTermsCompleted()` on each active loan (domain method transitions to Completed if final term)
-6. Generate PDF via `IPdfGenerationService`
-7. Store PDF bytes on payslip
-8. `SaveChangesAsync()` + `CommitAsync()` — or `RollbackAsync()` on any exception
-
-### UIF Calculation (FR-019)
-`PayslipCalculator.CalculateUifDeduction(decimal grossSalary)` — pure static, no dependencies:
-```
-UIF = ROUND(MIN(grossSalary, 17712.00) × 0.01, 2, AwayFromZero)
-```
-Constants `UifEarningsCeiling = 17712.00m` and `UifContributionRate = 0.01m` defined in Domain.
-
-### Provider Switching (Constitution V)
-Single `PayslipDbContext`. Provider selected at startup:
-```
-appsettings.json: "DatabaseProvider": "sqlite" | "mysql"
-```
-Switching providers requires no code changes beyond `appsettings.json`.
-
-### Ownership Filtering (FR-008, FR-013, FR-018)
-All repository queries accept a `Guid userId` parameter and include a `.Where(x => x.Company.UserId == userId)` (or equivalent) clause. The Application service layer extracts the `userId` from the `ClaimsPrincipal` — never trusts route parameters alone.
+**Structure Decision**: Clean Architecture 4-project layout (Domain / Application / Infrastructure / Web) matching the mandated stack in the constitution. All UI built with Blazor Server `.razor` components. All business logic in Application services. Infrastructure handles EF Core, repositories, BCrypt, and QuestPDF. No additional projects introduced.
 
 ## Complexity Tracking
 
-> **No Constitution violations.** All gates pass without exception.
-
-*(This table is intentionally empty — no justified exceptions are needed.)*
+| ID | Violation | Why Needed | Simpler Alternative Rejected Because |
+|----|-----------|------------|--------------------------------------|
+| C1 | `PayslipLoanDeduction` snapshot entity (5th table beyond the 5 core entities) | Preserves the loan description and deduction amount as they were at generation time; required for accurate payslip PDF re-render after the loan is completed or edited | Storing a reference to `EmployeeLoan` directly would produce incorrect historical payslip values if the loan was ever edited before being frozen |
+| C2 | MySQL provider (`Pomelo.EntityFrameworkCore.MySql`) alongside SQLite | Production deployments require MySQL; constitution mandates "only a provider swap in `Program.cs`"; both providers must be installed to enable the swap | Omitting MySQL support would block production deployment without a code change, violating the constitution's own provider-swap principle |
+| C3 | Auth pages (`Login`, `Register`, `Logout`) use Razor Pages (`.cshtml` / `.cshtml.cs`) not Blazor components | Blazor Server components cannot call `HttpContext.SignInAsync()` / `SignOutAsync()` directly from the render thread (Blazor runs over SignalR, not a traditional HTTP request/response cycle); Razor Pages have direct `HttpContext` access required by ASP.NET Core cookie auth | Wrapping `SignInAsync` in a service injected into a Blazor component still requires `HttpContext` which is not reliably available in Blazor Server; three auth pages only — all other UI (12+ pages) remains Blazor components |
+| C4 | `SiteAdministrator` role seeded but not enforced | Constitution Principle IV requires `SiteAdministrator` / `CompanyOwner` role distinction; `ApplicationRoles.cs` constants and the DB seed migration establish the role string so it exists before the admin portal ships | Deferring the constant to `002-admin-portal` would require a migration in that feature to add a role that arguably belongs to the identity foundation; seeding now is safe and low-risk |

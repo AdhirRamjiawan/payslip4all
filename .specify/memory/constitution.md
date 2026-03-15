@@ -1,21 +1,39 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: [TEMPLATE] → 1.0.0 (initial ratification)
-Modified principles: N/A — first population from blank template
+Version change: 1.0.1 → 1.0.2 (PATCH — path example drift correction)
+Bump rationale: Principle IV referenced `/login` and `/register` as the anonymous-access
+  exception paths in the [Authorize] rule. The implemented Razor Pages routing places
+  these pages under the `/Auth/` folder, producing canonical routes `/Auth/Login` and
+  `/Auth/Register`. This PATCH corrects the literal path strings in Principle IV to match
+  the canonical implementation. No principle semantics were changed.
 
-Added sections:
-  - Core Principles (5 principles)
-  - Technology Stack & Constraints
-  - Development Workflow & Quality Gates
-  - Governance
+Modified principles:
+  - Principle IV "Basic Authentication (Cookie-Based)":
+      OLD: Every page except `/login` and `/register` MUST carry [Authorize].
+      NEW: Every page except `/Auth/Login` and `/Auth/Register` MUST carry [Authorize].
+
+Added sections: None.
+Removed sections: None.
+
+Placeholder token audit (2026-03-15):
+  - [Authorize]  → ASP.NET Core attribute, NOT a template token. Correct as-is.
+  - No other [ALL_CAPS_IDENTIFIER] template tokens remain unresolved.
 
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md   — Constitution Check gates populated
-  ✅ .specify/templates/tasks-template.md  — TDD "tests OPTIONAL" note overridden
-  ✅ .specify/templates/spec-template.md   — TDD + Clean Arch alignment note added
+  ✅ .specify/templates/plan-template.md   — No path references. No edit required.
+  ✅ .specify/templates/spec-template.md   — No path references. No edit required.
+  ✅ .specify/templates/tasks-template.md  — No path references. No edit required.
+  ✅ .specify/templates/checklist-template.md — No path references. No edit required.
+  ✅ .specify/templates/constitution-template.md — Template only; no edit required.
+  ✅ .specify/templates/agent-file-template.md   — No path references. No edit required.
 
-Deferred TODOs: None — all placeholders resolved.
+Deferred TODOs / Manual follow-up required:
+  ✅ specs/001-payslip-generation/contracts/http-endpoints.md — Resolved 2026-03-15.
+  ✅ specs/001-payslip-generation/contracts/ui-contracts.md — Resolved 2026-03-15.
+  ✅ specs/001-payslip-generation/quickstart.md — Resolved 2026-03-15.
+  ✅ specs/001-payslip-generation/research.md — Resolved 2026-03-15.
+  All four deferred items were corrected to use /Auth/Login, /Auth/Register, /Auth/Logout.
 -->
 
 # Payslip4All Constitution
@@ -110,7 +128,7 @@ User authentication MUST use ASP.NET Core cookie authentication with the followi
   maximum age (default: 30 days).
 - `BlazorAuthenticationStateProvider` MUST be the single source of authentication state
   for the Blazor component tree; no component may hold its own auth state independently.
-- Every page except `/login` and `/register` MUST carry `[Authorize]`.
+- Every page except `/Auth/Login` and `/Auth/Register` MUST carry `[Authorize]`.
 - Role-based access MUST distinguish **SiteAdministrator** from **CompanyOwner**;
   endpoints and pages that serve admin-only functions MUST enforce role checks.
 - Service methods MUST filter data by the authenticated `UserId`; queries that could
@@ -152,7 +170,7 @@ environments and ensures reproducible deployments for every developer and CI run
 | UI Framework         | Blazor Server (ASP.NET Core 8)                        |
 | ORM                  | Entity Framework Core 8                               |
 | DB (development)     | SQLite                                                |
-| DB (production)      | SQLite or SQL Server (via config, no code change)     |
+| DB (production)      | SQLite, MySQL (`Pomelo.EntityFrameworkCore.MySql`), or SQL Server (via config, no code change — see C2 deviation in feature-001 plan.md) |
 | Unit / Integration   | xUnit + Moq                                           |
 | Component testing    | bUnit                                                 |
 | Password hashing     | BCrypt.Net-Next or PBKDF2 (KeyDerivation)             |
@@ -214,4 +232,4 @@ All PRs and code reviews MUST verify compliance with this constitution. Any inte
 deviation from a principle MUST be documented in the `plan.md` Complexity Tracking
 table with justification before work begins.
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-14
+**Version**: 1.0.2 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-15

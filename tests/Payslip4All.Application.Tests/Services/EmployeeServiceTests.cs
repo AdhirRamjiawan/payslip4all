@@ -135,4 +135,50 @@ public class EmployeeServiceTests
 
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task GetEmployeeByIdAsync_ExistingEmployee_ReturnsDto()
+    {
+        var userId = Guid.NewGuid();
+        var companyId = Guid.NewGuid();
+        var employee = new Employee
+        {
+            FirstName = "John", LastName = "Doe", IdNumber = "123", EmployeeNumber = "E1",
+            Occupation = "Dev", MonthlyGrossSalary = 10000m, CompanyId = companyId,
+            StartDate = new DateOnly(2020, 1, 1)
+        };
+        _mockRepo.Setup(r => r.GetByIdAsync(employee.Id, userId)).ReturnsAsync(employee);
+
+        var result = await _service.GetEmployeeByIdAsync(employee.Id, userId);
+
+        Assert.NotNull(result);
+        Assert.Equal("John", result!.FirstName);
+    }
+
+    [Fact]
+    public async Task UpdateEmployeeAsync_ValidData_UpdatesEmployee()
+    {
+        var userId = Guid.NewGuid();
+        var companyId = Guid.NewGuid();
+        var employee = new Employee
+        {
+            FirstName = "Old", LastName = "Name", IdNumber = "123", EmployeeNumber = "E1",
+            Occupation = "Dev", MonthlyGrossSalary = 10000m, CompanyId = companyId,
+            StartDate = new DateOnly(2020, 1, 1)
+        };
+        _mockRepo.Setup(r => r.GetByIdAsync(employee.Id, userId)).ReturnsAsync(employee);
+        _mockRepo.Setup(r => r.UpdateAsync(employee)).Returns(Task.CompletedTask);
+
+        var cmd = new UpdateEmployeeCommand
+        {
+            Id = employee.Id, FirstName = "New", LastName = "Name", IdNumber = "123",
+            EmployeeNumber = "E1", Occupation = "Dev", MonthlyGrossSalary = 12000m,
+            CompanyId = companyId, UserId = userId, StartDate = new DateOnly(2020, 1, 1)
+        };
+        var result = await _service.UpdateEmployeeAsync(cmd);
+
+        Assert.NotNull(result);
+        Assert.Equal("New", result!.FirstName);
+        Assert.Equal(12000m, result.MonthlyGrossSalary);
+    }
 }

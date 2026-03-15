@@ -132,8 +132,8 @@ Blazor Server runs server-side; the SignalR circuit inherits the authenticated `
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath = "/login";
-        options.LogoutPath = "/logout";
+        options.LoginPath = "/Auth/Login";
+        options.LogoutPath = "/Auth/Logout";
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // prod
         options.ExpireTimeSpan = TimeSpan.FromDays(30);

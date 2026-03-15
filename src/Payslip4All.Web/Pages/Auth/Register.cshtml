@@ -2,24 +2,15 @@
 @model RegisterModel
 @{
     ViewData["Title"] = "Register";
-    Layout = null;
+    Layout = "/Pages/Shared/_AuthLayout.cshtml";
 }
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Register - Payslip4All</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-</head>
-<body>
 <div class="container mt-5">
     <div class="row justify-content-center">
-        <div class="col-md-6">
+        <div class="col-md-6 col-lg-5">
             <div class="card shadow-lg">
                 <div class="card-body p-5">
-                    <h2 class="text-center mb-4">Payslip4All</h2>
-                    <h4 class="text-center mb-4">Create Account</h4>
+                    <h2 class="text-center mb-2">Payslip4All</h2>
+                    <h4 class="text-center text-muted mb-4">Create Account</h4>
                     @if (Model.ErrorMessage != null)
                     {
                         <div class="alert alert-danger">@Model.ErrorMessage</div>
@@ -41,11 +32,9 @@
                         <button type="submit" class="btn btn-primary w-100">Register</button>
                     </form>
                     <hr />
-                    <p class="text-center">Already have an account? <a href="/login">Login here</a></p>
+                    <p class="text-center mb-0">Already have an account? <a href="/Auth/Login">Login here</a></p>
                 </div>
             </div>
         </div>
     </div>
 </div>
-</body>
-</html>

@@ -1,7 +1,7 @@
 # UI Contracts: Payslip Generation System (001)
 
 **Phase**: 1 — Design  
-**Date**: 2025-07-15  
+**Date**: 2026-03-15  
 **Project Type**: Blazor Server Web Application
 
 This document defines the page/component contracts for all Blazor UI surfaces. Each contract specifies the route, required injected services, input parameters, outputs/events, and key UI states.
@@ -26,14 +26,14 @@ Each contract follows this structure:
 
 ### 1.1 Register Page
 
-**File**: `Pages/Auth/Register.razor`  
-**Route**: `/register`  
+**File**: `Pages/Auth/Register.cshtml` / `Pages/Auth/Register.cshtml.cs` (`RegisterModel`)  
+**Route**: `/Auth/Register`  
 **Authorization**: Anonymous only (redirect to `/` if already authenticated)
 
-**Injected Services**:
+**Page Model**:
 ```csharp
-@inject IAuthenticationService AuthService
-@inject NavigationManager Nav
+// RegisterModel.OnGetAsync() — renders form
+// RegisterModel.OnPostAsync() — handles form submission
 ```
 
 **Form Inputs**:
@@ -47,30 +47,30 @@ Each contract follows this structure:
 | State | Description |
 |-------|-------------|
 | `Idle` | Form visible, all fields empty |
-| `Submitting` | Form disabled, spinner shown |
+| `Submitting` | Form submitted via HTTP POST |
 | `Error` | Generic error banner shown (never reveals if email exists — FR-004) |
 | `Success` | Redirect to `/` (dashboard) |
 
 **Events / Actions**:
-- `OnSubmit` → calls `AuthService.RegisterAsync(RegisterCommand)` → on success: sign in + redirect to `/`; on failure: show generic error
-- `[Already have an account? Login]` → navigate to `/login`
+- `OnPostAsync` → calls `AuthService.RegisterAsync(RegisterCommand)` → on success: sign in + redirect to `/`; on failure: show generic error
+- `[Already have an account? Login]` → navigate to `/Auth/Login`
 
 **Navigation**:
 - Success → `/` (dashboard)
-- Cancel / link → `/login`
+- Cancel / link → `/Auth/Login`
 
 ---
 
 ### 1.2 Login Page
 
-**File**: `Pages/Auth/Login.razor`  
-**Route**: `/login`  
+**File**: `Pages/Auth/Login.cshtml` / `Pages/Auth/Login.cshtml.cs` (`LoginModel`)  
+**Route**: `/Auth/Login`  
 **Authorization**: Anonymous only (redirect to `/` if already authenticated)
 
-**Injected Services**:
+**Page Model**:
 ```csharp
-@inject IAuthenticationService AuthService
-@inject NavigationManager Nav
+// LoginModel.OnGetAsync() — renders form; captures returnUrl query param
+// LoginModel.OnPostAsync() — handles form submission
 ```
 
 **Form Inputs**:
@@ -83,26 +83,26 @@ Each contract follows this structure:
 | State | Description |
 |-------|-------------|
 | `Idle` | Form visible |
-| `Submitting` | Form disabled, spinner shown |
+| `Submitting` | Form submitted via HTTP POST |
 | `Error` | Generic "Invalid credentials" banner (never specifies which field — FR-004) |
 | `Success` | Redirect to `/` (dashboard) |
 
 **Events / Actions**:
-- `OnSubmit` → calls `AuthService.LoginAsync(LoginCommand)` → on success: sign in + redirect to `/`; on failure: show generic error
-- `[Don't have an account? Register]` → navigate to `/register`
+- `OnPostAsync` → calls `AuthService.LoginAsync(LoginCommand)` → on success: sign in + redirect to `returnUrl ?? "/"`; on failure: show generic error
+- `[Don't have an account? Register]` → navigate to `/Auth/Register`
 
 **Navigation**:
 - Success → `/` or the original requested URL (`returnUrl` query parameter)
-- Link → `/register`
+- Link → `/Auth/Register`
 
 ---
 
 ### 1.3 Logout Endpoint
 
-**File**: `Pages/Auth/Logout.razor`  
-**Route**: `/logout`  
+**File**: `Pages/Auth/Logout.cshtml` / `Pages/Auth/Logout.cshtml.cs` (`LogoutModel`)  
+**Route**: `/Auth/Logout`  
 **Authorization**: Authenticated users only  
-**Behaviour**: Not a visible page — immediately signs the user out and redirects to `/login`.
+**Behaviour**: Not a visible page — `LogoutModel.OnGetAsync()` immediately signs the user out via `HttpContext.SignOutAsync()` and redirects to `/Auth/Login`.
 
 ---
 
@@ -448,8 +448,8 @@ Actions:
 ## Navigation Map
 
 ```
-/login ──────────────────────────────────────── Register → /register
-/register ───────────────────────────────────── Login → /login
+/Auth/Login ─────────────────────────────────── Register → /Auth/Register
+/Auth/Register ──────────────────────────────── Login → /Auth/Login
 / (dashboard) ──────────────────────────────── company cards
   └─ /companies/create
   └─ /companies/{id}
@@ -469,8 +469,8 @@ Actions:
 
 | Page / Route | Role Required |
 |---|---|
-| `/login`, `/register` | Anonymous |
-| `/logout` | Authenticated |
+| `/Auth/Login`, `/Auth/Register` | Anonymous |
+| `/Auth/Logout` | Authenticated |
 | All other routes | `CompanyOwner` |
 
 All service methods additionally filter by `UserId` (FR-008, FR-013) — ownership is enforced at the data layer, not just at the route level (FR-005, FR-008).

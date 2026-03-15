@@ -104,4 +104,47 @@ public class LoanServiceTests
 
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task GetLoanByIdAsync_ExistingLoan_ReturnsDto()
+    {
+        var userId = Guid.NewGuid();
+        var loan = new EmployeeLoan
+        {
+            Description = "Test Loan", TotalLoanAmount = 1000m, NumberOfTerms = 3,
+            MonthlyDeductionAmount = 333m, PaymentStartDate = new DateOnly(2024, 1, 1),
+            EmployeeId = Guid.NewGuid()
+        };
+        _mockRepo.Setup(r => r.GetByIdAsync(loan.Id, userId)).ReturnsAsync(loan);
+
+        var result = await _service.GetLoanByIdAsync(loan.Id, userId);
+
+        Assert.NotNull(result);
+        Assert.Equal("Test Loan", result!.Description);
+    }
+
+    [Fact]
+    public async Task UpdateLoanAsync_TermsCompletedIsZero_UpdatesLoan()
+    {
+        var userId = Guid.NewGuid();
+        var loan = new EmployeeLoan
+        {
+            Description = "Old", TotalLoanAmount = 1000m, NumberOfTerms = 3,
+            MonthlyDeductionAmount = 333m, PaymentStartDate = new DateOnly(2024, 1, 1),
+            EmployeeId = Guid.NewGuid()
+        };
+        _mockRepo.Setup(r => r.GetByIdAsync(loan.Id, userId)).ReturnsAsync(loan);
+        _mockRepo.Setup(r => r.UpdateAsync(loan)).Returns(Task.CompletedTask);
+
+        var cmd = new UpdateLoanCommand
+        {
+            LoanId = loan.Id, Description = "Updated", TotalLoanAmount = 2000m,
+            NumberOfTerms = 6, MonthlyDeductionAmount = 333m,
+            PaymentStartDate = new DateOnly(2024, 1, 1), EmployeeId = loan.EmployeeId, UserId = userId
+        };
+        var result = await _service.UpdateLoanAsync(cmd);
+
+        Assert.NotNull(result);
+        Assert.Equal("Updated", result!.Description);
+    }
 }

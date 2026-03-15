@@ -1,0 +1,33 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csx}]
+indent_size = 4
+
+# Treat all default CS diagnostics as warnings so TreatWarningsAsErrors in
+# Directory.Build.props gates the build on zero-warning output.
+dotnet_diagnostic.CS0 = warning
+dotnet_diagnostic.CS1 = warning
+dotnet_diagnostic.CS2 = warning
+dotnet_diagnostic.CS3 = warning
+dotnet_diagnostic.CS4 = warning
+dotnet_diagnostic.CS5 = warning
+dotnet_diagnostic.CS6 = warning
+dotnet_diagnostic.CS7 = warning
+dotnet_diagnostic.CS8 = warning
+dotnet_diagnostic.CS9 = warning
+
+[*.{razor,cshtml}]
+indent_size = 4
+
+[*.{json,yml,yaml,xml,csproj,props,targets}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

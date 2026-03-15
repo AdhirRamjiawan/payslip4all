@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- Zero-warning gate: all C# compiler warnings are treated as errors. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Suppress NuGet approximate-match restore warning (NU1603) globally. -->
+    <NoWarn>$(NoWarn);NU1603</NoWarn>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+</Project>

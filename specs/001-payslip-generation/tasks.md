@@ -1,205 +1,228 @@
+---
+description: "Task list for Payslip Generation System (001)"
+---
+
 # Tasks: Payslip Generation System
 
-**Feature Branch**: `001-payslip-generation`  
-**Input**: Design documents from `/specs/001-payslip-generation/`  
-**Prerequisites**: plan.md ✅ · spec.md ✅ · data-model.md ✅ · contracts/ui-contracts.md ✅ · research.md ✅ · quickstart.md ✅ · constitution.md ✅
+**Input**: Design documents from `/specs/001-payslip-generation/`
+**Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅, quickstart.md ✅
 
-**TDD Mandate (Constitution Principle I)**: All test tasks MUST be written and confirmed **failing** before the corresponding implementation tasks begin. Test tasks are **mandatory** — not optional. Coverage threshold ≥ 80% on `Payslip4All.Domain` and `Payslip4All.Application` is a CI gate.
+**Feature Status**: ✅ **Implemented** (66/66 tasks complete — all tasks done)
 
-## Format: `[ID] [P?] [Story?] Description with exact file path`
+**Tests**: Per constitution Principle I (TDD), tests are **REQUIRED** for all features in
+this project (xUnit for unit/integration, bUnit for Blazor components). Tests MUST be
+written and confirmed failing before implementation tasks begin. Do not mark test tasks
+as optional — TDD is non-negotiable.
 
-- **[P]**: Task can run in parallel (touches different files, no unresolved dependencies)
-- **[US#]**: User story this task belongs to (US1–US4)
-- Setup and Foundation phases carry no story label
+**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+
+**Complexity Deviations** (from plan.md Complexity Tracking):
+
+| ID | Deviation | Tasks Affected |
+|----|-----------|----------------|
+| C1 | `PayslipLoanDeduction` snapshot entity (5th table) | T011, T018, T019, T058 |
+| C2 | MySQL provider (`Pomelo.EntityFrameworkCore.MySql`) alongside SQLite | T002, T022 |
+| C3 | Auth pages use Razor Pages (`.cshtml`/`.cshtml.cs`) not Blazor components | T030, T031, T032 |
+| C4 | `SiteAdministrator` role seeded but not enforced (deferred to `002-admin-portal`) | T019 |
+
+> **Gate III** (Constitution Principle III — Blazor Web App): ✅ **(with C3 deviation)** — Auth pages (Login/Register/Logout) use Razor Pages because `HttpContext.SignInAsync()` / `SignOutAsync()` cannot be called from the Blazor Server render thread. All other UI (12+ pages) remain Blazor `.razor` components.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependencies on incomplete tasks)
+- **[Story]**: Which user story this task belongs to ([US1]–[US4])
+- Exact file paths are included in every description
+
+## Tech Stack
+
+**Language/Runtime**: C# 12 / .NET 8 (LTS)
+**Framework**: Blazor Server (ASP.NET Core 8)
+**ORM**: Entity Framework Core 8
+**Database**: SQLite (dev default) / MySQL via `Pomelo.EntityFrameworkCore.MySql` (provider swap via `appsettings.json` key `"DatabaseProvider"`)
+**PDF**: QuestPDF (community licence)
+**Auth**: ASP.NET Core cookie authentication + custom `CookieAuthenticationStateProvider`; BCrypt.Net-Next (work factor 12)
+**Testing**: xUnit 2.x + Moq 4.x (unit/integration), bUnit 1.x (Blazor components), SQLite in-memory (infrastructure integration), coverlet (≥ 80% coverage on Domain + Application)
 
 ---
 
-## Phase 1: Project Setup
+## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Scaffold the full solution structure with all projects, NuGet packages, and core configuration. No business logic.
+**Purpose**: Solution + project scaffolding, CI pipeline, and tooling configuration.
 
-- [x] T001 Create .NET 8 solution `Payslip4All.sln` with 4 source projects (`Payslip4All.Domain`, `Payslip4All.Application`, `Payslip4All.Infrastructure`, `Payslip4All.Web`) and 4 test projects (`Payslip4All.Domain.Tests`, `Payslip4All.Application.Tests`, `Payslip4All.Infrastructure.Tests`, `Payslip4All.Web.Tests`) under `src/` and `tests/` respectively, adding all project references per Clean Architecture dependency direction
-- [x] T002 [P] Add NuGet packages to `src/Payslip4All.Infrastructure/Payslip4All.Infrastructure.csproj`: `Microsoft.EntityFrameworkCore` 8.x, `Microsoft.EntityFrameworkCore.Sqlite` 8.x, `Pomelo.EntityFrameworkCore.MySql` 8.x, `Microsoft.EntityFrameworkCore.Tools` 8.x, `QuestPDF` 2024.x, `BCrypt.Net-Next` 4.x
-- [x] T003 [P] Add NuGet packages to `src/Payslip4All.Web/Payslip4All.Web.csproj`: `Microsoft.AspNetCore.Components.Authorization` 8.x
-- [x] T004 [P] Add NuGet packages to all 4 test projects (`*.Tests.csproj`): `xunit` 2.x, `Moq` 4.x, `Microsoft.NET.Test.Sdk` 17.x, `coverlet.collector` 6.x, `xunit.runner.visualstudio` 2.x; add `bunit` 1.x to `Payslip4All.Web.Tests` only
-- [x] T005 Create `src/Payslip4All.Web/appsettings.json` with keys: `DatabaseProvider` (`"sqlite"`), `ConnectionStrings:DefaultConnection` (`"Data Source=payslip4all.db"`), `ConnectionStrings:MySqlConnection` (`""`), `Auth:Cookie:ExpireDays` (`30`), `BCrypt:WorkFactor` (`12`); create matching `appsettings.Development.json`
-- [x] T006 Configure EF Core provider switching in `src/Payslip4All.Web/Program.cs`: read `DatabaseProvider` from config, register `PayslipDbContext` as Scoped with `UseSqlite` or `UseMySql(ServerVersion.AutoDetect)` branch
-- [x] T007 Configure ASP.NET Core cookie authentication in `src/Payslip4All.Web/Program.cs`: `AddAuthentication().AddCookie(...)` with `LoginPath = "/login"`, `LogoutPath = "/logout"`, `HttpOnly = true`, `SecurePolicy = Always`, `ExpireTimeSpan` from config; add `app.UseAuthentication()` and `app.UseAuthorization()` middleware
-- [x] T008 Register all application services, repositories, and infrastructure implementations in `src/Payslip4All.Web/Program.cs` DI container (placeholder registrations referencing types that will be created in Phase 2–3; keeps compiler-happy stubs acceptable until types exist)
-- [x] T009 Set QuestPDF community licence (`QuestPDF.Settings.License = LicenseType.Community`) in `src/Payslip4All.Web/Program.cs` application startup
+- [x] T001 Create .NET 8 solution `Payslip4All.sln` with four source projects (`Payslip4All.Domain`, `Payslip4All.Application`, `Payslip4All.Infrastructure`, `Payslip4All.Web`) and four test projects (`Payslip4All.Domain.Tests`, `Payslip4All.Application.Tests`, `Payslip4All.Infrastructure.Tests`, `Payslip4All.Web.Tests`) matching the layout in plan.md
+- [x] T002 Add NuGet package references: `BCrypt.Net-Next`, `QuestPDF`, `Microsoft.EntityFrameworkCore.Sqlite`, `Pomelo.EntityFrameworkCore.MySql`, `Microsoft.EntityFrameworkCore.Tools` to `src/Payslip4All.Infrastructure/Payslip4All.Infrastructure.csproj`; add `bunit`, `xunit`, `Moq`, `Microsoft.NET.Test.Sdk`, `xunit.runner.visualstudio` to `tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj`; add `xunit`, `Moq`, `Microsoft.NET.Test.Sdk` to remaining test projects
+- [x] T003 [P] Create GitHub Actions CI workflow at `.github/workflows/ci.yml` running `dotnet restore`, `dotnet build --no-restore --warnaserror`, `dotnet test --collect:"XPlat Code Coverage"` on push and PR to `main`
+- [x] T004 [P] Add `.editorconfig` at repo root enforcing zero build warnings (`dotnet_diagnostic.CS0` through `CS9` as warnings treated as errors) and set `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
+- [x] T005 [P] Configure `src/Payslip4All.Web/appsettings.json` with keys `DatabaseProvider`, `ConnectionStrings:DefaultConnection` (SQLite), `ConnectionStrings:MySqlConnection`, `Auth:Cookie:ExpireDays`, `BCrypt:WorkFactor`; create `appsettings.Development.json` with SQLite defaults per quickstart.md
 
-**Checkpoint**: Solution builds cleanly (`dotnet build`). All 8 projects present. No business logic yet.
+**Checkpoint**: `dotnet build` succeeds with zero warnings; CI workflow exists.
 
 ---
 
-## Phase 2: Foundation (Blocking Prerequisites)
+## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: All domain entities, DTOs, service interfaces, repository interfaces, DbContext, repository implementations, initial migration, and the base auth state provider. **No user story implementation can begin until this phase is complete.**
+**Purpose**: Core domain model, application interfaces, infrastructure wiring, and shared UI scaffolding that ALL user stories depend on. No user story work begins until this phase is complete.
 
-⚠️ **CRITICAL BLOCK**: Phases 3–6 depend on every task in this phase being done.
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-### Domain Entities & Enums
+### Domain Entities & Services
 
-- [x] T010 [P] Create `LoanStatus` enum (`Active = 0`, `Completed = 1`) in `src/Payslip4All.Domain/Enums/LoanStatus.cs`
-- [x] T011 [P] Create `User` entity (properties: `Id Guid`, `Email string`, `PasswordHash string`, `CreatedAt DateTimeOffset`; constructor sets `Id = Guid.NewGuid()`, `CreatedAt = DateTimeOffset.UtcNow`) in `src/Payslip4All.Domain/Entities/User.cs` — zero EF Core attributes
-- [x] T012 [P] Create `Company` entity (properties: `Id Guid`, `Name string`, `Address string?`, `UserId Guid`, `CreatedAt DateTimeOffset`) in `src/Payslip4All.Domain/Entities/Company.cs` — zero EF Core attributes
-- [x] T013 [P] Create `Employee` entity (properties: `Id Guid`, `FirstName string`, `LastName string`, `IdNumber string`, `EmployeeNumber string`, `StartDate DateOnly`, `Occupation string`, `UifReference string?`, `MonthlyGrossSalary decimal`, `CompanyId Guid`, `CreatedAt DateTimeOffset`) in `src/Payslip4All.Domain/Entities/Employee.cs` — zero EF Core attributes
-- [x] T014 [P] Create `EmployeeLoan` entity in `src/Payslip4All.Domain/Entities/EmployeeLoan.cs` with properties (`Id Guid`, `Description string`, `TotalLoanAmount decimal`, `NumberOfTerms int`, `MonthlyDeductionAmount decimal`, `PaymentStartDate DateOnly`, `TermsCompleted int`, `Status LoanStatus`, `EmployeeId Guid`, `CreatedAt DateTimeOffset`) and domain methods: `IncrementTermsCompleted()` (increments counter, transitions to `Completed` when `TermsCompleted == NumberOfTerms`, throws if already Completed) and `IsActiveForPeriod(int month, int year) bool` — zero EF Core attributes
-- [x] T015 [P] Create `Payslip` entity (properties: `Id Guid`, `PayPeriodMonth int`, `PayPeriodYear int`, `GrossEarnings decimal`, `UifDeduction decimal`, `TotalLoanDeductions decimal`, `TotalDeductions decimal`, `NetPay decimal`, `PdfContent byte[]?`, `EmployeeId Guid`, `GeneratedAt DateTimeOffset`) in `src/Payslip4All.Domain/Entities/Payslip.cs` — zero EF Core attributes
-- [x] T016 [P] Create `PayslipLoanDeduction` entity (properties: `Id Guid`, `PayslipId Guid`, `EmployeeLoanId Guid`, `Description string`, `Amount decimal`) in `src/Payslip4All.Domain/Entities/PayslipLoanDeduction.cs` — zero EF Core attributes
+- [x] T006 [P] Create `User` entity (Id, Email, PasswordHash, CreatedAt — no EF attributes) in `src/Payslip4All.Domain/Entities/User.cs`
+- [x] T007 [P] Create `Company` entity (Id, Name, Address?, UserId, CreatedAt) in `src/Payslip4All.Domain/Entities/Company.cs`
+- [x] T008 [P] Create `Employee` entity (Id, FirstName, LastName, IdNumber, EmployeeNumber, StartDate, Occupation, UifReference?, MonthlyGrossSalary, CompanyId, CreatedAt) in `src/Payslip4All.Domain/Entities/Employee.cs`
+- [x] T009 [P] Create `LoanStatus` enum (Active=0, Completed=1) in `src/Payslip4All.Domain/Enums/LoanStatus.cs` and `EmployeeLoan` entity with `IsActiveForPeriod(int month, int year)` and `IncrementTermsCompleted()` domain methods in `src/Payslip4All.Domain/Entities/EmployeeLoan.cs`
+- [x] T010 [P] Create `Payslip` entity (all 13 fields per data-model.md including `CompanyId` denormalised FK and `PdfContent byte[]?`) in `src/Payslip4All.Domain/Entities/Payslip.cs`
+- [x] T011 [P] Create `PayslipLoanDeduction` snapshot entity (Id, PayslipId, EmployeeLoanId, Description snapshot, Amount snapshot) in `src/Payslip4All.Domain/Entities/PayslipLoanDeduction.cs`
+- [x] T012 [P] Create `PayslipCalculator` pure static domain service (`CalculateUifDeduction`, `CalculateNetPay`, `CalculateTotalDeductions` — constants `UifEarningsCeiling = 17712m`, `UifContributionRate = 0.01m`) in `src/Payslip4All.Domain/Services/PayslipCalculator.cs`
 
-### Application DTOs
+### Application Interfaces & DTOs
 
-- [x] T017 [P] Create Auth DTOs in `src/Payslip4All.Application/DTOs/Auth/`: `RegisterCommand.cs` (Email, Password, ConfirmPassword), `LoginCommand.cs` (Email, Password), `AuthResult.cs` (Success bool, ErrorMessage string?, UserId Guid?, UserEmail string?)
-- [x] T018 [P] Create Company DTOs in `src/Payslip4All.Application/DTOs/Company/`: `CompanyDto.cs` (Id, Name, Address, UserId, CreatedAt, EmployeeCount int), `CreateCompanyCommand.cs` (Name, Address?, UserId), `UpdateCompanyCommand.cs` (Id, Name, Address?, UserId)
-- [x] T019 [P] Create Employee DTOs in `src/Payslip4All.Application/DTOs/Employee/`: `EmployeeDto.cs` (all employee fields + CompanyId), `CreateEmployeeCommand.cs`, `UpdateEmployeeCommand.cs` (both include all employee input fields + CompanyId + UserId ownership check field)
-- [x] T020 [P] Create Loan DTOs in `src/Payslip4All.Application/DTOs/Loan/`: `LoanDto.cs` (all loan fields including TermsCompleted, Status), `CreateLoanCommand.cs` (Description, TotalLoanAmount, NumberOfTerms, MonthlyDeductionAmount, PaymentStartDate, EmployeeId, UserId), `UpdateLoanCommand.cs` (same fields + LoanId)
-- [x] T021 [P] Create Payslip DTOs in `src/Payslip4All.Application/DTOs/Payslip/`: `PayslipDto.cs` (all payslip fields + LoanDeductions list), `GeneratePayslipCommand.cs` (EmployeeId, PayPeriodMonth, PayPeriodYear, OverwriteExisting bool, UserId), `PreviewPayslipQuery.cs` (EmployeeId, PayPeriodMonth, PayPeriodYear, UserId), `PayslipResult.cs` (Success bool, PayslipDto?, ErrorMessage string?, IsDuplicate bool)
+- [x] T013 [P] Create `IPasswordHasher` (`Hash`, `Verify`) and `IAuthenticationService` (`RegisterAsync`, `LoginAsync`) interfaces in `src/Payslip4All.Application/Interfaces/`
+- [x] T014 [P] Create `ICompanyService` (`CreateCompanyAsync`, `GetCompaniesForUserAsync`, `GetCompanyAsync`, `UpdateCompanyAsync`, `DeleteCompanyAsync`) and repository interfaces `IUserRepository`, `ICompanyRepository` in `src/Payslip4All.Application/Interfaces/` and `src/Payslip4All.Application/Interfaces/Repositories/`
+- [x] T015 [P] Create `IEmployeeService` (`CreateEmployeeAsync`, `GetEmployeesForCompanyAsync`, `GetEmployeeAsync`, `UpdateEmployeeAsync`, `DeleteEmployeeAsync`), `ILoanService` (`CreateLoanAsync`, `GetLoansForEmployeeAsync`, `GetLoanAsync`, `UpdateLoanAsync`, `DeleteLoanAsync`), and `IEmployeeRepository`, `ILoanRepository` interfaces in `src/Payslip4All.Application/Interfaces/` and `src/Payslip4All.Application/Interfaces/Repositories/`
+- [x] T016 [P] Create `IPayslipService` (`PreviewPayslipAsync`, `GeneratePayslipAsync`, `GetPayslipsForEmployeeAsync`, `GetPdfAsync`), `IPdfGenerationService` (`GeneratePayslip`), and `IPayslipRepository` interfaces in `src/Payslip4All.Application/Interfaces/` and `src/Payslip4All.Application/Interfaces/Repositories/`
+- [x] T017 [P] Create all DTOs: `RegisterCommand`, `LoginCommand`, `CreateCompanyCommand`, `UpdateCompanyCommand`, `CreateEmployeeCommand`, `UpdateEmployeeCommand`, `CreateLoanCommand`, `UpdateLoanCommand`, `GeneratePayslipCommand`, `PreviewPayslipQuery` and result/response DTOs in `src/Payslip4All.Application/DTOs/Commands/` and `src/Payslip4All.Application/DTOs/Queries/`
 
-### Application Service & Repository Interfaces
+### Infrastructure: Persistence
 
-- [x] T022 [P] Create `IPasswordHasher` interface (methods: `Hash(string password) string`, `Verify(string password, string hash) bool`) in `src/Payslip4All.Application/Interfaces/IPasswordHasher.cs`
-- [x] T023 [P] Create `IAuthenticationService` interface (methods: `RegisterAsync(RegisterCommand) Task<AuthResult>`, `LoginAsync(LoginCommand) Task<AuthResult>`) in `src/Payslip4All.Application/Interfaces/IAuthenticationService.cs`
-- [x] T024 [P] Create `ICompanyService` interface (methods: `GetCompaniesForUserAsync(Guid userId) Task<IReadOnlyList<CompanyDto>>`, `GetCompanyByIdAsync(Guid id, Guid userId) Task<CompanyDto?>`, `CreateCompanyAsync(CreateCompanyCommand) Task<CompanyDto>`, `UpdateCompanyAsync(UpdateCompanyCommand) Task<CompanyDto?>`, `DeleteCompanyAsync(Guid id, Guid userId) Task<bool>`) in `src/Payslip4All.Application/Interfaces/ICompanyService.cs`
-- [x] T025 [P] Create `IEmployeeService` interface (methods: `GetEmployeesForCompanyAsync(Guid companyId, Guid userId) Task<IReadOnlyList<EmployeeDto>>`, `GetEmployeeByIdAsync(Guid id, Guid userId) Task<EmployeeDto?>`, `CreateEmployeeAsync(CreateEmployeeCommand) Task<EmployeeDto>`, `UpdateEmployeeAsync(UpdateEmployeeCommand) Task<EmployeeDto?>`, `DeleteEmployeeAsync(Guid id, Guid userId) Task<bool>`) in `src/Payslip4All.Application/Interfaces/IEmployeeService.cs`
-- [x] T026 [P] Create `ILoanService` interface (methods: `GetLoansForEmployeeAsync(Guid employeeId, Guid userId) Task<IReadOnlyList<LoanDto>>`, `GetLoanByIdAsync(Guid id, Guid userId) Task<LoanDto?>`, `CreateLoanAsync(CreateLoanCommand) Task<LoanDto>`, `UpdateLoanAsync(UpdateLoanCommand) Task<LoanDto?>`, `DeleteLoanAsync(Guid id, Guid userId) Task<bool>`) in `src/Payslip4All.Application/Interfaces/ILoanService.cs`
-- [x] T027 [P] Create `IPayslipService` interface (methods: `PreviewPayslipAsync(PreviewPayslipQuery) Task<PayslipResult>`, `GeneratePayslipAsync(GeneratePayslipCommand) Task<PayslipResult>`, `GetPayslipsForEmployeeAsync(Guid employeeId, Guid userId) Task<IReadOnlyList<PayslipDto>>`, `GetPdfAsync(Guid payslipId, Guid userId) Task<byte[]?>`) in `src/Payslip4All.Application/Interfaces/IPayslipService.cs`
-- [x] T028 [P] Create `IPdfGenerationService` interface (method: `GeneratePayslip(PayslipDocument document) byte[]`; define `PayslipDocument` record with CompanyName, CompanyAddress, EmployeeName, EmployeeNumber, Occupation, PayPeriod, GrossEarnings, UifDeduction, LoanDeductions, TotalDeductions, NetPay) in `src/Payslip4All.Application/Interfaces/IPdfGenerationService.cs`
-- [x] T029 [P] Create `IUserRepository` interface (methods: `GetByEmailAsync(string email) Task<User?>`, `AddAsync(User user) Task`, `ExistsAsync(string email) Task<bool>`) in `src/Payslip4All.Application/Interfaces/Repositories/IUserRepository.cs`
-- [x] T030 [P] Create `ICompanyRepository` interface (methods: `GetAllByUserIdAsync(Guid userId) Task<IReadOnlyList<Company>>`, `GetByIdAsync(Guid id, Guid userId) Task<Company?>`, `GetByIdWithEmployeesAsync(Guid id, Guid userId) Task<Company?>`, `AddAsync(Company company) Task`, `UpdateAsync(Company company) Task`, `DeleteAsync(Company company) Task`, `HasEmployeesAsync(Guid id) Task<bool>`) in `src/Payslip4All.Application/Interfaces/Repositories/ICompanyRepository.cs`
-- [x] T031 [P] Create `IEmployeeRepository` interface (methods: `GetAllByCompanyIdAsync(Guid companyId, Guid userId) Task<IReadOnlyList<Employee>>`, `GetByIdAsync(Guid id, Guid userId) Task<Employee?>`, `GetByIdWithLoansAsync(Guid id, Guid userId) Task<Employee?>`, `AddAsync(Employee emp) Task`, `UpdateAsync(Employee emp) Task`, `DeleteAsync(Employee emp) Task`, `HasPayslipsAsync(Guid id) Task<bool>`) in `src/Payslip4All.Application/Interfaces/Repositories/IEmployeeRepository.cs`
-- [x] T032 [P] Create `ILoanRepository` interface (methods: `GetAllByEmployeeIdAsync(Guid employeeId, Guid userId) Task<IReadOnlyList<EmployeeLoan>>`, `GetByIdAsync(Guid id, Guid userId) Task<EmployeeLoan?>`, `AddAsync(EmployeeLoan loan) Task`, `UpdateAsync(EmployeeLoan loan) Task`, `DeleteAsync(EmployeeLoan loan) Task`) in `src/Payslip4All.Application/Interfaces/Repositories/ILoanRepository.cs`
-- [x] T033 [P] Create `IPayslipRepository` interface (methods: `GetAllByEmployeeIdAsync(Guid employeeId, Guid userId) Task<IReadOnlyList<Payslip>>`, `GetByIdAsync(Guid id, Guid userId) Task<Payslip?>`, `ExistsAsync(Guid employeeId, int month, int year) Task<bool>`, `AddAsync(Payslip payslip) Task`, `DeleteAsync(Payslip payslip) Task`) in `src/Payslip4All.Application/Interfaces/Repositories/IPayslipRepository.cs`
+- [x] T018 Create `PayslipDbContext` with `OnModelCreating` fully configured for all 6 entities (all indexes, unique constraints, FK cascade rules, precision settings, concurrency token on `EmployeeLoan.TermsCompleted`, `UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear` unique index) per data-model.md in `src/Payslip4All.Infrastructure/Persistence/PayslipDbContext.cs`
+- [x] T019 Add EF Core `InitialSchema` migration covering all 6 tables (`Users`, `Companies`, `Employees`, `EmployeeLoans`, `Payslips`, `PayslipLoanDeductions`) via `dotnet ef migrations add InitialSchema --project src/Payslip4All.Infrastructure --startup-project src/Payslip4All.Web` and validate migration output in `src/Payslip4All.Infrastructure/Persistence/Migrations/`
 
-### Infrastructure: DbContext, Repositories, Migration
+### Infrastructure: Auth & Services
 
-- [x] T034 Create `PayslipDbContext` in `src/Payslip4All.Infrastructure/Persistence/PayslipDbContext.cs` with `DbSet<>` properties for all 6 entities and full `OnModelCreating` configuration: all field constraints (MaxLength, HasPrecision, IsRequired), all FK/navigation relationships with explicit `OnDelete` behaviours, all indexes (unique and non-unique) including `UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear`, and `IsConcurrencyToken()` on `EmployeeLoan.TermsCompleted`
-- [x] T035 [P] Implement `UserRepository` in `src/Payslip4All.Infrastructure/Persistence/Repositories/UserRepository.cs` implementing `IUserRepository` using `PayslipDbContext`; email comparisons use `ToLower()`
-- [x] T036 [P] Implement `CompanyRepository` in `src/Payslip4All.Infrastructure/Persistence/Repositories/CompanyRepository.cs` implementing `ICompanyRepository`; all queries include `.Where(c => c.UserId == userId)` ownership filter
-- [x] T037 [P] Implement `EmployeeRepository` in `src/Payslip4All.Infrastructure/Persistence/Repositories/EmployeeRepository.cs` implementing `IEmployeeRepository`; all queries include ownership filter via company join (`.Where(e => e.Company.UserId == userId)`)
-- [x] T038 [P] Implement `LoanRepository` in `src/Payslip4All.Infrastructure/Persistence/Repositories/LoanRepository.cs` implementing `ILoanRepository`; all queries include ownership filter via employee-company join
-- [x] T039 [P] Implement `PayslipRepository` in `src/Payslip4All.Infrastructure/Persistence/Repositories/PayslipRepository.cs` implementing `IPayslipRepository`; all queries include ownership filter via employee-company join
-- [x] T040 Create `PasswordHasher` in `src/Payslip4All.Infrastructure/Auth/PasswordHasher.cs` implementing `IPasswordHasher` using `BCrypt.Net.BCrypt.HashPassword` (work factor from config) and `BCrypt.Net.BCrypt.Verify`
-- [x] T041 Run `dotnet ef migrations add InitialSchema --project src/Payslip4All.Infrastructure --startup-project src/Payslip4All.Web` to generate the `InitialSchema` migration in `src/Payslip4All.Infrastructure/Persistence/Migrations/`
+- [x] T020 [P] Implement `PasswordHasher` wrapping BCrypt.Net-Next (work factor read from config, default 12) in `src/Payslip4All.Infrastructure/Auth/PasswordHasher.cs`
+- [x] T021 [P] Implement `CookieAuthenticationStateProvider` reading `HttpContext.User` via `IHttpContextAccessor` in `src/Payslip4All.Infrastructure/Auth/CookieAuthenticationStateProvider.cs`
 
-### Base Authentication State Provider
+### Web: Program.cs & Shared Components
 
-- [x] T042 Create base `CookieAuthenticationStateProvider` in `src/Payslip4All.Infrastructure/Auth/CookieAuthenticationStateProvider.cs` implementing `AuthenticationStateProvider`: reads `ClaimsPrincipal` from `IHttpContextAccessor.HttpContext?.User`; returns `AuthenticationState` with anonymous identity when HttpContext is null; includes `public void NotifyAuthenticationStateChanged(ClaimsPrincipal user)` helper to trigger Blazor auth state refresh
+- [x] T022 Configure `src/Payslip4All.Web/Program.cs`: register `AddDbContext<PayslipDbContext>` with startup-time SQLite/MySQL provider switch from `"DatabaseProvider"` config key; register `AddAuthentication().AddCookie(...)` with `HttpOnly`, `SecurePolicy.Always`, `SlidingExpiration`, login path `/Auth/Login`; register all application services and repositories as `Scoped`; register `CookieAuthenticationStateProvider`; call `MigrateAsync()` on startup; add Minimal API `GET /payslips/{payslipId:guid}/download` endpoint with `[Authorize(Roles = "CompanyOwner")]` ownership filter via `IPayslipService.GetPdfAsync`
+- [x] T023 [P] Create shared Blazor components: `LoadingSpinner.razor` (params: `bool IsLoading`, `string? Message`), `ErrorBanner.razor` (params: `string? ErrorMessage`, `EventCallback OnDismiss`), `ConfirmDialog.razor` (params: `string Title`, `string Message`, `EventCallback OnConfirm`, `EventCallback OnCancel`), `PageTitle.razor` (params: `string Title`, `string? Subtitle`) in `src/Payslip4All.Web/Shared/`
 
-**Checkpoint**: `dotnet build` passes. All interfaces, entities, DbContext, repositories, and base auth provider exist. DB migration file generated. User story implementation can now begin.
+**Checkpoint**: Foundation complete — `dotnet build` succeeds, migrations exist, Program.cs wires up the app skeleton. User story implementation can now begin.
 
 ---
 
 ## Phase 3: User Story 1 — Employer Registration & Login (Priority: P1) 🎯 MVP
 
-**Goal**: An employer can register an account, log in, and be redirected to an authenticated dashboard. An unauthenticated visitor is redirected to `/login`.
+**Goal**: An employer can register a new account, log in with their credentials, view their personal dashboard, and log out. All protected pages redirect unauthenticated visitors to `/Auth/Login`.
 
-**Independent Test**: Register a new account → log out → log back in → dashboard loads. Second account cannot access first account's session.
+**Independent Test**: Register a new account → log out → log back in → confirm dashboard loads. Second account cannot see first account's data.
 
-### Tests for US1 (Constitution Principle I — TDD: write first, confirm failing, then implement)
+### Tests for User Story 1 (REQUIRED — TDD, constitution Principle I)
 
-- [x] T04X [P] [US1] Write failing xUnit tests for `AuthenticationService` in `tests/Payslip4All.Application.Tests/Services/AuthenticationServiceTests.cs`: registration with unique email succeeds and returns `AuthResult.Success = true`; registration with duplicate email returns generic error without revealing existence; login with correct credentials returns success; login with wrong password returns generic error; `PasswordHash` stored in DB is never the plain-text password
-- [x] T04X [P] [US1] Write failing bUnit tests for `Register.razor` in `tests/Payslip4All.Web.Tests/Pages/RegisterTests.cs`: form renders email + password + confirm-password inputs; valid submission calls `IAuthenticationService.RegisterAsync`; mismatched password shows validation error; service error shows generic error banner; success redirects to `/`
-- [x] T04X [P] [US1] Write failing bUnit tests for `Login.razor` in `tests/Payslip4All.Web.Tests/Pages/LoginTests.cs`: form renders email + password inputs; valid submission calls `IAuthenticationService.LoginAsync`; failed login shows generic error banner (never field-specific); success redirects to `/`
+> **MANDATORY: Write these tests FIRST, confirm they FAIL, then begin implementation.**
 
-### Implementation for US1
+- [x] T024 [P] [US1] Write failing `PayslipCalculatorTests` covering `CalculateUifDeduction` (below ceiling, above ceiling, exactly at ceiling, zero salary throws, negative throws) and `CalculateNetPay`/`CalculateTotalDeductions` in `tests/Payslip4All.Domain.Tests/Services/PayslipCalculatorTests.cs`
+- [x] T025 [P] [US1] Write failing `AuthServiceTests` covering `RegisterAsync` (success, duplicate email returns generic error, password hashed before storage), `LoginAsync` (valid credentials, invalid credentials returns generic error, case-insensitive email lookup) in `tests/Payslip4All.Application.Tests/Services/AuthServiceTests.cs`
+- [x] T026 [P] [US1] Write failing bUnit `LoginTests` covering form renders email + password inputs, invalid credentials shows error banner, successful login redirects to `/` in `tests/Payslip4All.Web.Tests/Pages/LoginTests.cs`
+- [x] T027 [P] [US1] Write failing bUnit `RegisterTests` covering form renders required fields, duplicate email shows generic error (not revealing existence), password mismatch shows error, successful registration redirects to `/` in `tests/Payslip4All.Web.Tests/Pages/RegisterTests.cs`
 
-- [x] T04X [US1] Implement `AuthenticationService` in `src/Payslip4All.Application/Services/AuthenticationService.cs` implementing `IAuthenticationService`: `RegisterAsync` normalises email to lowercase, checks uniqueness via `IUserRepository`, hashes password via `IPasswordHasher`, persists `User`, returns `AuthResult`; `LoginAsync` fetches user by email, verifies hash, returns `AuthResult` with `UserId` and `UserEmail`; both methods return generic error messages on failure
-- [x] T04X [US1] Implement `Register.razor` page in `src/Payslip4All.Web/Pages/Auth/Register.razor` at route `/register`: anonymous-only; `EditForm` with `DataAnnotationsValidator`; calls `IAuthenticationService.RegisterAsync`; on success signs in via `HttpContext.SignInAsync` with `ClaimTypes.NameIdentifier`, `ClaimTypes.Email`, `ClaimTypes.Role = "CompanyOwner"` claims then redirects to `/`; shows `<ErrorBanner>` on failure; shows `<LoadingSpinner>` during submit
-- [x] T04X [US1] Implement `Login.razor` page in `src/Payslip4All.Web/Pages/Auth/Login.razor` at route `/login`: anonymous-only; `EditForm`; calls `IAuthenticationService.LoginAsync`; on success signs in via `HttpContext.SignInAsync` then redirects to `/` (or `returnUrl`); shows generic `<ErrorBanner>` on failure; shows `<LoadingSpinner>` during submit
-- [x] T04X [US1] Implement `Logout.razor` page in `src/Payslip4All.Web/Pages/Auth/Logout.razor` at route `/logout`: requires authentication; immediately calls `HttpContext.SignOutAsync` then redirects to `/login`; no visible UI rendered
+### Implementation for User Story 1
 
-**Checkpoint**: Register → Login → Logout flow is fully functional and all US1 tests pass.
+> **⚠️ C3 DEVIATION — Auth pages are Razor Pages, not Blazor components**: `Login`, `Register`, and `Logout` are implemented as `.cshtml`/`.cshtml.cs` Razor Pages (not `.razor` Blazor components). This is required because `HttpContext.SignInAsync()` / `SignOutAsync()` cannot be called on the Blazor Server SignalR render thread. Navigation Map: `/Auth/Login`, `/Auth/Register`, `/Auth/Logout`. All other pages (12+) remain `.razor` Blazor components. See plan.md Complexity Tracking C3.
+
+- [x] T028 [US1] Implement `AuthenticationService` (register normalises email to lowercase, hashes password via `IPasswordHasher`, checks uniqueness via `IUserRepository`, issues cookie claims on success; login does constant-time BCrypt verify, returns generic error on failure) in `src/Payslip4All.Application/Services/AuthenticationService.cs`
+- [x] T029 [US1] Implement `UserRepository` (`GetByEmailAsync`, `AddAsync`, `ExistsByEmailAsync` using `PayslipDbContext`) in `src/Payslip4All.Infrastructure/Repositories/UserRepository.cs`
+- [x] T030 [P] [US1] Create `Login.cshtml` / `Login.cshtml.cs` Razor Page [C3 — `.cshtml`, NOT `.razor`] (`LoginModel.OnGetAsync` renders form; `LoginModel.OnPostAsync` calls `IAuthenticationService.LoginAsync`, on success calls `HttpContext.SignInAsync` + redirects to `returnUrl ?? "/"`, on failure sets `ErrorMessage` for generic error banner; routed at `/Auth/Login`) in `src/Payslip4All.Web/Pages/Auth/Login.cshtml`
+- [x] T031 [P] [US1] Create `Register.cshtml` / `Register.cshtml.cs` Razor Page [C3 — `.cshtml`, NOT `.razor`] (`RegisterModel.OnGetAsync` renders form; `RegisterModel.OnPostAsync` calls `IAuthenticationService.RegisterAsync`, on success calls `HttpContext.SignInAsync` + redirects to `/`, on failure sets generic `ErrorMessage` — never reveals whether email exists; routed at `/Auth/Register`) in `src/Payslip4All.Web/Pages/Auth/Register.cshtml`
+- [x] T032 [US1] Create `Logout.cshtml` / `Logout.cshtml.cs` Razor Page [C3 — `.cshtml`, NOT `.razor`] (`LogoutModel.OnGetAsync` calls `HttpContext.SignOutAsync` and redirects to `/Auth/Login` — no visible UI; requires authentication; routed at `/Auth/Logout`) in `src/Payslip4All.Web/Pages/Auth/Logout.cshtml`
+
+**Checkpoint**: User Story 1 complete — register, login, and logout work end-to-end via Razor Pages at `/Auth/Login`, `/Auth/Register`, `/Auth/Logout`. All `AuthServiceTests`, `PayslipCalculatorTests`, `LoginTests`, and `RegisterTests` pass. Protected pages redirect unauthenticated visitors. (C3 deviation confirmed: auth pages are `.cshtml` Razor Pages, not `.razor` Blazor components.)
 
 ---
 
 ## Phase 4: User Story 2 — Company Management (Priority: P2)
 
-**Goal**: An authenticated employer can create, view, edit, and delete companies. Ownership isolation ensures no employer sees another's companies.
+**Goal**: An authenticated employer can create one or more companies, view their company list on the dashboard, edit company details, and delete companies (with a guard against deletion when employees exist). No other employer can see or mutate their companies.
 
-**Independent Test**: Create a company → verify on dashboard → edit name → delete company (no employees) → confirm deletion succeeds. Attempt to delete a company with employees → confirm system blocks it.
+**Independent Test**: Create company → verify on dashboard → edit name/address → attempt delete with employees (blocked) → delete empty company → confirm removed. Second employer sees zero companies.
 
-### Tests for US2 (TDD: write first, confirm failing, then implement)
+### Tests for User Story 2 (REQUIRED — TDD, constitution Principle I)
 
-- [x] T05X [P] [US2] Write failing xUnit tests for `CompanyService` in `tests/Payslip4All.Application.Tests/Services/CompanyServiceTests.cs`: `GetCompaniesForUserAsync` returns only companies belonging to requesting user; `CreateCompanyAsync` with valid name persists and returns DTO; `CreateCompanyAsync` with empty name throws validation error; `UpdateCompanyAsync` with wrong userId returns null (ownership); `DeleteCompanyAsync` with employees present returns false and does not delete; `DeleteCompanyAsync` with no employees returns true
-- [x] T05X [P] [US2] Write failing bUnit tests for `Dashboard.razor` in `tests/Payslip4All.Web.Tests/Pages/DashboardTests.cs`: loading spinner shown initially; company cards render name and address; empty state shows Add Company CTA; error state shows error banner
-- [x] T05X [P] [US2] Write failing bUnit tests for `CompanyDetail.razor` in `tests/Payslip4All.Web.Tests/Pages/CompanyDetailTests.cs`: renders company name; employee table shown when employees exist; empty employee state shown when none; delete button with no employees navigates away on confirm; delete button with employees shows error banner
+> **MANDATORY: Write these tests FIRST, confirm they FAIL, then begin implementation.**
 
-### Implementation for US2
+- [x] T033 [P] [US2] Write failing `CompanyServiceTests` covering `CreateCompanyAsync` (success, empty name rejected), `GetCompaniesForUserAsync` (ownership filter — returns only current user's companies), `UpdateCompanyAsync` (success, ownership enforced), `DeleteCompanyAsync` (success when empty, blocked when employees exist) in `tests/Payslip4All.Application.Tests/Services/CompanyServiceTests.cs`
+- [x] T034 [P] [US2] Write failing bUnit `CompanyListTests` covering dashboard shows owned companies, empty state renders Add Company CTA, delete blocked when employees shows error banner in `tests/Payslip4All.Web.Tests/Pages/CompanyListTests.cs`
 
-- [x] T05X [US2] Implement `CompanyService` in `src/Payslip4All.Application/Services/CompanyService.cs` implementing `ICompanyService`: all methods extract `userId` from parameter (never trusts ID alone); `GetCompaniesForUserAsync` includes employee count; `DeleteCompanyAsync` checks `ICompanyRepository.HasEmployeesAsync` before deleting; maps domain entities to DTOs
-- [x] T05X [US2] Implement `Dashboard.razor` page in `src/Payslip4All.Web/Pages/Dashboard.razor` at route `/` (`@page "/"`): `[Authorize(Roles = "CompanyOwner")]`; on `OnInitializedAsync` loads companies via `ICompanyService`; renders loading/empty/error/data states; company cards show Name, Address, employee count, Edit and View buttons
-- [x] T05X [P] [US2] Implement `CreateCompany.razor` page in `src/Payslip4All.Web/Pages/Companies/CreateCompany.razor` at route `/companies/create`: `[Authorize(Roles = "CompanyOwner")]`; `EditForm` with Name (required) and Address (optional); on submit calls `ICompanyService.CreateCompanyAsync`; redirects to `/` on success; shows `<ErrorBanner>` on failure
-- [x] T05X [P] [US2] Implement `EditCompany.razor` page in `src/Payslip4All.Web/Pages/Companies/EditCompany.razor` at route `/companies/{companyId:guid}/edit`: `[Authorize(Roles = "CompanyOwner")]`; on load fetches company (shows not-found if null); pre-populates form; on submit calls `ICompanyService.UpdateCompanyAsync`; redirects to `/companies/{companyId}` on success
-- [x] T05X [US2] Implement `CompanyDetail.razor` page in `src/Payslip4All.Web/Pages/Companies/CompanyDetail.razor` at route `/companies/{companyId:guid}`: `[Authorize(Roles = "CompanyOwner")]`; loads company + employees; renders employee table with View Employee and Add Employee links; Edit Company and Delete Company buttons; delete uses `<ConfirmDialog>`; blocks delete if employees exist with error banner
+### Implementation for User Story 2
 
-**Checkpoint**: Full company CRUD works. All US2 tests pass. Dashboard loads only the authenticated user's companies.
+- [x] T035 [US2] Implement `CompanyService` (all CRUD methods; all reads filter by `userId`; `DeleteCompanyAsync` checks `IEmployeeRepository.AnyForCompanyAsync` before delete; returns descriptive error on blocked delete) in `src/Payslip4All.Application/Services/CompanyService.cs`
+- [x] T036 [US2] Implement `CompanyRepository` (`GetAllForUserAsync`, `GetByIdAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync` using `PayslipDbContext`; all queries include `WHERE UserId = @userId`) in `src/Payslip4All.Infrastructure/Repositories/CompanyRepository.cs`
+- [x] T037 [P] [US2] Create `Dashboard.razor` (`@page "/"`, `[Authorize(Roles = "CompanyOwner")]`, loads companies via `ICompanyService.GetCompaniesForUserAsync`, renders company cards with Name/Address/employee count, empty state CTA, `LoadingSpinner`, `ErrorBanner`, navigation to `/companies/create` and `/companies/{id}`) in `src/Payslip4All.Web/Pages/Dashboard.razor`
+- [x] T038 [P] [US2] Create `CreateCompany.razor` (`@page "/companies/create"`, `[Authorize]`, form with Company Name (required, max 200) and Address (optional, max 500), `LoadingSpinner` on submit, `ErrorBanner` on server error, inline validation, redirect to `/` on success, Cancel → `/`) in `src/Payslip4All.Web/Pages/Companies/CreateCompany.razor`
+- [x] T039 [P] [US2] Create `EditCompany.razor` (`@page "/companies/{companyId:guid}/edit"`, `[Authorize]`, loads company on init (404 if not owned), pre-populated form, `UpdateCompanyAsync` on submit, redirect to `/companies/{companyId}` on success, Cancel navigates back) in `src/Payslip4All.Web/Pages/Companies/EditCompany.razor`
+- [x] T040 [US2] Create `CompanyDetail.razor` (`@page "/companies/{companyId:guid}"`, `[Authorize]`, loads company + employees, NotFound state if not owned, employee table with View links, Add Employee CTA, Edit Company button, Delete Company button with `ConfirmDialog` + error banner on deletion failure due to existing employees, `LoadingSpinner`) in `src/Payslip4All.Web/Pages/Companies/CompanyDetail.razor`
+
+**Checkpoint**: User Story 2 complete — full company lifecycle works. `CompanyServiceTests` and `CompanyListTests` pass.
 
 ---
 
 ## Phase 5: User Story 3 — Employee Management (Priority: P3)
 
-**Goal**: An authenticated employer can add, view, edit, and delete employees under a company. Employer can add loans to employees and manage them.
+**Goal**: An authenticated employer adds, edits, and removes employees under a specific company. The EmployeeDetail page also exposes loan management (create, edit when `TermsCompleted == 0`, delete when `TermsCompleted == 0`) and displays payslip history. Deletion is blocked when the employee has existing payslips.
 
-**Independent Test**: Add an employee → edit their salary → add a loan → verify loan appears on employee detail. Attempt to delete an employee with payslips → confirm system blocks it. Attempt to edit a loan with `TermsCompleted > 0` → confirm system blocks form.
+**Independent Test**: Add employee to a company → edit details → add a loan → view employee detail (shows loan under Active Loans) → attempt delete of employee with payslips (blocked) → delete employee with no payslips → confirm removed.
 
-### Tests for US3 (TDD: write first, confirm failing, then implement)
+### Tests for User Story 3 (REQUIRED — TDD, constitution Principle I)
 
-- [x] T05X [P] [US3] Write failing xUnit tests for `EmployeeService` in `tests/Payslip4All.Application.Tests/Services/EmployeeServiceTests.cs`: `CreateEmployeeAsync` with valid data persists employee; `CreateEmployeeAsync` with `MonthlyGrossSalary <= 0` throws validation error; `GetEmployeesForCompanyAsync` returns only employees for the specified company owned by userId; `DeleteEmployeeAsync` with payslips present returns false; ownership filter returns null for wrong userId
-- [x] T05X [P] [US3] Write failing xUnit tests for `LoanService` in `tests/Payslip4All.Application.Tests/Services/LoanServiceTests.cs`: `CreateLoanAsync` with valid data persists loan with `Status = Active` and `TermsCompleted = 0`; `UpdateLoanAsync` when `TermsCompleted > 0` returns null (locked); `DeleteLoanAsync` when `TermsCompleted > 0` returns false (locked); `GetLoansForEmployeeAsync` returns all loans for employee with ownership check
-- [x] T06X [P] [US3] Write failing bUnit tests for `EmployeeDetail.razor` in `tests/Payslip4All.Web.Tests/Pages/EmployeeDetailTests.cs`: renders employee header with name and salary; active loans table renders with edit/delete buttons when `TermsCompleted == 0`; edit/delete buttons absent when `TermsCompleted > 0`; payslip history table rendered in reverse-chronological order; delete employee blocked when payslips exist
+> **MANDATORY: Write these tests FIRST, confirm they FAIL, then begin implementation.**
 
-### Implementation for US3
+- [x] T041 [P] [US3] Write failing `EmployeeServiceTests` covering `CreateEmployeeAsync` (success, duplicate employee number in same company rejected), `GetEmployeesForCompanyAsync` (ownership via company chain), `UpdateEmployeeAsync`, `DeleteEmployeeAsync` (success with no payslips, blocked when payslips exist) in `tests/Payslip4All.Application.Tests/Services/EmployeeServiceTests.cs`
+- [x] T042 [P] [US3] Write failing `LoanServiceTests` covering `CreateLoanAsync` (success, invalid amounts rejected), `UpdateLoanAsync` (blocked when `TermsCompleted > 0`), `DeleteLoanAsync` (blocked when `TermsCompleted > 0` or `PayslipLoanDeductions` exist) in `tests/Payslip4All.Application.Tests/Services/LoanServiceTests.cs`
+- [x] T043 [P] [US3] Write failing bUnit `EmployeeListTests` covering employee table renders in company detail, empty state shows Add Employee CTA, delete blocked with payslips shows error banner in `tests/Payslip4All.Web.Tests/Pages/EmployeeListTests.cs`
 
-- [x] T06X [US3] Implement `EmployeeService` in `src/Payslip4All.Application/Services/EmployeeService.cs` implementing `IEmployeeService`: validates `MonthlyGrossSalary > 0`; `DeleteEmployeeAsync` checks `IEmployeeRepository.HasPayslipsAsync` before deleting; maps to DTOs; all queries enforce userId ownership
-- [x] T06X [US3] Implement `LoanService` in `src/Payslip4All.Application/Services/LoanService.cs` implementing `ILoanService`: `CreateLoanAsync` sets `Status = Active`, `TermsCompleted = 0`; `UpdateLoanAsync` returns null if `loan.TermsCompleted > 0`; `DeleteLoanAsync` returns false if `loan.TermsCompleted > 0`; maps to DTOs; all queries enforce ownership
-- [x] T06X [P] [US3] Implement `CreateEmployee.razor` page in `src/Payslip4All.Web/Pages/Employees/CreateEmployee.razor` at route `/companies/{companyId:guid}/employees/create`: `[Authorize(Roles = "CompanyOwner")]`; `EditForm` with all required fields per FR-016; validates `MonthlyGrossSalary > 0` client-side; on submit calls `IEmployeeService.CreateEmployeeAsync`; redirects to `/companies/{companyId}/employees/{newId}` on success
-- [x] T06X [P] [US3] Implement `EditEmployee.razor` page in `src/Payslip4All.Web/Pages/Employees/EditEmployee.razor` at route `/companies/{companyId:guid}/employees/{employeeId:guid}/edit`: `[Authorize(Roles = "CompanyOwner")]`; pre-populates form from loaded employee; on submit calls `IEmployeeService.UpdateEmployeeAsync`; redirects to employee detail on success
-- [x] T06X [US3] Implement `EmployeeDetail.razor` page in `src/Payslip4All.Web/Pages/Employees/EmployeeDetail.razor` at route `/companies/{companyId:guid}/employees/{employeeId:guid}`: `[Authorize(Roles = "CompanyOwner")]`; loads employee + payslip history (reverse-chronological) + active loans + completed loans; Edit Employee, Delete Employee (guarded by payslip check with `<ConfirmDialog>`), Add Loan, Generate Payslip navigation links; loan Edit/Delete buttons only shown when `loan.TermsCompleted == 0`; PDF download link per payslip row
-- [x] T06X [P] [US3] Implement `CreateLoan.razor` page in `src/Payslip4All.Web/Pages/Employees/Loans/CreateLoan.razor` at route `/companies/{companyId:guid}/employees/{employeeId:guid}/loans/create`: `[Authorize(Roles = "CompanyOwner")]`; `EditForm` with Description, TotalLoanAmount, NumberOfTerms, MonthlyDeductionAmount, PaymentStartDate; on submit calls `ILoanService.CreateLoanAsync`; redirects to employee detail on success
-- [x] T06X [P] [US3] Implement `EditLoan.razor` page in `src/Payslip4All.Web/Pages/Employees/Loans/EditLoan.razor` at route `/companies/{companyId:guid}/employees/{employeeId:guid}/loans/{loanId:guid}/edit`: `[Authorize(Roles = "CompanyOwner")]`; on load fetches loan; if `loan.TermsCompleted > 0` displays "This loan cannot be edited because at least one deduction has already been applied." with no form; otherwise shows pre-populated form; on submit calls `ILoanService.UpdateLoanAsync`
+### Implementation for User Story 3
 
-**Checkpoint**: Full employee CRUD and loan management works. All US3 tests pass. Loan immutability guards enforced.
+- [x] T044 [US3] Implement `EmployeeService` (all CRUD methods; ownership verified through `Company.UserId`; `DeleteEmployeeAsync` checks `IPayslipRepository.AnyForEmployeeAsync` before deleting; duplicate `EmployeeNumber` within same company rejected) in `src/Payslip4All.Application/Services/EmployeeService.cs`
+- [x] T045 [US3] Implement `LoanService` (`CreateLoanAsync`, `GetLoansForEmployeeAsync`, `GetLoanAsync`, `UpdateLoanAsync` blocked when `TermsCompleted > 0`, `DeleteLoanAsync` blocked when `TermsCompleted > 0`) in `src/Payslip4All.Application/Services/LoanService.cs`
+- [x] T046 [P] [US3] Implement `EmployeeRepository` (`GetAllForCompanyAsync`, `GetByIdAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync`, `AnyForCompanyAsync`) in `src/Payslip4All.Infrastructure/Repositories/EmployeeRepository.cs`
+- [x] T047 [P] [US3] Implement `LoanRepository` (`GetAllForEmployeeAsync`, `GetByIdAsync`, `GetActiveLoansForPeriodAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync`) in `src/Payslip4All.Infrastructure/Repositories/LoanRepository.cs`
+- [x] T048 [P] [US3] Create `CreateEmployee.razor` (`@page "/companies/{companyId:guid}/employees/create"`, `[Authorize]`, all 8 required fields + optional UIF Reference per ui-contracts.md, `MonthlyGrossSalary` must be > 0, inline field-level validation, redirect to `/companies/{companyId}/employees/{newId}` on success) in `src/Payslip4All.Web/Pages/Employees/CreateEmployee.razor`
+- [x] T049 [P] [US3] Create `EditEmployee.razor` (`@page "/companies/{companyId:guid}/employees/{employeeId:guid}/edit"`, `[Authorize]`, loads employee on init, pre-populated form, `UpdateEmployeeAsync` on submit, Cancel → employee detail) in `src/Payslip4All.Web/Pages/Employees/EditEmployee.razor`
+- [x] T050 [US3] Create `EmployeeDetail.razor` (`@page "/companies/{companyId:guid}/employees/{employeeId:guid}"`, `[Authorize]`, Employee header section; Payslip History table (reverse-chronological, Month/Year/Gross/Net Pay/Download link); Active Loans table (Description/Terms/Status, Edit + Delete buttons visible only when `TermsCompleted == 0`); Completed Loans read-only section; Generate Payslip button; Delete Employee with `ConfirmDialog` + error banner on blocked delete; `LoadingSpinner`) in `src/Payslip4All.Web/Pages/Employees/EmployeeDetail.razor`
+- [x] T051 [P] [US3] Create `CreateLoan.razor` (`@page "/companies/{companyId:guid}/employees/{employeeId:guid}/loans/create"`, `[Authorize]`, Description, Total Loan Amount, Number of Terms (positive integer), Monthly Deduction Amount, Payment Start Date month+year picker — all required with validation, Cancel → employee detail) in `src/Payslip4All.Web/Pages/Employees/Loans/CreateLoan.razor`
+- [x] T052 [US3] Create `EditLoan.razor` (`@page "/companies/{companyId:guid}/employees/{employeeId:guid}/loans/{loanId:guid}/edit"`, `[Authorize]`, loads loan on init; if `TermsCompleted > 0`: renders read-only error message "This loan cannot be edited because at least one deduction has already been applied." with no form; otherwise: pre-populated editable form) in `src/Payslip4All.Web/Pages/Employees/Loans/EditLoan.razor`
+
+**Checkpoint**: User Story 3 complete — full employee and loan lifecycle works. `EmployeeServiceTests`, `LoanServiceTests`, and `EmployeeListTests` pass.
 
 ---
 
 ## Phase 6: User Story 4 — Monthly Payslip Generation & PDF Download (Priority: P4)
 
-**Goal**: An authenticated employer selects a pay period, previews calculated payslip values (UIF, loan deductions, net pay), confirms generation, and downloads a PDF. Generation is atomic — either all changes commit or none do.
+**Goal**: An authenticated employer selects an employee, picks a pay period (month + year), reviews the calculated payslip preview (gross, UIF deduction, all active loan deductions, net pay), confirms generation, receives a persisted payslip record with a downloadable PDF. Generation is atomic — no partial saves on failure.
 
-**Independent Test**: For an employee with salary R25,000 and one active loan (R500/month): preview shows `UIF = R177.12`, `Net Pay = R24,322.88`; confirm generates payslip record + increments loan `TermsCompleted`; PDF downloads as valid file. Attempt duplicate generation → duplicate warning shown. At final loan term, loan transitions to `Completed` after generation.
+**Independent Test**: Generate payslip for an employee with at least one active loan → verify preview shows correct UIF calculation and loan line items → confirm → download PDF → verify file opens and shows correct values → attempt same month (duplicate warning shown → overwrite → confirm).
 
-### Tests for US4 (TDD: write first, confirm failing, then implement)
+### Tests for User Story 4 (REQUIRED — TDD, constitution Principle I)
 
-- [x] T06X [P] [US4] Write failing xUnit tests for `PayslipCalculator` in `tests/Payslip4All.Domain.Tests/Services/PayslipCalculatorTests.cs`: `CalculateUifDeduction(25000)` returns `177.12m`; `CalculateUifDeduction(17712)` returns `177.12m` (at ceiling); `CalculateUifDeduction(10000)` returns `100.00m` (below ceiling); `CalculateUifDeduction(0)` throws `ArgumentException`; `CalculateUifDeduction(-1)` throws `ArgumentException`; `CalculateNetPay` correctly subtracts UIF + all loan deductions from gross; `CalculateTotalDeductions` correctly sums UIF + loan deductions
-- [x] T06X [P] [US4] Write failing xUnit tests for `EmployeeLoan.IncrementTermsCompleted()` domain method in `tests/Payslip4All.Domain.Tests/Entities/EmployeeLoanTests.cs`: incrementing below `NumberOfTerms` keeps `Status = Active`; incrementing at final term transitions `Status = Completed`; calling `IncrementTermsCompleted` on a `Completed` loan throws `InvalidOperationException`; `IsActiveForPeriod` returns true for active loan with valid month/year; `IsActiveForPeriod` returns false for completed loan; `IsActiveForPeriod` returns false when `periodDate < PaymentStartDate`
-- [x] T07X [P] [US4] Write failing xUnit tests for `PayslipGenerationService` in `tests/Payslip4All.Application.Tests/Services/PayslipGenerationServiceTests.cs`: `GeneratePayslipAsync` creates `Payslip` record and increments `TermsCompleted` on each active loan in the same transaction; duplicate month/year returns `PayslipResult.IsDuplicate = true` without `OverwriteExisting`; with `OverwriteExisting = true` overwrites; employee with `MonthlyGrossSalary == 0` returns error; loan at final term transitions to `Completed` after generation; `PreviewPayslipAsync` returns calculated values without persisting anything
-- [x] T07X [P] [US4] Write failing bUnit tests for `GeneratePayslip.razor` in `tests/Payslip4All.Web.Tests/Pages/GeneratePayslipTests.cs`: Stage 1 form renders month/year inputs; Preview button calls `IPayslipService.PreviewPayslipAsync`; Stage 2 shows calculated gross, UIF, loan deductions, net pay; Confirm button calls `IPayslipService.GeneratePayslipAsync`; duplicate warning shows `<ConfirmDialog>` with overwrite option; generation error shows `<ErrorBanner>`
+> **MANDATORY: Write these tests FIRST, confirm they FAIL, then begin implementation.**
 
-### Implementation for US4
+- [x] T053 [P] [US4] Write failing `PayslipGenerationServiceTests` covering `PreviewPayslipAsync` (correct UIF, active loans included, completed loans excluded), `GeneratePayslipAsync` (atomic insert + `TermsCompleted` incremented + loan status transitions to `Completed` on final term, duplicate month returns conflict error, zero salary blocked, `DbUpdateConcurrencyException` propagated), `GetPdfAsync` (ownership filter — returns null for wrong user) in `tests/Payslip4All.Application.Tests/Services/PayslipGenerationServiceTests.cs`
+- [x] T054 [P] [US4] Write failing bUnit `PayslipGenerateTests` covering Stage 1 period selector renders, Stage 2 preview shows gross/UIF/loan lines/net pay, duplicate warning shows Overwrite + Cancel options, Generating state shows spinner, Error state shows banner (no partial save), NoSalaryError state in `tests/Payslip4All.Web.Tests/Pages/PayslipGenerateTests.cs`
+- [x] T055 [P] [US4] Write failing infrastructure integration tests using SQLite in-memory: payslip insert + `TermsCompleted` increment committed in single transaction, rollback on failure, unique constraint on `(EmployeeId, PayPeriodMonth, PayPeriodYear)` enforced, `GetPdfAsync` ownership filter correct in `tests/Payslip4All.Infrastructure.Tests/Repositories/PayslipRepositoryIntegrationTests.cs`
 
-- [x] T07X [US4] Implement `PayslipCalculator` static class in `src/Payslip4All.Domain/Services/PayslipCalculator.cs`: constants `UifEarningsCeiling = 17_712.00m` and `UifContributionRate = 0.01m`; `CalculateUifDeduction(decimal grossSalary) decimal` — `Math.Round(Math.Min(grossSalary, UifEarningsCeiling) * UifContributionRate, 2, MidpointRounding.AwayFromZero)`, throws `ArgumentException` if `grossSalary <= 0`; `CalculateTotalDeductions(decimal uifDeduction, IEnumerable<decimal> loanDeductions) decimal`; `CalculateNetPay(decimal grossEarnings, decimal uifDeduction, IEnumerable<decimal> loanDeductions) decimal`
-- [x] T07X [US4] Implement `PayslipGenerationService` in `src/Payslip4All.Application/Services/PayslipGenerationService.cs` implementing `IPayslipService`: `PreviewPayslipAsync` loads employee + active loans via repositories, uses `PayslipCalculator` to compute values, returns `PayslipResult` without writing to DB; `GeneratePayslipAsync` wraps the full operation in an `IDbContextTransaction`: (1) check duplicate via `IPayslipRepository.ExistsAsync` — return `IsDuplicate` if exists and `!OverwriteExisting`, delete old if `OverwriteExisting`; (2) load employee with active loans; (3) calculate values; (4) create and add `Payslip` entity; (5) create `PayslipLoanDeduction` snapshots; (6) call `loan.IncrementTermsCompleted()` on each active loan; (7) call `IPdfGenerationService.GeneratePayslip(...)` and store bytes; (8) `SaveChangesAsync` + `CommitAsync`; rollback on any exception; `GetPayslipsForEmployeeAsync` returns payslips ordered by year desc, month desc; `GetPdfAsync` returns `PdfContent` bytes
-- [x] T07X [US4] Implement `PdfGenerationService` in `src/Payslip4All.Infrastructure/Services/PdfGenerationService.cs` implementing `IPdfGenerationService`: uses QuestPDF fluent API to generate an A4 payslip document with company name + address header, employee details section, pay period, gross earnings row, UIF deduction row, each loan deduction row (description + amount), total deductions, net pay; returns `byte[]` from `Document.Create(...).GeneratePdf()`
-- [x] T07X [US4] Implement `GeneratePayslip.razor` page in `src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor` at route `/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate`: `[Authorize(Roles = "CompanyOwner")]`; two-stage workflow: Stage 1 (SelectPeriod) — month dropdown + year input + `[Preview]` button; Stage 2 (PreviewReady) — renders all calculated values from `IPayslipService.PreviewPayslipAsync`, `[Confirm & Generate]` button, `[Back]` button; `DuplicateWarning` state shows `<ConfirmDialog>` with overwrite option; `Generating` state shows `<LoadingSpinner>`; `Error` state shows `<ErrorBanner>`; `NoSalaryError` state shown when employee has no salary; on success navigates to employee detail
-- [x] T07X [US4] Add PDF download handler in `src/Payslip4All.Web/Pages/Payslips/`: implement a minimal API endpoint or `@page` component that streams payslip PDF bytes as `application/pdf` response when a valid `payslipId` and authenticated `userId` are provided; wire Download link on `EmployeeDetail.razor` to this endpoint
+### Implementation for User Story 4
 
-**Checkpoint**: End-to-end payslip generation and PDF download works. All US4 tests pass. Atomic transaction verified — no partial saves on error.
+- [x] T056 [US4] Implement `PayslipGenerationService` (`PreviewPayslipAsync` — loads employee + active loans via `IsActiveForPeriod`, calls `PayslipCalculator`, returns preview DTO; `GeneratePayslipAsync` — wraps payslip insert + all `loan.IncrementTermsCompleted()` calls + PDF generation in a single `IDbContextTransaction`, catches `DbUpdateConcurrencyException` for concurrent-generation guard, catches `DbUpdateException` for duplicate-month conflict; `GetPdfAsync` — queries with ownership join through `Employee → Company → UserId`; `GetPayslipsForEmployeeAsync` — reverse-chronological order) in `src/Payslip4All.Application/Services/PayslipGenerationService.cs`
+- [x] T057 [US4] Implement `PayslipRepository` (`AddAsync`, `GetByIdAsync`, `GetAllForEmployeeAsync` ordered by year desc/month desc, `GetByEmployeePeriodAsync` for duplicate check, `AnyForEmployeeAsync`, `GetWithOwnershipAsync` for PDF download ownership filter, `UpdateAsync`) in `src/Payslip4All.Infrastructure/Repositories/PayslipRepository.cs`
+- [x] T058 [US4] Implement `PdfGenerationService` using QuestPDF (`QuestPDF.Settings.License = LicenseType.Community`; A4 page; sections: company name + address header, employee details block, pay period, earnings table with Gross Earnings, deductions table with UIF Deduction line + one row per `PayslipLoanDeduction` (description + amount), Total Deductions, Net Pay; returns `byte[]`) in `src/Payslip4All.Infrastructure/Services/PdfGenerationService.cs`
+- [x] T059 [US4] Create `GeneratePayslip.razor` (`@page "/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate"`, `[Authorize(Roles = "CompanyOwner")]`; two-stage workflow: Stage 1 — month (1–12 dropdown) + year input + Preview button; Stage 2 — preview table showing Company Name, Company Address, Employee name, Pay Period, Gross Earnings, each loan deduction line (Description + Amount), UIF Deduction, Total Deductions, Net Pay + Confirm & Generate / Back / Cancel buttons; `DuplicateWarning` state with Overwrite + Cancel; `Generating` spinner state; `Error` banner state; `NoSalaryError` state) in `src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor`
+- [x] T060 [US4] Verify and finalise the `GET /payslips/{payslipId:guid}/download` Minimal API endpoint in `src/Payslip4All.Web/Program.cs` (added in T022): ownership check via `IPayslipService.GetPdfAsync(payslipId, userId)` returns `Results.NotFound()` for wrong user or missing PDF, `Results.File(pdf, "application/pdf", $"payslip-{payslipId}.pdf")` on success, `Results.Unauthorized()` if claims missing
+
+**Checkpoint**: User Story 4 complete — payslip generation, preview, atomic commit, loan term tracking, and PDF download all work. `PayslipGenerationServiceTests`, `PayslipGenerateTests`, and `PayslipRepositoryIntegrationTests` pass.
 
 ---
 
-## Final Phase: Polish & Cross-Cutting Concerns
+## Phase 7: Polish & Cross-Cutting Concerns
 
-**Purpose**: Shared UI components used across all stories, startup migration, navigation/layout, and final integration smoke test.
+**Purpose**: Final validation, coverage gate, zero-warning gate, and end-to-end quickstart walkthrough.
 
-- [x] T07X [P] Create `LoadingSpinner.razor` shared component in `src/Payslip4All.Web/Shared/LoadingSpinner.razor`: parameters `bool IsLoading`, `string? Message`; renders Bootstrap spinner when `IsLoading = true`
-- [x] T07X [P] Create `ErrorBanner.razor` shared component in `src/Payslip4All.Web/Shared/ErrorBanner.razor`: parameters `string? ErrorMessage`, `EventCallback OnDismiss`; renders dismissible Bootstrap alert when `ErrorMessage` is non-null
-- [x] T07X [P] Create `ConfirmDialog.razor` shared component in `src/Payslip4All.Web/Shared/ConfirmDialog.razor`: parameters `string Title`, `string Message`, `EventCallback OnConfirm`, `EventCallback OnCancel`; Bootstrap modal dialog
-- [x] T08X [P] Create `PageTitle.razor` shared component in `src/Payslip4All.Web/Shared/PageTitle.razor`: parameters `string Title`, `string? Subtitle`; renders consistent Bootstrap heading with optional subtitle
-- [x] T08X Update `src/Payslip4All.Web/Shared/MainLayout.razor` with Bootstrap 5 navigation: left sidebar or top navbar with links to Dashboard and Logout; hide nav for anonymous routes (`/login`, `/register`); include `<AuthorizeView>` for conditional nav items
-- [x] T08X Add `MigrateAsync()` call on startup in `src/Payslip4All.Web/Program.cs`: after `app.Build()`, resolve `PayslipDbContext` from DI scope and call `database.MigrateAsync()` to apply pending migrations automatically
-- [x] T08X Add global error boundary in `src/Payslip4All.Web/App.razor` using Blazor `<ErrorBoundary>` wrapper to catch unhandled exceptions and render a user-friendly error message instead of a blank page
-- [x] T08X Verify `dotnet test` passes all tests across all 4 test projects with ≥ 80% coverage on `Payslip4All.Domain` and `Payslip4All.Application`; run `dotnet test --collect:"XPlat Code Coverage"` and confirm no CI gate failures
+- [x] T061 [P] Audit DI registrations in `src/Payslip4All.Web/Program.cs` — confirm all services (`AuthenticationService`, `CompanyService`, `EmployeeService`, `LoanService`, `PayslipGenerationService`, `PdfGenerationService`) and all repositories (`UserRepository`, `CompanyRepository`, `EmployeeRepository`, `LoanRepository`, `PayslipRepository`) registered as `Scoped`; `PasswordHasher` registered as `Scoped`; `CookieAuthenticationStateProvider` registered as `Scoped<AuthenticationStateProvider>`
+- [x] T062 [P] Run `dotnet test --collect:"XPlat Code Coverage"` and validate coverage ≥ 80% on `Payslip4All.Domain` and `Payslip4All.Application`; add any missing edge-case tests to reach threshold
+- [x] T063 [P] Run `dotnet build --warnaserror` across entire solution and resolve any residual build warnings to achieve zero-warning gate per constitution constraint
+- [x] T064 Execute full `quickstart.md` walkthrough end-to-end: clone → `dotnet restore` → `dotnet build` → `dotnet run` → Register → Login → Add Company → Add Employee → Add Loan → Generate Payslip → Download PDF → verify all steps complete in < 5 minutes (SC-001), PDF generates in < 3 s (SC-002)
+- [x] T065 [P] Benchmark `PdfGenerationService.GeneratePayslipPdfAsync` for a representative payslip (1 loan deduction): run ≥ 3 times via a test or manual timing, assert median elapsed time < 3 000 ms; document result in a comment in `tests/Payslip4All.Application.Tests/` or as an xUnit Fact with a stopwatch assertion (SC-002)
+- [x] T066 [P] Seed database with 10 companies × 50 employees (via a test-data seed script or migration); manually or via integration test measure `/` (dashboard) and `/companies/{id}` page-load times; assert each < 2 000 ms; document result (SC-004)
 
 ---
 
@@ -207,125 +230,135 @@
 
 ### Phase Dependencies
 
-```
-Phase 1: Setup            → No dependencies; start immediately
-Phase 2: Foundation       → Depends on Phase 1 completion; BLOCKS Phases 3–6
-Phase 3: US1 Auth (P1)   → Depends on Phase 2; recommended first story
-Phase 4: US2 Company (P2) → Depends on Phase 2; can overlap with Phase 3
-Phase 5: US3 Employee (P3)→ Depends on Phase 2; can overlap with Phases 3–4
-Phase 6: US4 Payslip (P4) → Depends on Phase 2; depends on US1 auth being in place
-Final Phase: Polish        → Depends on all story phases; can start shared components earlier
-```
+- **Setup (Phase 1)**: No dependencies — start immediately
+- **Foundational (Phase 2)**: Depends on Phase 1 completion — **BLOCKS all user stories**
+- **US1 (Phase 3)**: Depends on Phase 2 — no dependency on US2/US3/US4
+- **US2 (Phase 4)**: Depends on Phase 2 — no dependency on US1/US3/US4 (Dashboard requires auth, but auth infrastructure from Phase 2 is sufficient)
+- **US3 (Phase 5)**: Depends on Phase 2 — no dependency on US1/US2 (but CompanyRepository must exist for ownership checks)
+- **US4 (Phase 6)**: Depends on Phase 2 — logically depends on US1 (auth) + US2 (company) + US3 (employee) being complete for end-to-end use, but can be implemented independently if stubs are used
+- **Polish (Phase 7)**: Depends on all user story phases being complete
 
 ### User Story Dependencies
 
-| Story | Hard Dependencies | Notes |
-|-------|-------------------|-------|
-| US1 (Auth) | Phase 2 complete | No story dependencies; pure auth flow |
-| US2 (Company) | Phase 2 complete | Needs authenticated user from US1 in integration but independently testable with mocks |
-| US3 (Employee) | Phase 2 complete | Needs Company entities (Phase 2 Foundation); independently testable with mocks |
-| US4 (Payslip) | Phase 2 complete | Needs Employee + Loan entities; `PayslipCalculator` is pure domain — testable first |
+| Story | Blocks | Depends On | Notes |
+|-------|--------|------------|-------|
+| US1 (P1) | Nothing | Phase 2 | Auth infrastructure only |
+| US2 (P2) | Nothing | Phase 2 | Company CRUD; Dashboard needs auth cookie but Phase 2 provides it |
+| US3 (P3) | Nothing | Phase 2 | Employee + Loan CRUD; ownership chain through Company |
+| US4 (P4) | Nothing | Phase 2 | Full generation logic; integration test uses stubs for company/employee |
 
-### Within Each Story: Mandatory TDD Order
+### Within Each User Story
 
-1. **Write tests** (all `[P]` test tasks for the story) → confirm they FAIL
-2. Implement domain/application logic
-3. Implement infrastructure / service classes
-4. Implement Blazor pages
-5. Run tests → all must pass
-6. Commit; do not proceed to next story until all tests are green
+1. **Tests MUST be written and confirmed FAILING** before implementation (TDD — non-negotiable, constitution Principle I)
+2. Domain entities + application interfaces (Phase 2) before any service implementation
+3. Application service implementation before infrastructure repository implementation
+4. Repositories before Blazor pages (pages inject services, not repos directly)
+5. Story considered complete only when ALL tests pass and `dotnet build --warnaserror` is green
+
+### Parallel Opportunities
+
+- All Phase 1 tasks marked `[P]` can run concurrently
+- All Phase 2 domain entity tasks (T006–T012) can run concurrently (different files)
+- All Phase 2 interface tasks (T013–T017) can run concurrently (different files)
+- Once Phase 2 is complete, US1/US2/US3 can proceed in parallel by different developers
+- Within each story, all test tasks marked `[P]` can run concurrently
+- Within each story, all `[P]`-marked implementation tasks can run concurrently
 
 ---
 
-## Parallel Execution Examples
+## Parallel Example: User Story 3 (Employee Management)
 
-### Phase 2: Foundation (run together)
+```bash
+# Step 1 — Write ALL failing tests in parallel (different test files):
+Task: "Write failing EmployeeServiceTests in tests/Payslip4All.Application.Tests/Services/EmployeeServiceTests.cs"
+Task: "Write failing LoanServiceTests in tests/Payslip4All.Application.Tests/Services/LoanServiceTests.cs"
+Task: "Write failing EmployeeListTests in tests/Payslip4All.Web.Tests/Pages/EmployeeListTests.cs"
 
-```
-Parallel group A — Domain entities (T010–T016):
-  T010 LoanStatus enum
-  T011 User entity
-  T012 Company entity
-  T013 Employee entity
-  T014 EmployeeLoan entity
-  T015 Payslip entity
-  T016 PayslipLoanDeduction entity
+# Step 2 — Confirm all tests FAIL (dotnet test), then implement services in parallel:
+Task: "Implement EmployeeService in src/Payslip4All.Application/Services/EmployeeService.cs"
+Task: "Implement LoanService in src/Payslip4All.Application/Services/LoanService.cs"
 
-Parallel group B — DTOs (T017–T021):
-  T017 Auth DTOs
-  T018 Company DTOs
-  T019 Employee DTOs
-  T020 Loan DTOs
-  T021 Payslip DTOs
+# Step 3 — Implement repos in parallel:
+Task: "Implement EmployeeRepository in src/Payslip4All.Infrastructure/Repositories/EmployeeRepository.cs"
+Task: "Implement LoanRepository in src/Payslip4All.Infrastructure/Repositories/LoanRepository.cs"
 
-Parallel group C — Service interfaces (T022–T033):
-  (all [P] interface tasks)
+# Step 4 — Build pages in parallel:
+Task: "Create CreateEmployee.razor in src/Payslip4All.Web/Pages/Employees/CreateEmployee.razor"
+Task: "Create EditEmployee.razor in src/Payslip4All.Web/Pages/Employees/EditEmployee.razor"
+Task: "Create CreateLoan.razor in src/Payslip4All.Web/Pages/Employees/Loans/CreateLoan.razor"
 
-Sequential: T034 PayslipDbContext (after entities) →
-  Parallel group D — Repositories (T035–T040):
-    T035 UserRepository
-    T036 CompanyRepository
-    T037 EmployeeRepository
-    T038 LoanRepository
-    T039 PayslipRepository
-    T040 PasswordHasher
-  Sequential: T041 Migration (after DbContext + entities complete)
+# Step 5 — Complete pages with dependencies:
+Task: "Create EmployeeDetail.razor in src/Payslip4All.Web/Pages/Employees/EmployeeDetail.razor"
+Task: "Create EditLoan.razor in src/Payslip4All.Web/Pages/Employees/Loans/EditLoan.razor"
 ```
 
-### Phase 3: US1 — run test tasks in parallel, then implement sequentially
+---
 
-```
-Parallel: T043 AuthenticationServiceTests | T044 RegisterTests | T045 LoginTests
-(Confirm all 3 FAIL before proceeding)
-Sequential: T046 AuthenticationService → T047 Register.razor → T048 Login.razor → T049 Logout.razor
-```
+## Parallel Example: User Story 4 (Payslip Generation)
 
-### Phase 6: US4 — domain tests parallelisable before any implementation
+```bash
+# Step 1 — Write ALL failing tests in parallel:
+Task: "Write failing PayslipGenerationServiceTests in tests/Payslip4All.Application.Tests/Services/PayslipGenerationServiceTests.cs"
+Task: "Write failing PayslipGenerateTests in tests/Payslip4All.Web.Tests/Pages/PayslipGenerateTests.cs"
+Task: "Write failing PayslipRepositoryIntegrationTests in tests/Payslip4All.Infrastructure.Tests/Repositories/PayslipRepositoryIntegrationTests.cs"
 
-```
-Parallel: T068 PayslipCalculatorTests | T069 EmployeeLoanTests | T070 PayslipGenerationServiceTests | T071 GeneratePayslipTests
-(Confirm all FAIL)
-Sequential: T072 PayslipCalculator → T073 PayslipGenerationService → T074 PdfGenerationService → T075 GeneratePayslip.razor → T076 PDF download handler
+# Step 2 — Confirm FAIL, then implement in order:
+Task: "Implement PayslipGenerationService in src/Payslip4All.Application/Services/PayslipGenerationService.cs"
+# (depends on PayslipCalculator from Phase 2 + repositories from next step)
+
+# Step 3 — Implement infrastructure in parallel:
+Task: "Implement PayslipRepository in src/Payslip4All.Infrastructure/Repositories/PayslipRepository.cs"
+Task: "Implement PdfGenerationService in src/Payslip4All.Infrastructure/Services/PdfGenerationService.cs"
+
+# Step 4 — Complete UI + endpoint:
+Task: "Create GeneratePayslip.razor in src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor"
+Task: "Finalise /payslips/{id}/download endpoint in src/Payslip4All.Web/Program.cs"
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 + Minimal Company View)
+### MVP First (User Story 1 Only)
 
 1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundation (entities, DbContext, repositories, migration)
-3. Complete Phase 3: US1 (register + login + logout)
-4. **STOP and VALIDATE**: Auth flow works end-to-end
-5. Add minimal Dashboard shell (stub company list) → demostrable running app
-6. Proceed to US2 → US3 → US4
+2. Complete Phase 2: Foundational (**CRITICAL** — blocks all stories)
+3. Complete Phase 3: User Story 1 (Registration + Login)
+4. **STOP and VALIDATE**: Register → Login → Dashboard loads → Logout → tests pass
+5. Deploy/demo if ready
 
-### Incremental Delivery Order
+### Incremental Delivery
 
-| Step | Deliverable | Validates |
-|------|-------------|-----------|
-| 1 | Phase 1 + 2 | Solution builds; DB schema created; migration runs |
-| 2 | Phase 3 (US1) | Register/Login/Logout; authenticated session |
-| 3 | Phase 4 (US2) | Company CRUD; ownership isolation confirmed |
-| 4 | Phase 5 (US3) | Employee CRUD; loan add/lock/delete |
-| 5 | Phase 6 (US4) | Payslip generation; PDF download; atomic transaction |
-| 6 | Final Phase | Polish; migration on startup; error boundaries |
+| Sprint | Deliverable | Validates |
+|--------|-------------|-----------|
+| Sprint 1 | Phase 1 + Phase 2 | Build passes, migrations run, skeleton app starts |
+| Sprint 2 | + US1 (Phase 3) | Register, login, logout — auth end-to-end |
+| Sprint 3 | + US2 (Phase 4) | Company CRUD — employer can manage companies |
+| Sprint 4 | + US3 (Phase 5) | Employee + Loan CRUD — full employee register |
+| Sprint 5 | + US4 (Phase 6) | Payslip generation + PDF download — core value delivered |
+| Sprint 6 | Polish (Phase 7) | Coverage gate, zero warnings, quickstart walkthrough |
+
+### Parallel Team Strategy
+
+With three developers (after Phase 2 is complete):
+
+- **Developer A**: US1 (Phase 3) — auth pages and service
+- **Developer B**: US2 (Phase 4) — company pages and service
+- **Developer C**: US3 (Phase 5) — employee/loan pages and services
+- All three then converge on US4 (Phase 6) — payslip generation and PDF
 
 ---
 
-## Summary
+## Notes
 
-| Metric | Count |
-|--------|-------|
-| **Total tasks** | **84** |
-| Phase 1 — Setup | 9 |
-| Phase 2 — Foundation | 33 |
-| Phase 3 — US1 Auth | 7 |
-| Phase 4 — US2 Company | 8 |
-| Phase 5 — US3 Employee | 10 |
-| Phase 6 — US4 Payslip | 9 |
-| Final Phase — Polish | 8 |
-| **Tasks with [P] (parallelisable)** | **51** |
-| **Test tasks (TDD — before implementation)** | **12** (T043–T045, T050–T052, T058–T060, T068–T071) |
-| **Suggested MVP scope** | Phase 1 + Phase 2 + Phase 3 (US1 only) |
+- `[P]` tasks touch different files — safe to run concurrently
+- `[USx]` label maps each task to a specific user story for traceability
+- **TDD is non-negotiable** (constitution Principle I) — write failing tests before every implementation task
+- Commit after each logical task group; ensure `dotnet build --warnaserror` passes before committing
+- The `/payslips/{id}/download` endpoint is a Minimal API endpoint in `Program.cs`, not a Blazor page
+- `PayslipLoanDeduction` is a **snapshot entity** — values are copied at generation time, not referenced live (supports accurate historical re-render) [C1]
+- `TermsCompleted` is a **concurrency token** — `DbUpdateConcurrencyException` on concurrent payslip generation for the same loan must be handled
+- Deletion guards: Company (has employees), Employee (has payslips), Loan (`TermsCompleted > 0`) — enforced in Application services, not at DB level only
+- All service methods filter by `userId` — ownership enforced at data layer (constitution Principle IV)
+- **[C3] Auth pages are Razor Pages** (`.cshtml`/`.cshtml.cs`), NOT Blazor components (`.razor`). Login → `src/Payslip4All.Web/Pages/Auth/Login.cshtml`, Register → `src/Payslip4All.Web/Pages/Auth/Register.cshtml`, Logout → `src/Payslip4All.Web/Pages/Auth/Logout.cshtml`. Navigation Map: `/Auth/Login`, `/Auth/Register`, `/Auth/Logout`. Required because Blazor Server runs over SignalR and cannot call `HttpContext.SignInAsync()` / `SignOutAsync()` from the render thread. Constitution Gate III status: ✅ **(with C3 deviation)**
+- **[C4] `SiteAdministrator` role** is seeded in the `InitialSchema` migration (via `ApplicationRoles.cs` constants) but is not yet enforced in any page or service. Enforcement deferred to feature `002-admin-portal`. Seeding now avoids a future migration to add a role that belongs to the identity foundation

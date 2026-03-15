@@ -93,7 +93,7 @@ tests/
 
 ## First Run Walkthrough
 
-1. Navigate to https://localhost:5001/register
+1. Navigate to https://localhost:5001/Auth/Register
 2. Create an employer account
 3. Add a company from the dashboard
 4. Add an employee to the company

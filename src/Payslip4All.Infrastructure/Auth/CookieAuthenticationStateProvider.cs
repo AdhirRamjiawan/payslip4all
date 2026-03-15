@@ -1,17 +1,7 @@
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Http;
-using System.Security.Claims;
+// This file intentionally left empty.
+// CookieAuthenticationStateProvider has been moved to Payslip4All.Web.Auth
+// (src/Payslip4All.Web/Auth/CookieAuthenticationStateProvider.cs).
+// Rationale: IHttpContextAccessor is an ASP.NET Core Web host abstraction;
+// Infrastructure must not depend on web-host types.
+// See plan.md "I1 fix" and "LX note" for full rationale.
 namespace Payslip4All.Infrastructure.Auth;
-public class CookieAuthenticationStateProvider : AuthenticationStateProvider
-{
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    public CookieAuthenticationStateProvider(IHttpContextAccessor httpContextAccessor)
-        => _httpContextAccessor = httpContextAccessor;
-    public override Task<AuthenticationState> GetAuthenticationStateAsync()
-    {
-        var user = _httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity());
-        return Task.FromResult(new AuthenticationState(user));
-    }
-    public void NotifyAuthenticationStateChanged(ClaimsPrincipal user)
-        => NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(user)));
-}

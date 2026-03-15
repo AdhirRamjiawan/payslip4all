@@ -4,17 +4,23 @@
 
 <div class="page">
     <div class="sidebar">
-        <AuthorizeView>
-            <Authorized>
-                <nav class="nav flex-column p-3">
-                    <a class="nav-link" href="/">Dashboard</a>
-                    <a class="nav-link text-danger" href="/logout">Logout</a>
-                </nav>
-            </Authorized>
-        </AuthorizeView>
+        <NavMenu />
     </div>
 
     <main>
+        <div class="top-row px-4 auth">
+            <AuthorizeView>
+                <Authorized Context="authState">
+                    <span class="text-muted small me-2">@authState.User.Identity?.Name</span>
+                    <a href="/Auth/Logout">Logout</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/Auth/Register">Register</a>
+                    <a href="/Auth/Login">Login</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+
         <article class="content px-4">
             @Body
         </article>

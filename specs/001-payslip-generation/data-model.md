@@ -1,7 +1,7 @@
 # Data Model: Payslip Generation System (001)
 
 **Phase**: 1 — Design  
-**Date**: 2025-07-15  
+**Date**: 2026-03-15  
 **Status**: Complete
 
 ---
@@ -235,6 +235,8 @@ builder.Entity<EmployeeLoan>(e =>
 
 Represents the official earnings record for one Employee for one calendar month.
 
+> **All 13 fields enumerated** (M1 fix — previously missing `CompanyId`):
+
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
 | `Id` | `Guid` | PK, non-nullable | Generated on creation |
@@ -244,10 +246,12 @@ Represents the official earnings record for one Employee for one calendar month.
 | `UifDeduction` | `decimal` | Non-nullable, precision (18,2) | `MIN(GrossEarnings, 17712) × 0.01` |
 | `TotalLoanDeductions` | `decimal` | Non-nullable, precision (18,2) | Sum of all `PayslipLoanDeduction.Amount` |
 | `TotalDeductions` | `decimal` | Non-nullable, precision (18,2) | `UifDeduction + TotalLoanDeductions` |
-| `NetPay` | `decimal` | Non-nullable, precision (18,2) | `GrossEarnings − TotalDeductions` |
+| `NetPay` | `decimal` | Non-nullable, precision (18,2) | `GrossEarnings − TotalDeductions` (i.e., Gross − UIF − sum of all active loan deductions; see FR-019) |
 | `PdfContent` | `byte[]?` | Nullable | Raw PDF bytes; null until PDF generated successfully |
 | `EmployeeId` | `Guid` | FK → `Employee.Id`, non-nullable | Cascade delete NOT set (FR-015 guards this) |
+| `CompanyId` | `Guid` | FK → `Company.Id`, non-nullable | Denormalised for direct ownership queries without an Employee join |
 | `GeneratedAt` | `DateTimeOffset` | Non-nullable | UTC; when the payslip was created |
+| _PayslipLoanDeduction rows_ | (child entity) | One-to-Many via `PayslipId` | Snapshot of each active loan deduction at generation time |
 
 **Unique Constraint**:
 - `UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear` — enforces one payslip per employee per month (FR-021)
@@ -266,7 +270,13 @@ builder.Entity<Payslip>(e =>
      .WithMany()
      .HasForeignKey(p => p.EmployeeId)
      .OnDelete(DeleteBehavior.Restrict);
+    // CompanyId: denormalised FK for efficient ownership queries
+    e.HasOne<Company>()
+     .WithMany()
+     .HasForeignKey(p => p.CompanyId)
+     .OnDelete(DeleteBehavior.Restrict);
     e.HasIndex(p => p.EmployeeId);
+    e.HasIndex(p => p.CompanyId);
     e.HasIndex(p => new { p.EmployeeId, p.PayPeriodMonth, p.PayPeriodYear })
      .IsUnique()
      .HasDatabaseName("UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear");
