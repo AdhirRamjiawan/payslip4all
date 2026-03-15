@@ -1,16 +1,14 @@
 namespace Payslip4All.Domain.Entities;
-
 public class User
 {
-    public int Id { get; set; }
-    public required string Username { get; set; }
-    public required string PasswordHash { get; set; }
-    public required string Email { get; set; }
-    public string? FullName { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAt { get; set; }
-    public bool IsActive { get; set; } = true;
-
-    // Navigation
-    public ICollection<Company> Companies { get; set; } = [];
+    public Guid Id { get; private set; }
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; private set; }
+    
+    public User()
+    {
+        Id = Guid.NewGuid();
+        CreatedAt = DateTimeOffset.UtcNow;
+    }
 }

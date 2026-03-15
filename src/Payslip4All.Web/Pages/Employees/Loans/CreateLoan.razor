@@ -1,0 +1,98 @@
+@page "/companies/{companyId:guid}/employees/{employeeId:guid}/loans/create"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Loan
+@using Payslip4All.Application.Interfaces
+@inject ILoanService LoanService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Add Loan - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Add Loan</h2>
+
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        <div class="mb-3">
+            <label class="form-label">Description *</label>
+            <InputText class="form-control" @bind-Value="_model.Description" />
+            <ValidationMessage For="@(() => _model.Description)" />
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Total Loan Amount (R) *</label>
+                <InputNumber class="form-control" @bind-Value="_model.TotalLoanAmount" />
+                <ValidationMessage For="@(() => _model.TotalLoanAmount)" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Number of Terms *</label>
+                <InputNumber class="form-control" @bind-Value="_model.NumberOfTerms" />
+                <ValidationMessage For="@(() => _model.NumberOfTerms)" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Monthly Deduction (R) *</label>
+                <InputNumber class="form-control" @bind-Value="_model.MonthlyDeductionAmount" />
+                <ValidationMessage For="@(() => _model.MonthlyDeductionAmount)" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Payment Start Date *</label>
+                <InputDate class="form-control" @bind-Value="_model.PaymentStartDate" />
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+            @if (_isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+            Add Loan
+        </button>
+        <a href="/companies/@CompanyId/employees/@EmployeeId" class="btn btn-secondary ms-2">Cancel</a>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+    [Parameter] public Guid EmployeeId { get; set; }
+
+    private FormModel _model = new();
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task HandleSubmit()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            await LoanService.CreateLoanAsync(new CreateLoanCommand
+            {
+                Description = _model.Description,
+                TotalLoanAmount = _model.TotalLoanAmount,
+                NumberOfTerms = _model.NumberOfTerms,
+                MonthlyDeductionAmount = _model.MonthlyDeductionAmount,
+                PaymentStartDate = _model.PaymentStartDate,
+                EmployeeId = EmployeeId
+            });
+            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+        }
+        catch (ArgumentException ex) { _errorMessage = ex.Message; }
+        catch { _errorMessage = "Failed to add loan."; }
+        finally { _isLoading = false; }
+    }
+
+    public class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Description is required.")]
+        public string Description { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Range(1, double.MaxValue, ErrorMessage = "Total amount must be positive.")]
+        public decimal TotalLoanAmount { get; set; }
+        [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Number of terms must be at least 1.")]
+        public int NumberOfTerms { get; set; } = 1;
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Monthly deduction must be positive.")]
+        public decimal MonthlyDeductionAmount { get; set; }
+        public DateOnly PaymentStartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    }
+}

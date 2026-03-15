@@ -1,0 +1,167 @@
+@page "/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Employee
+@using Payslip4All.Application.DTOs.Payslip
+@using Payslip4All.Application.Interfaces
+@inject IPayslipService PayslipService
+@inject IEmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Generate Payslip - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Generate Payslip</h2>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && _employee != null)
+    {
+        <p class="text-muted">Employee: <strong>@_employee.FirstName @_employee.LastName</strong> — Monthly Salary: R @_employee.MonthlyGrossSalary.ToString("N2")</p>
+
+        @if (!_showPreview)
+        {
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Select Pay Period</h5>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Month</label>
+                            <select class="form-select" @bind="_selectedMonth">
+                                @for (int m = 1; m <= 12; m++)
+                                {
+                                    var monthName = new System.Globalization.DateTimeFormatInfo().GetMonthName(m);
+                                    <option value="@m">@monthName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Year</label>
+                            <InputNumber class="form-control" @bind-Value="_selectedYear" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-3" @onclick="PreviewPayslip" disabled="@_isPreviewing">
+                        @if (_isPreviewing) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        Preview
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_showPreview && _preview != null)
+        {
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Payslip Preview — @(new System.Globalization.DateTimeFormatInfo().GetMonthName(_selectedMonth)) @_selectedYear</h5>
+                    <dl class="row">
+                        <dt class="col-sm-4">Gross Earnings</dt><dd class="col-sm-8">R @_preview.GrossEarnings.ToString("N2")</dd>
+                        <dt class="col-sm-4">UIF Deduction</dt><dd class="col-sm-8">R @_preview.UifDeduction.ToString("N2")</dd>
+                        @foreach (var ld in _preview.LoanDeductions)
+                        {
+                            <dt class="col-sm-4">@ld.Description</dt><dd class="col-sm-8">R @ld.Amount.ToString("N2")</dd>
+                        }
+                        <dt class="col-sm-4"><strong>Total Deductions</strong></dt><dd class="col-sm-8"><strong>R @_preview.TotalDeductions.ToString("N2")</strong></dd>
+                        <dt class="col-sm-4"><strong>Net Pay</strong></dt><dd class="col-sm-8"><strong>R @_preview.NetPay.ToString("N2")</strong></dd>
+                    </dl>
+
+                    @if (_isDuplicate)
+                    {
+                        <div class="alert alert-warning mt-3">
+                            A payslip already exists for this period. Do you want to overwrite it?
+                        </div>
+                    }
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-success" @onclick="GeneratePayslipAsync" disabled="@_isGenerating">
+                            @if (_isGenerating) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                            @(_isDuplicate ? "Overwrite & Generate" : "Generate PDF")
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="() => { _showPreview = false; _isDuplicate = false; _preview = null; }">Back</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+    [Parameter] public Guid EmployeeId { get; set; }
+
+    private EmployeeDto? _employee;
+    private PayslipDto? _preview;
+    private bool _isLoading = true;
+    private bool _isPreviewing;
+    private bool _isGenerating;
+    private bool _showPreview;
+    private bool _isDuplicate;
+    private string? _errorMessage;
+    private int _selectedMonth = DateTime.Today.Month;
+    private int _selectedYear = DateTime.Today.Year;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+            _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
+            if (_employee == null) Nav.NavigateTo($"/companies/{CompanyId}");
+        }
+        catch { _errorMessage = "Failed to load employee."; }
+        finally { _isLoading = false; }
+    }
+
+    private async Task PreviewPayslip()
+    {
+        _isPreviewing = true;
+        _errorMessage = null;
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) return;
+            var result = await PayslipService.PreviewPayslipAsync(new PreviewPayslipQuery
+            {
+                EmployeeId = EmployeeId, UserId = userId.Value,
+                PayPeriodMonth = _selectedMonth, PayPeriodYear = _selectedYear
+            });
+            if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
+            _preview = result.PayslipDto;
+            _showPreview = true;
+        }
+        catch { _errorMessage = "Failed to preview payslip."; }
+        finally { _isPreviewing = false; }
+    }
+
+    private async Task GeneratePayslipAsync()
+    {
+        _isGenerating = true;
+        _errorMessage = null;
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) return;
+            var result = await PayslipService.GeneratePayslipAsync(new GeneratePayslipCommand
+            {
+                EmployeeId = EmployeeId, UserId = userId.Value,
+                PayPeriodMonth = _selectedMonth, PayPeriodYear = _selectedYear,
+                OverwriteExisting = _isDuplicate
+            });
+            if (result.IsDuplicate) { _isDuplicate = true; return; }
+            if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
+            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+        }
+        catch { _errorMessage = "Failed to generate payslip."; }
+        finally { _isGenerating = false; }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+}

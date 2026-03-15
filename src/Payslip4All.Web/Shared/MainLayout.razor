@@ -1,6 +1,6 @@
 ﻿@inherits LayoutComponentBase
 
-<PageTitle>Payslip4All.Web</PageTitle>
+<PageTitle>Payslip4All</PageTitle>
 
 <div class="page">
     <div class="sidebar">
@@ -8,8 +8,17 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+        <div class="top-row px-4 auth">
+            <AuthorizeView>
+                <Authorized Context="authState">
+                    <span class="text-muted small me-2">@authState.User.Identity?.Name</span>
+                    <a href="/Auth/Logout">Logout</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/Auth/Register">Register</a>
+                    <a href="/Auth/Login">Login</a>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
 
         <article class="content px-4">

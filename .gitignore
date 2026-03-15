@@ -67,4 +67,5 @@ src/frontend/
 # Misc
 dist/
 coverage/
-.editorconfig
+
+TestResults/

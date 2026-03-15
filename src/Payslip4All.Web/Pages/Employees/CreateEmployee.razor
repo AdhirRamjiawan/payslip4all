@@ -1,0 +1,133 @@
+@page "/companies/{companyId:guid}/employees/create"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Employee
+@using Payslip4All.Application.Interfaces
+@inject IEmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Add Employee - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Add Employee</h2>
+
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">First Name *</label>
+                <InputText class="form-control" @bind-Value="_model.FirstName" />
+                <ValidationMessage For="@(() => _model.FirstName)" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Last Name *</label>
+                <InputText class="form-control" @bind-Value="_model.LastName" />
+                <ValidationMessage For="@(() => _model.LastName)" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">ID Number *</label>
+                <InputText class="form-control" @bind-Value="_model.IdNumber" />
+                <ValidationMessage For="@(() => _model.IdNumber)" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Employee Number *</label>
+                <InputText class="form-control" @bind-Value="_model.EmployeeNumber" />
+                <ValidationMessage For="@(() => _model.EmployeeNumber)" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Start Date *</label>
+                <InputDate class="form-control" @bind-Value="_model.StartDate" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Occupation *</label>
+                <InputText class="form-control" @bind-Value="_model.Occupation" />
+                <ValidationMessage For="@(() => _model.Occupation)" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Monthly Gross Salary (R) *</label>
+                <InputNumber class="form-control" @bind-Value="_model.MonthlyGrossSalary" />
+                <ValidationMessage For="@(() => _model.MonthlyGrossSalary)" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">UIF Reference (optional)</label>
+                <InputText class="form-control" @bind-Value="_model.UifReference" />
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+            @if (_isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+            Add Employee
+        </button>
+        <a href="/companies/@CompanyId" class="btn btn-secondary ms-2">Cancel</a>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter] public Guid CompanyId { get; set; }
+
+    private FormModel _model = new();
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task HandleSubmit()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) { _errorMessage = "Not authenticated."; return; }
+
+            await EmployeeService.CreateEmployeeAsync(new CreateEmployeeCommand
+            {
+                FirstName = _model.FirstName,
+                LastName = _model.LastName,
+                IdNumber = _model.IdNumber,
+                EmployeeNumber = _model.EmployeeNumber,
+                StartDate = _model.StartDate,
+                Occupation = _model.Occupation,
+                UifReference = _model.UifReference,
+                MonthlyGrossSalary = _model.MonthlyGrossSalary,
+                CompanyId = CompanyId
+            });
+            Nav.NavigateTo($"/companies/{CompanyId}");
+        }
+        catch (ArgumentException ex) { _errorMessage = ex.Message; }
+        catch { _errorMessage = "Failed to add employee."; }
+        finally { _isLoading = false; }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+
+    public class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "First name is required.")]
+        public string FirstName { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Last name is required.")]
+        public string LastName { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "ID number is required.")]
+        public string IdNumber { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Employee number is required.")]
+        public string EmployeeNumber { get; set; } = "";
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Occupation is required.")]
+        public string Occupation { get; set; } = "";
+        public string? UifReference { get; set; }
+        [System.ComponentModel.DataAnnotations.Range(1, double.MaxValue, ErrorMessage = "Salary must be greater than zero.")]
+        public decimal MonthlyGrossSalary { get; set; }
+    }
+}

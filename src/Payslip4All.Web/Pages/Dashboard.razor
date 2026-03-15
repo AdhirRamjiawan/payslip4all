@@ -1,0 +1,91 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Company
+@using Payslip4All.Application.Interfaces
+@inject ICompanyService CompanyService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>My Companies</h2>
+        <a href="/companies/create" class="btn btn-primary">+ Add Company</a>
+    </div>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+
+    @if (!_isLoading)
+    {
+        <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+        @if (_errorMessage == null)
+        {
+            @if (!_companies.Any())
+            {
+                <div class="text-center mt-5">
+                    <p class="text-muted">No companies yet.</p>
+                    <a href="/companies/create" class="btn btn-primary">Add Your First Company</a>
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    @foreach (var company in _companies)
+                    {
+                        <div class="col-md-4 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">@company.Name</h5>
+                                    <p class="card-text text-muted">@(company.Address ?? "No address")</p>
+                                    <p class="text-muted small">@company.EmployeeCount employees</p>
+                                    <div class="d-flex gap-2">
+                                        <a href="/companies/@company.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                        <a href="/companies/@company.Id/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    private List<CompanyDto> _companies = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (userId.HasValue)
+            {
+                var result = await CompanyService.GetCompaniesForUserAsync(userId.Value);
+                _companies = result.ToList();
+            }
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Failed to load companies.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+}
