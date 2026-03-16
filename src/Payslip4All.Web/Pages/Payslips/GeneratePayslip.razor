@@ -109,7 +109,7 @@
             var userId = await GetUserIdAsync();
             if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
-            if (_employee == null) Nav.NavigateTo($"/companies/{CompanyId}");
+            if (_employee == null) Nav.NavigateTo($"/portal/companies/{CompanyId}");
         }
         catch { _errorMessage = "Failed to load employee."; }
         finally { _isLoading = false; }
@@ -152,7 +152,7 @@
             });
             if (result.IsDuplicate) { _isDuplicate = true; return; }
             if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
-            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+            Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
         }
         catch { _errorMessage = "Failed to generate payslip."; }
         finally { _isGenerating = false; }

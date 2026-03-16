@@ -133,7 +133,7 @@
             if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
 
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
-            if (_employee == null) { Nav.NavigateTo($"/companies/{CompanyId}"); return; }
+            if (_employee == null) { Nav.NavigateTo($"/portal/companies/{CompanyId}"); return; }
 
             var loans = await LoanService.GetLoansForEmployeeAsync(EmployeeId, userId.Value);
             _loans = loans.ToList();
@@ -152,7 +152,7 @@
         var userId = await GetUserIdAsync();
         if (!userId.HasValue) return;
         var deleted = await EmployeeService.DeleteEmployeeAsync(EmployeeId, userId.Value);
-        if (deleted) Nav.NavigateTo($"/companies/{CompanyId}");
+        if (deleted) Nav.NavigateTo($"/portal/companies/{CompanyId}");
         else _errorMessage = "Cannot delete employee with payslips.";
     }
 
