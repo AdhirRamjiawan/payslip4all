@@ -41,8 +41,8 @@ var expireDays = builder.Configuration.GetValue<int>("Auth:Cookie:ExpireDays", 3
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath = "/Auth/Login";
-        options.LogoutPath = "/Auth/Logout";
+        options.LoginPath = "/Portal/Auth/Login";
+        options.LogoutPath = "/Portal/Auth/Logout";
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         options.ExpireTimeSpan = TimeSpan.FromDays(expireDays);

@@ -1,4 +1,4 @@
-@page "/companies/{companyId:guid}/employees/create"
+@page "/portal/companies/{companyId:guid}/employees/create"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -67,7 +67,7 @@
             @if (_isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
             Add Employee
         </button>
-        <a href="/companies/@CompanyId" class="btn btn-secondary ms-2">Cancel</a>
+        <a href="/portal/companies/@CompanyId" class="btn btn-secondary ms-2">Cancel</a>
     </EditForm>
 </div>
 

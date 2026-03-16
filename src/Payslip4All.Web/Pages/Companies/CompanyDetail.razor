@@ -1,4 +1,4 @@
-@page "/companies/{companyId:guid}"
+@page "/portal/companies/{companyId:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -27,14 +27,14 @@
                 }
             </div>
             <div class="d-flex gap-2">
-                <a href="/companies/@CompanyId/edit" class="btn btn-outline-secondary">Edit Company</a>
+                <a href="/portal/companies/@CompanyId/edit" class="btn btn-outline-secondary">Edit Company</a>
                 <button class="btn btn-outline-danger" @onclick="ShowDeleteConfirm">Delete</button>
             </div>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>Employees (@_employees.Count)</h4>
-            <a href="/companies/@CompanyId/employees/create" class="btn btn-primary btn-sm">+ Add Employee</a>
+            <a href="/portal/companies/@CompanyId/employees/create" class="btn btn-primary btn-sm">+ Add Employee</a>
         </div>
 
         @if (!_employees.Any())
@@ -63,7 +63,7 @@
                                 <td>@emp.Occupation</td>
                                 <td>R @emp.MonthlyGrossSalary.ToString("N2")</td>
                                 <td>
-                                    <a href="/companies/@CompanyId/employees/@emp.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                    <a href="/portal/companies/@CompanyId/employees/@emp.Id" class="btn btn-sm btn-outline-primary">View</a>
                                 </td>
                             </tr>
                         }
@@ -94,10 +94,10 @@
         try
         {
             var userId = await GetUserIdAsync();
-            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+            if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
 
             _company = await CompanyService.GetCompanyByIdAsync(CompanyId, userId.Value);
-            if (_company == null) { Nav.NavigateTo("/"); return; }
+            if (_company == null) { Nav.NavigateTo("/portal"); return; }
 
             var employees = await EmployeeService.GetEmployeesForCompanyAsync(CompanyId, userId.Value);
             _employees = employees.ToList();
@@ -113,7 +113,7 @@
         var userId = await GetUserIdAsync();
         if (!userId.HasValue) return;
         var deleted = await CompanyService.DeleteCompanyAsync(CompanyId, userId.Value);
-        if (deleted) Nav.NavigateTo("/");
+        if (deleted) Nav.NavigateTo("/portal");
         else _errorMessage = "Cannot delete company with employees.";
     }
 

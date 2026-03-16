@@ -67,10 +67,10 @@ public class RegisterTests
 
         var result = await model.OnPostAsync();
 
-        // Auto-sign-in on successful registration then redirect to "/"
+        // Auto-sign-in on successful registration then redirect to "/portal"
         Assert.IsType<RedirectResult>(result);
         var redirect = (RedirectResult)result;
-        Assert.Equal("/", redirect.Url);
+        Assert.Equal("/portal", redirect.Url);
     }
 
     [Fact]

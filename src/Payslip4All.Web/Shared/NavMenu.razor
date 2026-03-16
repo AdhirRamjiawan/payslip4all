@@ -12,29 +12,29 @@
         <AuthorizeView>
             <Authorized>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                    <NavLink class="nav-link" href="/portal" Match="NavLinkMatch.All">
                         <span class="oi oi-home" aria-hidden="true"></span> Dashboard
                     </NavLink>
                 </div>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="/companies/create">
+                    <NavLink class="nav-link" href="/portal/companies/create">
                         <span class="oi oi-plus" aria-hidden="true"></span> Add Company
                     </NavLink>
                 </div>
                 <div class="nav-item px-3 mt-auto">
-                    <a class="nav-link" href="/Auth/Logout">
+                    <a class="nav-link" href="/Portal/Auth/Logout">
                         <span class="oi oi-account-logout" aria-hidden="true"></span> Logout
                     </a>
                 </div>
             </Authorized>
             <NotAuthorized>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="/Auth/Login">
+                    <NavLink class="nav-link" href="/Portal/Auth/Login">
                         <span class="oi oi-account-login" aria-hidden="true"></span> Login
                     </NavLink>
                 </div>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="/Auth/Register">
+                    <NavLink class="nav-link" href="/Portal/Auth/Register">
                         <span class="oi oi-person" aria-hidden="true"></span> Register
                     </NavLink>
                 </div>

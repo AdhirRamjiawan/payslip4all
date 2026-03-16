@@ -1,4 +1,4 @@
-@page "/companies/create"
+@page "/portal/companies/create"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -50,7 +50,7 @@
 
             var cmd = new CreateCompanyCommand { Name = _model.Name, Address = _model.Address, UserId = userId.Value };
             await CompanyService.CreateCompanyAsync(cmd);
-            Nav.NavigateTo("/");
+            Nav.NavigateTo("/portal");
         }
         catch (ArgumentException ex) { _errorMessage = ex.Message; }
         catch { _errorMessage = "Failed to create company."; }

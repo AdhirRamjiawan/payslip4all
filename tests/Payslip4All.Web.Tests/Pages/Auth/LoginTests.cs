@@ -72,7 +72,7 @@ public class LoginTests
 
         Assert.IsType<LocalRedirectResult>(result);
         var redirect = (LocalRedirectResult)result;
-        Assert.Equal("/", redirect.Url);
+        Assert.Equal("/portal", redirect.Url);
     }
 
     [Fact]

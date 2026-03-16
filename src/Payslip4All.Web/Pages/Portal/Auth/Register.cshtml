@@ -1,7 +1,7 @@
 @page
-@model LoginModel
+@model RegisterModel
 @{
-    ViewData["Title"] = "Login";
+    ViewData["Title"] = "Register";
     Layout = "/Pages/Shared/_AuthLayout.cshtml";
 }
 <div class="container mt-5">
@@ -10,14 +10,13 @@
             <div class="card shadow-lg">
                 <div class="card-body p-5">
                     <h2 class="text-center mb-2">Payslip4All</h2>
-                    <h4 class="text-center text-muted mb-4">Login</h4>
+                    <h4 class="text-center text-muted mb-4">Create Account</h4>
                     @if (Model.ErrorMessage != null)
                     {
                         <div class="alert alert-danger">@Model.ErrorMessage</div>
                     }
                     <form method="post">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
                         <div class="mb-3">
                             <label class="form-label">Email</label>
                             <input type="email" class="form-control" name="Email" required />
@@ -26,10 +25,14 @@
                             <label class="form-label">Password</label>
                             <input type="password" class="form-control" name="Password" required />
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">Login</button>
+                        <div class="mb-3">
+                            <label class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" name="ConfirmPassword" required />
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Register</button>
                     </form>
                     <hr />
-                    <p class="text-center mb-0">Don't have an account? <a href="/Auth/Register">Register here</a></p>
+                    <p class="text-center mb-0">Already have an account? <a href="/Portal/Auth/Login">Login here</a></p>
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-@page "/companies/{companyId:guid}/employees/{employeeId:guid}/loans/{loanId:guid}/edit"
+@page "/portal/companies/{companyId:guid}/employees/{employeeId:guid}/loans/{loanId:guid}/edit"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -49,7 +49,7 @@
                 @if (_isSaving) { <span class="spinner-border spinner-border-sm me-2"></span> }
                 Save Changes
             </button>
-            <a href="/companies/@CompanyId/employees/@EmployeeId" class="btn btn-secondary ms-2">Cancel</a>
+            <a href="/portal/companies/@CompanyId/employees/@EmployeeId" class="btn btn-secondary ms-2">Cancel</a>
         </EditForm>
     }
 </div>
@@ -69,7 +69,7 @@
         try
         {
             var userId = await GetUserIdAsync();
-            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+            if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
 
             var loan = await LoanService.GetLoanByIdAsync(LoanId, userId.Value);
             if (loan == null || loan.TermsCompleted > 0)

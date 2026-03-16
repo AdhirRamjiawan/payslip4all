@@ -39,6 +39,6 @@ public class LoginModel : PageModel
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(identity);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-        return LocalRedirect(returnUrl ?? "/");
+        return LocalRedirect(returnUrl ?? "/portal");
     }
 }

@@ -1,4 +1,4 @@
-@page "/"
+@page "/portal"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -13,7 +13,7 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>My Companies</h2>
-        <a href="/companies/create" class="btn btn-primary">+ Add Company</a>
+        <a href="/portal/companies/create" class="btn btn-primary">+ Add Company</a>
     </div>
 
     <LoadingSpinner IsLoading="@_isLoading" />
@@ -28,7 +28,7 @@
             {
                 <div class="text-center mt-5">
                     <p class="text-muted">No companies yet.</p>
-                    <a href="/companies/create" class="btn btn-primary">Add Your First Company</a>
+                    <a href="/portal/companies/create" class="btn btn-primary">Add Your First Company</a>
                 </div>
             }
             else
@@ -43,8 +43,8 @@
                                     <p class="card-text text-muted">@(company.Address ?? "No address")</p>
                                     <p class="text-muted small">@company.EmployeeCount employees</p>
                                     <div class="d-flex gap-2">
-                                        <a href="/companies/@company.Id" class="btn btn-sm btn-outline-primary">View</a>
-                                        <a href="/companies/@company.Id/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                        <a href="/portal/companies/@company.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                        <a href="/portal/companies/@company.Id/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
                                     </div>
                                 </div>
                             </div>
