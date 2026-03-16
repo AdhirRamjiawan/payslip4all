@@ -107,7 +107,7 @@
                 NumberOfTerms = _model.NumberOfTerms, MonthlyDeductionAmount = _model.MonthlyDeductionAmount,
                 PaymentStartDate = _model.PaymentStartDate
             });
-            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+            Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
         }
         catch (ArgumentException ex) { _errorMessage = ex.Message; }
         catch { _errorMessage = "Failed to update loan."; }

@@ -88,7 +88,7 @@
             if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
 
             var emp = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
-            if (emp == null) { Nav.NavigateTo($"/companies/{CompanyId}"); return; }
+            if (emp == null) { Nav.NavigateTo($"/portal/companies/{CompanyId}"); return; }
 
             _model = new FormModel
             {
@@ -120,7 +120,7 @@
                 StartDate = _model.StartDate, Occupation = _model.Occupation,
                 UifReference = _model.UifReference, MonthlyGrossSalary = _model.MonthlyGrossSalary
             });
-            Nav.NavigateTo($"/companies/{CompanyId}/employees/{EmployeeId}");
+            Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
         }
         catch (ArgumentException ex) { _errorMessage = ex.Message; }
         catch { _errorMessage = "Failed to update employee."; }

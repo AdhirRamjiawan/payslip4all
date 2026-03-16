@@ -99,7 +99,7 @@
                 MonthlyGrossSalary = _model.MonthlyGrossSalary,
                 CompanyId = CompanyId
             });
-            Nav.NavigateTo($"/companies/{CompanyId}");
+            Nav.NavigateTo($"/portal/companies/{CompanyId}");
         }
         catch (ArgumentException ex) { _errorMessage = ex.Message; }
         catch { _errorMessage = "Failed to add employee."; }
