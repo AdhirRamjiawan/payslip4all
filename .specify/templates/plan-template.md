@@ -40,6 +40,7 @@ Verify compliance with each Payslip4All constitution principle before proceeding
 | III | Blazor Web App | Are all new UI surfaces Razor components? Is business logic kept out of `.razor` files? | ☐ |
 | IV | Basic Authentication | Do new pages carry `[Authorize]`? Do new service methods filter by `UserId`? | ☐ |
 | V | Database Support | Are all schema changes represented as named EF Core migrations? Is raw SQL avoided? | ☐ |
+| VI | Manual Test Gate | Is the Manual Test Gate prompt planned at the end of each implementation task, before any `git commit`, `git merge`, or `git push`? | ☐ |
 
 > **Any ☐ remaining = blocked.** Document justified exceptions in the Complexity Tracking table below.
 

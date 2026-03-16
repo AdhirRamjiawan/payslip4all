@@ -1,39 +1,47 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.1 → 1.0.2 (PATCH — path example drift correction)
-Bump rationale: Principle IV referenced `/login` and `/register` as the anonymous-access
-  exception paths in the [Authorize] rule. The implemented Razor Pages routing places
-  these pages under the `/Auth/` folder, producing canonical routes `/Auth/Login` and
-  `/Auth/Register`. This PATCH corrects the literal path strings in Principle IV to match
-  the canonical implementation. No principle semantics were changed.
+Version change: 1.0.2 → 1.1.0 (MINOR — new Principle VI added)
+Bump rationale: A new Core Principle VI "Manual Test Gate" has been added to the
+  Development Workflow section. This principle introduces a mandatory human-approval
+  gate after every implementation task before any git operations (commit, merge, push)
+  may be executed. This is a MINOR bump: new governance guidance added without
+  removing or redefining existing principles.
 
-Modified principles:
-  - Principle IV "Basic Authentication (Cookie-Based)":
-      OLD: Every page except `/login` and `/register` MUST carry [Authorize].
-      NEW: Every page except `/Auth/Login` and `/Auth/Register` MUST carry [Authorize].
+Modified principles: None.
 
-Added sections: None.
+Added sections:
+  - Core Principle VI: Manual Test Gate (NON-NEGOTIABLE)
+  - New row VI in Development Workflow TDD Cycle
+  - New sub-section "Manual Test Gate Protocol" under Development Workflow
+
 Removed sections: None.
 
-Placeholder token audit (2026-03-15):
+Placeholder token audit (2026-03-16):
   - [Authorize]  → ASP.NET Core attribute, NOT a template token. Correct as-is.
   - No other [ALL_CAPS_IDENTIFIER] template tokens remain unresolved.
 
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md   — No path references. No edit required.
-  ✅ .specify/templates/spec-template.md   — No path references. No edit required.
-  ✅ .specify/templates/tasks-template.md  — No path references. No edit required.
-  ✅ .specify/templates/checklist-template.md — No path references. No edit required.
-  ✅ .specify/templates/constitution-template.md — Template only; no edit required.
-  ✅ .specify/templates/agent-file-template.md   — No path references. No edit required.
+  ✅ .specify/templates/plan-template.md   — Constitution Check table updated with
+       row VI (Manual Test Gate).
+  ✅ .specify/templates/tasks-template.md  — Notes and Implementation Strategy updated
+       with Manual Test Gate reminder.
+  ✅ .specify/templates/spec-template.md   — No changes required; principle is
+       workflow-only and does not affect spec structure.
+  ✅ .specify/templates/checklist-template.md — No changes required.
+  ✅ .specify/templates/constitution-template.md — Source template; not modified
+       (operates on memory/constitution.md only).
+  ✅ .specify/templates/agent-file-template.md   — No changes required.
 
-Deferred TODOs / Manual follow-up required:
-  ✅ specs/001-payslip-generation/contracts/http-endpoints.md — Resolved 2026-03-15.
-  ✅ specs/001-payslip-generation/contracts/ui-contracts.md — Resolved 2026-03-15.
-  ✅ specs/001-payslip-generation/quickstart.md — Resolved 2026-03-15.
-  ✅ specs/001-payslip-generation/research.md — Resolved 2026-03-15.
-  All four deferred items were corrected to use /Auth/Login, /Auth/Register, /Auth/Logout.
+Deferred TODOs / Manual follow-up required: None.
+
+Prior report (1.0.1 → 1.0.2):
+  All four deferred items resolved 2026-03-15:
+  specs/001-payslip-generation/contracts/http-endpoints.md,
+  specs/001-payslip-generation/contracts/ui-contracts.md,
+  specs/001-payslip-generation/quickstart.md,
+  specs/001-payslip-generation/research.md
+  — all corrected to use /Auth/Login, /Auth/Register, /Auth/Logout.
 -->
 
 # Payslip4All Constitution
@@ -162,6 +170,45 @@ All persistent data access MUST go through Entity Framework Core:
 migration low-risk. Centralized migration management prevents schema drift between
 environments and ensures reproducible deployments for every developer and CI run.
 
+### VI. Manual Test Gate (NON-NEGOTIABLE)
+
+After completing any implementation task, the agent MUST NOT automatically execute
+`git commit`, `git merge`, `git push`, or any combined git operation. Instead, the
+following gate protocol MUST be observed:
+
+1. **Present the Manual Test Gate prompt** to the engineer. This prompt MUST:
+   - Summarise what was implemented.
+   - List the recommended manual test steps relevant to the change.
+   - Ask for explicit approval before proceeding with any git operation.
+
+2. **Await an explicit engineer response**:
+   - If the engineer responds with `approve` (or equivalent clear affirmative such
+     as `yes`, `go ahead`, `lgtm`), the agent MAY proceed with the requested git
+     operation.
+   - If the engineer responds with `decline` (or equivalent: `no`, `wait`, `hold`),
+     the agent MUST leave all changes staged or unstaged but uncommitted, so the
+     engineer can inspect, adjust, or revert them without loss.
+
+3. **Scope** — This gate applies without exception to:
+   - `git commit` (including `--amend`)
+   - `git merge`
+   - `git push` (including `--force`)
+   - Any scripted or combined operation that performs one or more of the above
+     (e.g., CI trigger scripts, helper shell aliases).
+
+4. **No implicit approval** — Silence, a new instruction, or an ambiguous reply
+   MUST NOT be treated as approval. The agent MUST re-prompt or seek clarification.
+
+5. **No bypass** — This gate MUST NOT be skipped regardless of how trivial the
+   change appears (typo fix, comment update, etc.).
+
+**Rationale**: Payslips are legal financial documents. Premature or incorrect commits
+reaching shared branches can corrupt payroll history, trigger erroneous CI deployments,
+and make rollback painful. The Manual Test Gate ensures the engineer has consciously
+verified behaviour before changes become part of the auditable commit history. It also
+preserves the engineer's agency over the codebase — the agent is a tool, not an
+autonomous committer.
+
 ## Technology Stack & Constraints
 
 | Concern              | Mandated Choice                                       |
@@ -188,8 +235,38 @@ before being added to any project.
 1. Write failing test(s) that encode the requirement.
 2. Confirm with the team that the test accurately captures intent.
 3. Implement the minimum code needed to make tests pass.
-4. Refactor under green tests; commit only when fully green.
-5. No implementation PR is valid without corresponding test coverage.
+4. Refactor under green tests.
+5. **Present Manual Test Gate prompt** (Principle VI) — await engineer approval
+   before executing any `git commit`, `git merge`, or `git push`.
+6. No implementation PR is valid without corresponding test coverage.
+
+### Manual Test Gate Protocol
+
+At the conclusion of every implementation task the agent MUST emit a prompt
+structured as follows (adapt wording to context):
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍  MANUAL TEST GATE — awaiting engineer approval
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+What was implemented:
+  • [concise summary of change]
+
+Recommended manual tests:
+  1. [specific action to verify]
+  2. [additional scenario if relevant]
+
+Pending git operations:
+  • [list of commands ready to execute, e.g. git commit -m "..."]
+
+Please test the above and respond:
+  ✅  "approve" — to proceed with the git operation(s)
+  ❌  "decline" — to leave changes uncommitted for review/revert
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+The agent MUST NOT proceed until a clear affirmative is received. If declined, the
+agent MUST acknowledge and confirm changes remain uncommitted.
 
 ### Branching & Review
 
@@ -232,4 +309,4 @@ All PRs and code reviews MUST verify compliance with this constitution. Any inte
 deviation from a principle MUST be documented in the `plan.md` Complexity Tracking
 table with justification before work begins.
 
-**Version**: 1.0.2 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-15
+**Version**: 1.1.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-16

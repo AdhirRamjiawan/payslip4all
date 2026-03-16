@@ -185,7 +185,10 @@ Examples of foundational tasks (adjust based on your project):
 - Domain entities and application interfaces before infrastructure/service implementations
 - Services (Application layer) before Blazor page components (Web layer)
 - Core implementation before integration with other stories
-- Story considered complete only when all tests pass and CI is green
+- **Manual Test Gate (Principle VI)**: After implementation is complete, present the
+  gate prompt to the engineer. Await `approve` before any `git commit`, `git merge`,
+  or `git push`. If declined, leave changes uncommitted.
+- Story considered complete only when all tests pass, Manual Test Gate approved, and CI is green
 
 ### Parallel Opportunities
 
@@ -219,8 +222,10 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
 1. Complete Phase 1: Setup
 2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
 3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently
-5. Deploy/demo if ready
+4. **Present Manual Test Gate prompt** (Principle VI) — await engineer `approve`
+   before committing.
+5. **STOP and VALIDATE**: Test User Story 1 independently
+6. Deploy/demo if ready
 
 ### Incremental Delivery
 
@@ -249,6 +254,11 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Commit after each task or logical group
+- **Manual Test Gate (Principle VI — NON-NEGOTIABLE)**: After every implementation
+  task, the agent MUST present the Manual Test Gate prompt and await an explicit
+  `approve` from the engineer before executing any `git commit`, `git merge`,
+  or `git push`. Do NOT auto-commit. Leave changes uncommitted if the engineer
+  responds with `decline`.
+- Commit after each task or logical group — only after Manual Test Gate approval
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
