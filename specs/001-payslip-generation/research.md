@@ -480,3 +480,292 @@ tests/
 | UIF calculation | Pure static domain method `PayslipCalculator` | None (Domain project) |
 | Atomic increment | Single EF Core transaction + optimistic concurrency | Built-in EF Core |
 | Blazor testing | bUnit + xUnit + Moq | `bunit`, `xunit`, `Moq` |
+
+---
+
+## 4. QuestPDF Layout Modernisation (PDF Payslip Redesign)
+
+**Phase**: 0 — Research for PDF layout modernisation  
+**Date**: 2026-07-15  
+**Status**: Complete — all items resolved
+
+---
+
+### 4.1 QuestPDF Fluent API — Table Layout
+
+#### Decision
+Use the QuestPDF `Table` API (available since v2022.x, stable in 2024.10.x) for both the
+**Income** and **Deductions** sections. Use `Row` + `RelativeItem` for the two-column
+employer/employee header panel.
+
+#### Key API Patterns
+
+```csharp
+// ── Two-column panel (employer left, employee right) ──────────────────────
+container.Row(row =>
+{
+    row.RelativeItem().Border(1).BorderColor("#DDDDDD").Padding(10).Column(left =>
+    {
+        left.Item().Text("EMPLOYER DETAILS").Bold().FontSize(8).FontColor("#555555");
+        left.Item().Text(doc.CompanyName).Bold().FontSize(11);
+        left.Item().Text(doc.CompanyAddress ?? "").FontSize(9);
+        left.Item().PaddingTop(4).Text($"UIF Ref: {doc.CompanyUifNumber ?? "—"}").FontSize(9);
+        left.Item().Text($"SARS PAYE: {doc.CompanySarsPayeNumber ?? "—"}").FontSize(9);
+    });
+    row.ConstantItem(12); // gutter
+    row.RelativeItem().Border(1).BorderColor("#DDDDDD").Padding(10).Column(right =>
+    {
+        right.Item().Text("EMPLOYEE DETAILS").Bold().FontSize(8).FontColor("#555555");
+        right.Item().Text(doc.EmployeeName).Bold().FontSize(11);
+        right.Item().Text($"Employee #: {doc.EmployeeNumber}").FontSize(9);
+        right.Item().Text($"ID Number: {doc.EmployeeIdNumber ?? "—"}").FontSize(9);
+        right.Item().Text($"Occupation: {doc.Occupation}").FontSize(9);
+    });
+});
+
+// ── Table (Income / Deductions) ───────────────────────────────────────────
+container.Table(table =>
+{
+    table.ColumnsDefinition(cols =>
+    {
+        cols.RelativeColumn(5);   // Description — fills remaining space
+        cols.ConstantColumn(90);  // Amount (right-aligned, fixed)
+    });
+
+    table.Header(header =>
+    {
+        header.Cell().Background("#1A3C5E").Padding(6)
+              .Text("DESCRIPTION").Bold().FontSize(9).FontColor(Colors.White);
+        header.Cell().Background("#1A3C5E").Padding(6).AlignRight()
+              .Text("AMOUNT (R)").Bold().FontSize(9).FontColor(Colors.White);
+    });
+
+    bool alt = false;
+    foreach (var item in lineItems)
+    {
+        var bg = alt ? "#F5F5F5" : Colors.White;
+        table.Cell().Background(bg).PaddingHorizontal(6).PaddingVertical(4)
+             .Text(item.Description).FontSize(9);
+        table.Cell().Background(bg).PaddingHorizontal(6).PaddingVertical(4)
+             .AlignRight().Text($"{item.Amount:N2}").FontSize(9);
+        alt = !alt;
+    }
+
+    // Total row
+    table.Cell().Background("#E8EEF4").PaddingHorizontal(6).PaddingVertical(5)
+         .Text("TOTAL").Bold().FontSize(9);
+    table.Cell().Background("#E8EEF4").PaddingHorizontal(6).PaddingVertical(5)
+         .AlignRight().Text($"{total:N2}").Bold().FontSize(9);
+});
+```
+
+#### Rationale
+- **Table API** provides automatic column alignment, header repetition on page overflow, and
+  alternating row styling with zero manual coordinate math.
+- **ConstantColumn(90)** for the amount column ensures monetary values are consistently
+  right-aligned regardless of description length.
+- **RelativeColumn(5)** for description absorbs all remaining width.
+
+#### Alternatives Considered
+| Alternative | Rejected Because |
+|-------------|-----------------|
+| Manual `Row` per line item | Verbose; no header repetition on page break |
+| PDF column grid (raw coordinates) | QuestPDF is flow-based, not coordinate-based |
+| `Stack` + `Border` per row | No automatic column alignment |
+
+---
+
+### 4.2 Page Structure & Section Separation
+
+#### Decision
+Use a single `page.Content().Column(...)` with discrete section-drawing helper methods.
+Each section has a coloured header band (`Background("#1A3C5E")`) followed by white content.
+
+```csharp
+page.Header().Height(70).Row(row =>
+{
+    row.RelativeItem().Column(col =>
+    {
+        col.Item().Text(doc.CompanyName).Bold().FontSize(18).FontColor("#1A3C5E");
+        col.Item().Text($"PAYSLIP — {doc.PayPeriod}").FontSize(10).FontColor("#555555");
+    });
+    row.ConstantItem(120).AlignRight().Column(col =>
+    {
+        col.Item().AlignRight().Text($"Ref: {doc.PayslipReference ?? "—"}").FontSize(8).FontColor("#888888");
+        col.Item().AlignRight().Text($"Generated: {DateTime.Today:dd MMM yyyy}").FontSize(8).FontColor("#888888");
+    });
+});
+
+page.Footer().Height(20).AlignCenter()
+    .Text("This is a computer-generated document and is valid without a signature.")
+    .FontSize(7).FontColor("#AAAAAA").Italic();
+```
+
+---
+
+### 4.3 Net Pay Summary Band
+
+#### Decision
+A full-width coloured `Row` with contrasting text — no table, pure emphasis band:
+
+```csharp
+container.PaddingTop(8).Row(row =>
+{
+    row.RelativeItem().Background("#1A3C5E").Padding(12).Row(inner =>
+    {
+        inner.RelativeItem()
+             .Text("NET PAY").Bold().FontSize(13).FontColor(Colors.White);
+        inner.ConstantItem(140).AlignRight()
+             .Text($"R {doc.NetPay:N2}").Bold().FontSize(16).FontColor("#FFD700");
+    });
+});
+```
+
+---
+
+### 4.4 South African Payslip — Legal Field Requirements
+
+#### Decision
+The following fields are legally expected on a South African payslip (BCEA s.33 / UIF Act):
+
+| Section | Field | Source |
+|---------|-------|--------|
+| Employer | Company name | `Company.Name` |
+| Employer | Physical address | `Company.Address` |
+| Employer | UIF reference number | `Company.UifNumber` *(new field)* |
+| Employer | SARS PAYE number | `Company.SarsPayeNumber` *(new field)* |
+| Employee | Full name | `Employee.FirstName + LastName` |
+| Employee | Employee number | `Employee.EmployeeNumber` |
+| Employee | SA ID number | `Employee.IdNumber` |
+| Employee | Occupation / Job title | `Employee.Occupation` |
+| Employee | UIF reference | `Employee.UifReference` *(existing, may be null)* |
+| Period | Pay period (month + year) | Derived from `Payslip.PayPeriodMonth/Year` |
+| Earnings | Basic salary | `Employee.MonthlyGrossSalary` (currently only one income line) |
+| Earnings | Gross earnings total | `Payslip.GrossEarnings` |
+| Deductions | UIF deduction (1% of min(gross, R17 712)) | `Payslip.UifDeduction` |
+| Deductions | Each loan deduction with description | `PayslipLoanDeduction.*` |
+| Deductions | Total deductions | `Payslip.TotalDeductions` |
+| Summary | Net pay | `Payslip.NetPay` |
+| Footer | "Computer-generated" disclaimer | Hardcoded |
+
+**Fields not required by BCEA but commonly expected**: employer address, generation date.  
+**PAYE (income tax)**: Payslip4All currently does **not** calculate PAYE — this is out of scope.
+The deductions table will only show UIF + loan deductions for now. The layout accommodates future
+PAYE addition by treating each deduction as a generic `(Description, Amount)` line item.
+
+---
+
+### 4.5 Typography & Colour Palette
+
+#### Decision
+
+**Font**: QuestPDF default font (Lato) — print-safe, readable at 8–9 pt for table content.
+
+| Element | Size | Weight | Colour |
+|---------|------|--------|--------|
+| Company name (header) | 18 pt | Bold | `#1A3C5E` (navy) |
+| Page subtitle (period) | 10 pt | Normal | `#555555` |
+| Section header text | 9 pt | Bold | `#FFFFFF` (on navy band) |
+| Section header band | — | — | `#1A3C5E` background |
+| Table header text | 9 pt | Bold | `#FFFFFF` |
+| Table body text | 9 pt | Normal | `#111111` |
+| Table alt-row background | — | — | `#F5F5F5` |
+| Total row background | — | — | `#E8EEF4` |
+| Total row text | 9 pt | Bold | `#111111` |
+| Net pay label | 13 pt | Bold | `#FFFFFF` (on navy) |
+| Net pay amount | 16 pt | Bold | `#FFD700` (gold) |
+| Footer disclaimer | 7 pt | Italic | `#AAAAAA` |
+| Detail labels | 8 pt | Normal | `#555555` |
+| Detail values | 9–11 pt | Varies | `#111111` |
+
+**Rationale**: Navy (`#1A3C5E`) is the primary accent — professional, print-safe, and high-contrast
+against white text. Gold (`#FFD700`) for the net pay amount creates a focal point. The palette is
+accessible (contrast ratio ≥ 4.5:1 for all body text on white).
+
+**Alternatives Considered**:
+| Palette | Rejected Because |
+|---------|-----------------|
+| Pure black & white | Sections are hard to distinguish without colour cues |
+| Bootstrap primary blue | QuestPDF has no Bootstrap integration; hex is cleaner |
+| Custom embedded font | Adds binary asset; Lato is high-quality and built-in |
+
+---
+
+### 4.6 PayslipDocument DTO — Required Extensions
+
+#### Decision
+Extend the `PayslipDocument` record in `IPdfGenerationService.cs` with:
+
+```csharp
+public record PayslipDocument(
+    // ── Employer ──────────────────────────────────────────────────────────
+    string  CompanyName,
+    string? CompanyAddress,
+    string? CompanyUifNumber,          // NEW — UIF employer reference
+    string? CompanySarsPayeNumber,     // NEW — SARS PAYE employer number
+
+    // ── Employee ──────────────────────────────────────────────────────────
+    string  EmployeeName,
+    string  EmployeeNumber,
+    string? EmployeeIdNumber,          // NEW — SA ID number
+    string? EmployeeUifReference,      // NEW — UIF employee reference
+    string  Occupation,
+
+    // ── Period ────────────────────────────────────────────────────────────
+    string  PayPeriod,                 // e.g. "July 2026"
+    string? PayslipReference,          // NEW — display ID (e.g. "PS-2026-07-001")
+
+    // ── Earnings ──────────────────────────────────────────────────────────
+    IReadOnlyList<(string Description, decimal Amount)> IncomeLineItems,  // NEW
+    decimal GrossEarnings,
+
+    // ── Deductions ────────────────────────────────────────────────────────
+    decimal UifDeduction,
+    IReadOnlyList<(string Description, decimal Amount)> LoanDeductions,
+    decimal TotalDeductions,
+
+    // ── Summary ───────────────────────────────────────────────────────────
+    decimal NetPay
+);
+```
+
+**Backward-compatibility strategy**: `IncomeLineItems` is new; the caller
+(`PayslipGenerationService`) will populate it with a single entry
+`("Basic Salary", employee.MonthlyGrossSalary)` for now. Future allowance support requires
+no interface change — simply append more items to the list.
+
+New nullable `Company` fields (`UifNumber`, `SarsPayeNumber`) require:
+- Two new `string?` properties on `Company` entity (Domain layer)
+- EF Core migration: `AddCompanyUifAndSarsFields`
+- Update of `CompanyDto` and company CRUD forms in the Web layer (out of scope for this plan;
+  the PDF renders `null` values as `"—"`)
+
+---
+
+### 4.7 Manual Test Gate (Constitution Principle VI)
+
+Although the constitution does not formally define a "Principle VI", the team convention
+(**Manual Test Gate**) requires the PDF to be visually inspected before the PR is merged.
+
+**Procedure**:
+1. Run the application locally and generate a payslip for an employee with ≥ 1 loan.
+2. Download the PDF and visually verify all 6 sections are present and readable.
+3. Print to paper (or print-preview) to confirm A4 margins and font sizes are correct.
+4. Screenshot the PDF and attach it to the PR description.
+
+This gate is **documented here** as required by the plan template's Constitution Check note.
+
+---
+
+### Updated Summary of All Resolved Decisions
+
+| Topic | Decision |
+|-------|----------|
+| QuestPDF layout engine | `Table` API for income/deductions; `Row.RelativeItem` for employer/employee panel |
+| Page sections | 6 sections: header, employer, employee, income, deductions, net pay |
+| Colour palette | Navy `#1A3C5E` / white / gold `#FFD700` / light grey alternating rows |
+| Typography | QuestPDF default Lato; 7–18 pt hierarchy; no embedded fonts |
+| SA compliance fields | UIF ref, SARS PAYE, ID number, occupation, pay period, disclaimer footer |
+| DTO extension | `PayslipDocument` gains 6 new optional/list fields; backward-compatible |
+| Domain changes | `Company` gets 2 nullable fields + EF Core migration |
+| New packages | None — QuestPDF 2024.10.4 already present |

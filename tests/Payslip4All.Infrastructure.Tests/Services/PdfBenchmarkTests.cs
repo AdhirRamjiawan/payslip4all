@@ -1,3 +1,4 @@
+using Payslip4All.Application.DTOs;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Infrastructure.Services;
 using QuestPDF.Infrastructure;
@@ -41,7 +42,13 @@ public class PdfBenchmarkTests
                 ("Vehicle Loan", 1_500.00m)
             },
             TotalDeductions: 1_675.00m,
-            NetPay: 33_325.00m
+            NetPay: 33_325.00m,
+            CompanyUifNumber: "U123456",
+            CompanySarsPayeNumber: "7654321A",
+            EmployeeIdNumber: "9001015009087",
+            EmployeeStartDate: new DateOnly(2021, 3, 1),
+            EmployeeUifReference: "UIF-EMP-001",
+            PaymentDate: new DateOnly(2025, 1, 31)
         );
 
     [Fact]

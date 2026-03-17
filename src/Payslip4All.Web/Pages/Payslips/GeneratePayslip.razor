@@ -132,7 +132,7 @@
             _preview = result.PayslipDto;
             _showPreview = true;
         }
-        catch { _errorMessage = "Failed to preview payslip."; }
+        catch (Exception ex) { _errorMessage = $"Failed to preview payslip: {ex.Message}"; }
         finally { _isPreviewing = false; }
     }
 
@@ -154,7 +154,7 @@
             if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
             Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
         }
-        catch { _errorMessage = "Failed to generate payslip."; }
+        catch (Exception ex) { _errorMessage = $"Failed to generate payslip: {ex.Message}"; }
         finally { _isGenerating = false; }
     }
 
