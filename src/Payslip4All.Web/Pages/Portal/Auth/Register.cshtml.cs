@@ -44,6 +44,6 @@ public class RegisterModel : PageModel
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(identity);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-        return Redirect("/");
+        return Redirect("/portal");
     }
 }

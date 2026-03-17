@@ -1,0 +1,159 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Payslip4All — Simple Payslips for South African Employers";
+    Layout = "/Pages/Shared/_AuthLayout.cshtml";
+}
+
+<style>
+    .hero {
+        background: linear-gradient(135deg, #1b6ec2 0%, #0071c1 100%);
+        color: #fff;
+        padding: 80px 0 60px;
+    }
+
+    .hero h1 {
+        font-size: 2.8rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+
+    .hero p.lead {
+        font-size: 1.25rem;
+        opacity: 0.9;
+        max-width: 580px;
+        margin: 0 auto 2rem;
+    }
+
+    .features {
+        padding: 70px 0;
+        background: #f8f9fa;
+    }
+
+    .feature-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 2rem;
+        height: 100%;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+        border: 1px solid #e9ecef;
+    }
+
+    .feature-icon {
+        font-size: 2.2rem;
+        margin-bottom: 1rem;
+    }
+
+    .cta {
+        padding: 70px 0;
+        background: #fff;
+    }
+
+    .footer-bar {
+        background: #212529;
+        color: rgba(255, 255, 255, 0.6);
+        padding: 24px 0;
+        font-size: 0.875rem;
+    }
+</style>
+
+<!-- Hero -->
+<section class="hero text-center">
+    <div class="container">
+        <h1>Payslip4All</h1>
+        <p class="lead">
+            Generate professional payslips in seconds. Built for South African employers who want
+            a simple, accurate way to pay their staff and stay compliant.
+        </p>
+        <a href="/Portal/Auth/Register" class="btn btn-light btn-lg px-5 me-3">Get Started Free</a>
+        <a href="/Portal/Auth/Login" class="btn btn-outline-light btn-lg px-5">Log In</a>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="features">
+    <div class="container">
+        <h2 class="text-center fw-bold mb-2">Everything you need</h2>
+        <p class="text-center text-muted mb-5">Manage companies, employees, and payslips — all in one place.</p>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🏢</div>
+                    <h5 class="fw-semibold mb-2">Multiple Companies</h5>
+                    <p class="text-muted mb-0">
+                        Manage payroll for multiple companies from a single account.
+                        Each company's data is fully isolated.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">📄</div>
+                    <h5 class="fw-semibold mb-2">Accurate Payslips</h5>
+                    <p class="text-muted mb-0">
+                        Automatic UIF deductions calculated to South African legal standards.
+                        Download a professional PDF in one click.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">💳</div>
+                    <h5 class="fw-semibold mb-2">Loan Tracking</h5>
+                    <p class="text-muted mb-0">
+                        Track employee loans with automatic monthly deductions.
+                        Loans mark themselves as completed when fully paid.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h5 class="fw-semibold mb-2">Payslip History</h5>
+                    <p class="text-muted mb-0">
+                        Full history of every payslip ever generated.
+                        Re-download any month at any time.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h5 class="fw-semibold mb-2">Secure by Default</h5>
+                    <p class="text-muted mb-0">
+                        Your data is yours alone. Employer accounts are strictly isolated —
+                        no one else can access your payroll data.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h5 class="fw-semibold mb-2">Fast Setup</h5>
+                    <p class="text-muted mb-0">
+                        Register, add a company, add an employee, and download your first payslip
+                        — all in under five minutes.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta text-center">
+    <div class="container">
+        <h2 class="fw-bold mb-3">Ready to simplify your payroll?</h2>
+        <p class="text-muted mb-4 fs-5">
+            Create your free account and generate your first payslip today.
+        </p>
+        <a href="/Portal/Auth/Register" class="btn btn-primary btn-lg px-5">Create Free Account</a>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer-bar text-center">
+    <div class="container">
+        &copy; @DateTime.UtcNow.Year Payslip4All. All rights reserved.
+    </div>
+</footer>

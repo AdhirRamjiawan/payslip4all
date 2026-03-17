@@ -70,7 +70,7 @@ public class RegisterTests
         // Auto-sign-in on successful registration then redirect to "/"
         Assert.IsType<RedirectResult>(result);
         var redirect = (RedirectResult)result;
-        Assert.Equal("/", redirect.Url);
+        Assert.Equal("/portal", redirect.Url);
     }
 
     [Fact]

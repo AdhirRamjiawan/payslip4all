@@ -1,4 +1,4 @@
-@page "/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate"
+@page "/portal/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -107,7 +107,7 @@
         try
         {
             var userId = await GetUserIdAsync();
-            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+            if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
             if (_employee == null) Nav.NavigateTo($"/portal/companies/{CompanyId}");
         }
@@ -132,7 +132,7 @@
             _preview = result.PayslipDto;
             _showPreview = true;
         }
-        catch { _errorMessage = "Failed to preview payslip."; }
+        catch (Exception ex) { _errorMessage = $"Failed to preview payslip: {ex.Message}"; }
         finally { _isPreviewing = false; }
     }
 
@@ -154,7 +154,7 @@
             if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
             Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
         }
-        catch { _errorMessage = "Failed to generate payslip."; }
+        catch (Exception ex) { _errorMessage = $"Failed to generate payslip: {ex.Message}"; }
         finally { _isGenerating = false; }
     }
 

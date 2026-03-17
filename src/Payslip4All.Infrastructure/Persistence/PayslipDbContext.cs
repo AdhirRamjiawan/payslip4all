@@ -60,6 +60,8 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.HasKey(c => c.Id);
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
             e.Property(c => c.Address).HasMaxLength(500);
+            e.Property(c => c.UifNumber).HasMaxLength(50);
+            e.Property(c => c.SarsPayeNumber).HasMaxLength(30);
             e.HasOne<User>()
              .WithMany()
              .HasForeignKey(c => c.UserId)

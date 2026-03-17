@@ -12,11 +12,11 @@
             <AuthorizeView>
                 <Authorized Context="authState">
                     <span class="text-muted small me-2">@authState.User.Identity?.Name</span>
-                    <a href="/Auth/Logout">Logout</a>
+                    <a href="/Portal/Auth/Logout">Logout</a>
                 </Authorized>
                 <NotAuthorized>
-                    <a href="/Auth/Register">Register</a>
-                    <a href="/Auth/Login">Login</a>
+                    <a href="/Portal/Auth/Register">Register</a>
+                    <a href="/Portal/Auth/Login">Login</a>
                 </NotAuthorized>
             </AuthorizeView>
         </div>

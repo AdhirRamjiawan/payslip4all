@@ -341,3 +341,154 @@ All schema changes are captured as named migrations in `Payslip4All.Infrastructu
 - **Zero EF Core attributes on domain entities** (no `[Key]`, `[Required]`, `[MaxLength]`).
 - All EF Core configuration is in `Payslip4All.Infrastructure/Persistence/PayslipDbContext.cs` `OnModelCreating`.
 - Navigation properties on domain entities use `IReadOnlyList<T>` with a private backing `List<T>` field — domain entities control their own collections.
+
+---
+
+## PDF Layout Model (Modernised Payslip)
+
+**Phase**: 1 — Design (PDF Modernisation)  
+**Date**: 2026-07-15
+
+This section documents the **presentation-layer data model** for the modernised PDF payslip.
+It is distinct from the domain entities above — these are the DTO/record types that feed the
+QuestPDF renderer.
+
+---
+
+### PayslipDocument (Application DTO — extended)
+
+Located at: `src/Payslip4All.Application/Interfaces/IPdfGenerationService.cs`
+
+```
+PayslipDocument
+├── CompanyName              : string          [non-null]  Section: Employer Header
+├── CompanyAddress           : string?         [nullable]  Section: Employer Details
+├── CompanyUifNumber         : string?         [nullable]  Section: Employer Details
+├── CompanySarsPayeNumber    : string?         [nullable]  Section: Employer Details
+│
+├── EmployeeName             : string          [non-null]  Section: Employee Details
+├── EmployeeNumber           : string          [non-null]  Section: Employee Details
+├── EmployeeIdNumber         : string?         [nullable]  Section: Employee Details
+├── EmployeeUifReference     : string?         [nullable]  Section: Employee Details
+├── Occupation               : string          [non-null]  Section: Employee Details
+│
+├── PayPeriod                : string          [non-null]  Section: Header subtitle
+├── PayslipReference         : string?         [nullable]  Section: Header metadata
+│
+├── IncomeLineItems          : IReadOnlyList<(string Description, decimal Amount)>
+│                                              [non-null, ≥1 item]  Section: Income Table
+├── GrossEarnings            : decimal         [> 0]       Section: Income Table total
+│
+├── UifDeduction             : decimal         [≥ 0]       Section: Deductions Table
+├── LoanDeductions           : IReadOnlyList<(string Description, decimal Amount)>
+│                                              [non-null, may be empty]  Section: Deductions Table
+├── TotalDeductions          : decimal         [≥ 0]       Section: Deductions Table total
+│
+└── NetPay                   : decimal         [> 0]       Section: Net Pay Summary
+```
+
+**Derived / Computed at render time** (not stored on the record):
+- All deduction rows = `[("UIF Contribution", UifDeduction)] + LoanDeductions`
+- `DeductionLineItems` computed in `PdfGenerationService.GetDeductionLineItems()`
+
+**Validation rules** enforced by `PdfGenerationService` before render:
+- `GrossEarnings > 0`
+- `IncomeLineItems.Count >= 1`
+- `NetPay > 0`
+- `TotalDeductions = UifDeduction + sum(LoanDeductions)`  *(assertion, not throw)*
+
+---
+
+### PDF Visual Layout Map
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  HEADER                                                     │
+│  CompanyName (18pt bold navy)    Ref: PayslipReference      │
+│  PAYSLIP — PayPeriod (10pt)      Generated: DD MMM YYYY     │
+├─────────────────────────────────────────────────────────────┤
+│  ┌────────────────────────┐  ┌──────────────────────────┐   │
+│  │ EMPLOYER DETAILS        │  │ EMPLOYEE DETAILS          │  │
+│  │ CompanyName             │  │ EmployeeName              │  │
+│  │ CompanyAddress          │  │ Employee #: EmployeeNum   │  │
+│  │ UIF Ref: CompanyUif     │  │ ID Number: EmployeeIdNum  │  │
+│  │ SARS PAYE: CompanySars  │  │ Occupation: Occupation    │  │
+│  │                         │  │ UIF Ref: EmpUifRef        │  │
+│  └────────────────────────┘  └──────────────────────────┘   │
+├─────────────────────────────────────────────────────────────┤
+│  ░░░ INCOME                                          ░░░░   │  ← navy band
+├──────────────────────────────────┬──────────────────────────┤
+│  Basic Salary                    │            R XX,XXX.XX   │
+│  (future allowances here)        │            R     XXX.XX  │  ← alternating grey
+├──────────────────────────────────┼──────────────────────────┤
+│  GROSS EARNINGS                  │  BOLD  R XX,XXX.XX       │  ← blue-tint total row
+├─────────────────────────────────────────────────────────────┤
+│  ░░░ DEDUCTIONS                                      ░░░░   │  ← navy band
+├──────────────────────────────────┬──────────────────────────┤
+│  UIF Contribution                │                R XXX.XX  │
+│  Loan: <description>             │                R XXX.XX  │  ← alternating grey
+├──────────────────────────────────┼──────────────────────────┤
+│  TOTAL DEDUCTIONS                │  BOLD  R     XXX.XX      │  ← blue-tint total row
+├─────────────────────────────────────────────────────────────┤
+│  ████████████████  NET PAY       │  R XX,XXX.XX  ████████   │  ← full-width navy band
+│                                  │  (gold 16pt bold)         │
+├─────────────────────────────────────────────────────────────┤
+│  FOOTER: "This is a computer-generated document..."  7pt    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Extended Company Entity Fields
+
+Two new nullable fields on `Company` (Domain entity — no behaviour change):
+
+| Field | Type | C# | Notes |
+|-------|------|----|-------|
+| `UifNumber` | `string?` | `public string? UifNumber { get; set; }` | Employer UIF registration number |
+| `SarsPayeNumber` | `string?` | `public string? SarsPayeNumber { get; set; }` | SARS PAYE employer reference |
+
+**EF Core migration**: `AddCompanyUifAndSarsFields`  
+Both columns are nullable `TEXT`; no index required; no cascade impact.
+
+```csharp
+// OnModelCreating addition (no change to existing entity config)
+builder.Entity<Company>(e =>
+{
+    e.Property(c => c.UifNumber).HasMaxLength(20);
+    e.Property(c => c.SarsPayeNumber).HasMaxLength(20);
+});
+```
+
+---
+
+### Section Rendering Components (Infrastructure — not domain types)
+
+The following private helper methods will be defined inside `PdfGenerationService`:
+
+| Method | Responsibility |
+|--------|----------------|
+| `RenderHeader(IContainer, PayslipDocument)` | Top header band: company name, period, reference, generated date |
+| `RenderDetailsPanel(IContainer, PayslipDocument)` | Two-column employer / employee detail boxes |
+| `RenderSectionBand(IContainer, string title)` | Reusable coloured section header band |
+| `RenderLineItemTable(IContainer, IEnumerable<LineItem>, decimal total)` | Generic income/deductions table with alternating rows + total row |
+| `RenderNetPaySummary(IContainer, decimal netPay)` | Full-width navy + gold net pay band |
+| `RenderFooter(IContainer)` | Disclaimer text |
+| `GetDeductionLineItems(PayslipDocument)` | Combines UIF + loan deductions into a flat list |
+
+These are pure rendering helpers — no business logic; no DI; no DB access.
+
+---
+
+### Mapping: Domain → PayslipDocument (in PayslipGenerationService)
+
+The table below shows which domain fields map to each new `PayslipDocument` property:
+
+| PayslipDocument field | Source |
+|----------------------|--------|
+| `CompanyUifNumber` | `employee.Company.UifNumber` |
+| `CompanySarsPayeNumber` | `employee.Company.SarsPayeNumber` |
+| `EmployeeIdNumber` | `employee.IdNumber` |
+| `EmployeeUifReference` | `employee.UifReference` |
+| `PayslipReference` | `$"PS-{command.PayPeriodYear}-{command.PayPeriodMonth:D2}-{payslip.Id.ToString()[..6].ToUpper()}"` |
+| `IncomeLineItems` | `[("Basic Salary", employee.MonthlyGrossSalary)]` *(extendable)* |

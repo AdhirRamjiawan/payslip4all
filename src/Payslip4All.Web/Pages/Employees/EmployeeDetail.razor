@@ -1,4 +1,4 @@
-@page "/companies/{companyId:guid}/employees/{employeeId:guid}"
+@page "/portal/companies/{companyId:guid}/employees/{employeeId:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -23,8 +23,8 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>@_employee.FirstName @_employee.LastName</h2>
             <div class="d-flex gap-2">
-                <a href="/companies/@CompanyId/employees/@EmployeeId/edit" class="btn btn-outline-secondary">Edit</a>
-                <a href="/companies/@CompanyId/employees/@EmployeeId/payslips/generate" class="btn btn-primary">Generate Payslip</a>
+                <a href="/portal/companies/@CompanyId/employees/@EmployeeId/edit" class="btn btn-outline-secondary">Edit</a>
+                <a href="/portal/companies/@CompanyId/employees/@EmployeeId/payslips/generate" class="btn btn-primary">Generate Payslip</a>
                 <button class="btn btn-outline-danger" @onclick="ShowDeleteConfirm">Delete</button>
             </div>
         </div>
@@ -52,7 +52,7 @@
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>Loans (@_loans.Count)</h4>
-            <a href="/companies/@CompanyId/employees/@EmployeeId/loans/create" class="btn btn-sm btn-outline-primary">+ Add Loan</a>
+            <a href="/portal/companies/@CompanyId/employees/@EmployeeId/loans/create" class="btn btn-sm btn-outline-primary">+ Add Loan</a>
         </div>
 
         @if (_loans.Any())
@@ -71,7 +71,7 @@
                                 <td>R @loan.MonthlyDeductionAmount.ToString("N2")</td>
                                 <td>@loan.TermsCompleted / @loan.NumberOfTerms</td>
                                 <td><span class="badge @(loan.Status == "Active" ? "bg-success" : "bg-secondary")">@loan.Status</span></td>
-                                <td><a href="/companies/@CompanyId/employees/@EmployeeId/loans/@loan.Id/edit" class="btn btn-xs btn-outline-secondary btn-sm">Edit</a></td>
+                                <td><a href="/portal/companies/@CompanyId/employees/@EmployeeId/loans/@loan.Id/edit" class="btn btn-xs btn-outline-secondary btn-sm">Edit</a></td>
                             </tr>
                         }
                     </tbody>
@@ -130,7 +130,7 @@
         try
         {
             var userId = await GetUserIdAsync();
-            if (!userId.HasValue) { Nav.NavigateTo("/login"); return; }
+            if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
 
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
             if (_employee == null) { Nav.NavigateTo($"/portal/companies/{CompanyId}"); return; }
