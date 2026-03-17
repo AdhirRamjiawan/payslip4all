@@ -1,5 +1,5 @@
 ---
-description: "Task list — Modernise PDF Payslip Layout (001)"
+description: "Task list — Modernise PDF Payslip Layout + On-the-Fly PDF Generation (001)"
 ---
 
 # Tasks: Modernise PDF Payslip Layout
@@ -10,7 +10,9 @@ description: "Task list — Modernise PDF Payslip Layout (001)"
 **Feature**: Replace the flat-text `PdfGenerationService` with a structured, tabular QuestPDF layout
 that clearly separates six visual sections of a South-African payslip. The `PayslipDocument` record
 is extended with six new fields for SA compliance. `Company` gains two optional fields (`UifNumber`,
-`SarsPayeNumber`) backed by an EF Core migration.
+`SarsPayeNumber`) backed by an EF Core migration. Phase 6 removes the `PdfContent` BLOB column
+from the `Payslips` table — PDF documents are now generated on the fly at download time from stored
+numeric payslip data, eliminating binary blob storage in the database.
 
 **Tests**: Per constitution Principle I (TDD), tests are **REQUIRED** for all features in this
 project (xUnit for unit tests). Test tasks MUST be written and confirmed failing before any
@@ -150,9 +152,45 @@ the dev database, and a manual visual check of the generated PDF (constitution P
 - [X] T020 [P] Run `dotnet build --warnaserror` across the entire solution from the repo root and confirm zero build warnings and zero errors — resolve any CS warnings introduced by new properties or constructor changes
 - [X] T021 [P] Run `dotnet test` from the repo root and confirm all tests pass, including the new `PdfGenerationServiceTests` and the updated `PdfBenchmarkTests` (median < 500 ms for single-run guard in T008 and < 3 000 ms median in the benchmark)
 - [X] T022 Apply the `AddCompanyUifAndSarsFields` migration to the local SQLite dev database by running `dotnet ef database update --project src/Payslip4All.Infrastructure --startup-project src/Payslip4All.Web` and confirm `Companies` table now contains `UifNumber` and `SarsPayeNumber` columns (inspect via SQLite browser or `dotnet ef dbcontext info`)
-- [ ] T023 **Manual Test Gate** (constitution Principle VI): start the app with `dotnet run --project src/Payslip4All.Web`, sign in as a registered employer, edit a company and enter a UIF reference and SARS PAYE number, navigate to an employee, generate a payslip for the current month, download the PDF, open it and visually confirm: (1) Header shows company name and pay period reference, (2) Employer Details shows UIF/SARS values, (3) Employee Details shows ID number, start date, UIF reference, (4) Income Table shows Basic Salary and Gross Earnings rows, (5) Deductions Table shows UIF row and any loan rows, (6) Net Pay band is prominent and shows correct net pay and payment date with footer text — mark T023 complete only when all six sections render correctly on screen
+- [X] T023 **Manual Test Gate** (constitution Principle VI): start the app with `dotnet run --project src/Payslip4All.Web`, sign in as a registered employer, edit a company and enter a UIF reference and SARS PAYE number, navigate to an employee, generate a payslip for the current month, download the PDF, open it and visually confirm: (1) Header shows company name and pay period reference, (2) Employer Details shows UIF/SARS values, (3) Employee Details shows ID number, start date, UIF reference, (4) Income Table shows Basic Salary and Gross Earnings rows, (5) Deductions Table shows UIF row and any loan rows, (6) Net Pay band is prominent and shows correct net pay and payment date with footer text — mark T023 complete only when all six sections render correctly on screen
 
 **Checkpoint**: All automated tests green. Migration applied. PDF visually validated. Feature complete.
+
+---
+
+## Phase 6: PDF On-the-Fly Generation (Remove `PdfContent` Blob)
+
+**Purpose**: Stop storing PDF binary data in the database. Instead, store only the numeric payslip
+data and regenerate the PDF document on demand at download time. This reduces database storage
+significantly and keeps the DB row lean.
+
+**Independent Test**: Generate a payslip, then call the download endpoint — assert a valid PDF
+is returned. Confirm the `Payslips` table no longer contains a `PdfContent` column after the
+migration runs.
+
+**Acceptance criteria tied to spec.md**: Satisfies US4 scenario 2 (correctly formatted PDF
+produced on download). Improves on FR-020 (payslip record stores data, not rendered output).
+
+### Tests for Phase 6 (REQUIRED — TDD)
+
+> **MANDATORY**: Confirm updated tests are **red** before touching implementation files.
+> The mapping tests previously on `GeneratePayslipAsync` move to `GetPdfAsync` because that
+> is now where `PayslipDocument` is constructed.
+
+- [X] T024 [P] [US4] Update `GetPdfAsync_ExistingPayslip_ReturnsPdfBytes` in `tests/Payslip4All.Application.Tests/Services/PayslipGenerationServiceTests.cs` to set up a `Payslip` with a populated `Employee` + `Company`, mock `_mockPdfService.GeneratePayslip` to return `new byte[] { 1, 2, 3 }`, call `GetPdfAsync`, and assert the result is non-null with length 3 — verifies on-the-fly generation path
+- [X] T025 [P] [US4] Migrate the seven `GeneratePayslipAsync_Maps*` tests in `tests/Payslip4All.Application.Tests/Services/PayslipGenerationServiceTests.cs` to `GetPdfAsync_Maps*` — each test sets up a saved `Payslip` (via `BuildSavedPayslip` helper) and a mock `GetByIdAsync`, calls `GetPdfAsync`, and captures the `PayslipDocument` passed to `_mockPdfService.GeneratePayslip` to assert field mapping: `CompanyUifNumber`, `CompanySarsPayeNumber`, `EmployeeIdNumber`, `EmployeeStartDate`, `EmployeeUifReference`, `PaymentDate` (last calendar day), and PaymentDate leap-year edge case
+
+### Implementation for Phase 6
+
+- [X] T026 [US4] Remove `public byte[]? PdfContent { get; set; }` from `src/Payslip4All.Domain/Entities/Payslip.cs` — the property is no longer needed; PDF bytes are generated on demand
+- [X] T027 [US4] Update `GeneratePayslipAsync` in `src/Payslip4All.Application/Services/PayslipGenerationService.cs` — delete the `PayslipDocument` construction block and the `payslip.PdfContent = _pdfService.GeneratePayslip(doc);` line so no PDF is generated at save time; remove the now-unused `_mockPdfService` setup from `GeneratePayslipAsync_ValidEmployee_ReturnsSuccessAndSaves` test
+- [X] T028 [US4] Rewrite `GetPdfAsync` in `src/Payslip4All.Application/Services/PayslipGenerationService.cs` — load the payslip via `_payslipRepo.GetByIdAsync` (which already includes `Employee → Company` and `LoanDeductions`), construct `PayslipDocument` from stored data, call `_pdfService.GeneratePayslip(doc)`, and return the result; return `null` if payslip not found
+- [X] T029 [US4] Generate EF Core migration `RemovePdfContentColumn` by running `dotnet ef migrations add RemovePdfContentColumn --project src/Payslip4All.Infrastructure --startup-project src/Payslip4All.Web` — confirm the migration contains `migrationBuilder.DropColumn(name: "PdfContent", table: "Payslips")` with a reversible `Down` that re-adds the `BLOB` column
+- [X] T030 Apply `RemovePdfContentColumn` migration to the local SQLite dev database by running `dotnet ef database update --project src/Payslip4All.Infrastructure --startup-project src/Payslip4All.Web` and confirm the `Payslips` table no longer has a `PdfContent` column
+- [X] T031 **Manual Test Gate** (constitution Principle VI): start the app with `dotnet run --project src/Payslip4All.Web`, sign in as a registered employer, navigate to an existing employee's payslip history, click "Download PDF" on any payslip, open the downloaded file and confirm: (1) a valid PDF opens (not an error page or empty file), (2) all six sections are present — Header, Employer Details, Employee Details, Income Table, Deductions Table, Net Pay band — (3) the correct net pay and payment date appear in the Net Pay band — mark T031 complete only when a real browser download is verified post-migration
+
+**Checkpoint**: `PdfContent` column dropped. `dotnet build --warnaserror` is green. `dotnet test`
+is fully green across all projects. Download endpoint still returns a valid PDF. No blob data stored in the database.
 
 ---
 
@@ -166,6 +204,7 @@ Phase 1 (Setup)
         ├─→ Phase 3 (US2: Company UIF/SARS fields) — independent of Phase 4
         └─→ Phase 4 (US4: Structured PDF Layout) — independent of Phase 3
               └─→ Phase 5 (Polish & Manual Test Gate)
+                    └─→ Phase 6 (PDF on-the-fly: remove PdfContent blob)
 ```
 
 ### User Story Dependencies
@@ -213,6 +252,13 @@ T019 [P] (PdfBenchmarkTests.cs — different file, depends on T010)
 - T020 [P] and T021 [P] are parallel (read-only build/test checks)
 - T022 and T023 are sequential (T022 applies migration; T023 manual test requires running app)
 
+**Phase 6**:
+- T024 [P] and T025 [P] are parallel (both are test-only edits in the same file but independent test methods)
+- T026, T027, T028 are sequential (T026 removes the property; T027 removes the generation call that referenced it; T028 adds the new construction logic)
+- T029 depends on T026 (migration scaffold reads the current model, which must not have `PdfContent`)
+- T030 depends on T029 (applying the migration requires the file to exist)
+- T031 depends on T030 (Manual Test Gate: requires the migration to be applied before the live download test)
+
 ---
 
 ## Parallel Example: Phase 4 (US4)
@@ -253,6 +299,7 @@ File: tests/Payslip4All.Infrastructure.Tests/Services/PdfBenchmarkTests.cs
 | 1 — PDF layout | Phase 1 + 2 + 4 | Structured 6-section PDF; new fields default to null |
 | 2 — UIF/SARS data | Phase 3 | Employer can persist and display UIF/SARS numbers on PDF |
 | 3 — Full validation | Phase 5 | Green CI + manual sign-off; feature declared done |
+| 4 — DB lean | Phase 6 | No blob stored; PDF generated on demand; `PdfContent` column dropped |
 
 ### Parallel Team Strategy
 
@@ -266,15 +313,16 @@ With two developers:
 
 | Metric | Value |
 |--------|-------|
-| Total tasks | 23 |
+| Total tasks | 31 |
 | Phase 2 (Foundational) | 2 tasks |
 | Phase 3 — US2 | 4 tasks (1 test + 3 impl) |
 | Phase 4 — US4 | 12 tasks (2 tests + 10 impl) |
 | Phase 5 (Polish + Gate) | 4 tasks |
-| Tasks with [P] marker | 9 |
-| Files modified (src) | 5 |
+| Phase 6 — PDF on-the-fly | 8 tasks (2 tests + 5 impl + 1 gate) |
+| Tasks with [P] marker | 11 |
+| Files modified (src) | 6 |
 | Files modified/created (tests) | 3 |
-| New EF Core migration | 1 (`AddCompanyUifAndSarsFields`) |
+| New EF Core migrations | 2 (`AddCompanyUifAndSarsFields`, `RemovePdfContentColumn`) |
 | New `PayslipDocument` fields | 6 |
 | PDF sections implemented | 6 |
 
@@ -289,9 +337,11 @@ Run Phase 3 immediately after for full SA compliance data surfacing.
 - `[US2]` label = tasks that extend Company Management data model
 - `[US4]` label = tasks that deliver or support the PDF layout output
 - Each phase is independently completable and testable
-- Constitution Principle I (TDD): T008 and T009 MUST be red before T010 begins
-- Constitution Principle V (EF migration): T007 must be committed alongside T005 + T006
+- Constitution Principle I (TDD): T008 and T009 MUST be red before T010 begins; T024/T025 MUST be confirmed before T026 begins
+- Constitution Principle V (EF migration): T007 must be committed alongside T005 + T006; T029 must be committed alongside T026–T028
 - Constitution Principle VI (Manual Test Gate): T023 is non-optional and cannot be auto-generated
 - `dotnet ef` commands require the EF Core tools package; run from the repo root
 - QuestPDF `LicenseType.Community` must be set before any document is generated (already in `PdfGenerationService`; also set in test constructors)
 - PDF font: QuestPDF defaults to Lato (bundled); no system font dependency — print-safe on all platforms
+- Phase 6 `GetPdfAsync` relies on `PayslipRepository.GetByIdAsync` already including `Employee → Company` and `LoanDeductions` via `Include` — no repository changes needed
+- Phase 6 does not change the `IPdfGenerationService` or `IPayslipService` interfaces — the `GetPdfAsync` signature is unchanged; only the implementation body differs

@@ -1,8 +1,8 @@
 # Data Model: Payslip Generation System (001)
 
 **Phase**: 1 — Design  
-**Date**: 2026-03-15  
-**Status**: Complete
+**Date**: 2026-03-15 | **Last amended**: 2026-03-17  
+**Status**: Complete — reconciled with Phase 6 implementation (C1–C4, I1, I2 from analysis report)
 
 ---
 
@@ -235,7 +235,7 @@ builder.Entity<EmployeeLoan>(e =>
 
 Represents the official earnings record for one Employee for one calendar month.
 
-> **All 13 fields enumerated** (M1 fix — previously missing `CompanyId`):
+> **11 fields** (ownership queries traverse `Employee → Company`; no denormalised `CompanyId` needed):
 
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
@@ -247,11 +247,13 @@ Represents the official earnings record for one Employee for one calendar month.
 | `TotalLoanDeductions` | `decimal` | Non-nullable, precision (18,2) | Sum of all `PayslipLoanDeduction.Amount` |
 | `TotalDeductions` | `decimal` | Non-nullable, precision (18,2) | `UifDeduction + TotalLoanDeductions` |
 | `NetPay` | `decimal` | Non-nullable, precision (18,2) | `GrossEarnings − TotalDeductions` (i.e., Gross − UIF − sum of all active loan deductions; see FR-019) |
-| `PdfContent` | `byte[]?` | Nullable | Raw PDF bytes; null until PDF generated successfully |
 | `EmployeeId` | `Guid` | FK → `Employee.Id`, non-nullable | Cascade delete NOT set (FR-015 guards this) |
-| `CompanyId` | `Guid` | FK → `Company.Id`, non-nullable | Denormalised for direct ownership queries without an Employee join |
 | `GeneratedAt` | `DateTimeOffset` | Non-nullable | UTC; when the payslip was created |
 | _PayslipLoanDeduction rows_ | (child entity) | One-to-Many via `PayslipId` | Snapshot of each active loan deduction at generation time |
+
+> **Note on PDF storage**: `PdfContent byte[]` was removed in migration `RemovePdfContentColumn` (Phase 6).
+> PDFs are now generated on the fly at download time from stored numeric data — no binary blob is persisted.
+> Ownership is verified by joining `Payslip → Employee → Company → UserId`.
 
 **Unique Constraint**:
 - `UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear` — enforces one payslip per employee per month (FR-021)
@@ -266,20 +268,14 @@ builder.Entity<Payslip>(e =>
     e.Property(p => p.TotalLoanDeductions).HasPrecision(18, 2).IsRequired();
     e.Property(p => p.TotalDeductions).HasPrecision(18, 2).IsRequired();
     e.Property(p => p.NetPay).HasPrecision(18, 2).IsRequired();
-    e.HasOne<Employee>()
-     .WithMany()
-     .HasForeignKey(p => p.EmployeeId)
-     .OnDelete(DeleteBehavior.Restrict);
-    // CompanyId: denormalised FK for efficient ownership queries
-    e.HasOne<Company>()
-     .WithMany()
-     .HasForeignKey(p => p.CompanyId)
-     .OnDelete(DeleteBehavior.Restrict);
     e.HasIndex(p => p.EmployeeId);
-    e.HasIndex(p => p.CompanyId);
     e.HasIndex(p => new { p.EmployeeId, p.PayPeriodMonth, p.PayPeriodYear })
      .IsUnique()
      .HasDatabaseName("UQ_Payslips_EmployeeId_PayPeriodMonth_PayPeriodYear");
+    e.HasMany(p => p.LoanDeductions)
+     .WithOne()
+     .HasForeignKey(d => d.PayslipId)
+     .OnDelete(DeleteBehavior.Cascade);
 });
 ```
 
@@ -323,13 +319,16 @@ builder.Entity<PayslipLoanDeduction>(e =>
 
 ---
 
-## Migration Names (planned)
+## Migration Names
 
-| Migration | Contents |
-|-----------|----------|
-| `InitialSchema` | All 6 tables: Users, Companies, Employees, EmployeeLoans, Payslips, PayslipLoanDeductions |
+| Migration | Phase | Contents |
+|-----------|-------|----------|
+| `InitialSchema` | 1 | All 6 tables: Users, Companies, Employees, EmployeeLoans, Payslips, PayslipLoanDeductions |
+| `SeedApplicationRoles` | 1 | Seeds `CompanyOwner` and `SiteAdministrator` role constants |
+| `AddCompanyUifAndSarsFields` | 3 | Adds nullable `UifNumber` (max 50) and `SarsPayeNumber` (max 30) columns to `Companies` table |
+| `RemovePdfContentColumn` | 6 | Drops the `PdfContent BLOB` column from `Payslips` table — PDFs are now generated on the fly |
 
-All schema changes are captured as named migrations in `Payslip4All.Infrastructure/Persistence/Migrations/`.
+All schema changes are captured as named migrations in `Payslip4All.Infrastructure/Migrations/`.
 
 ---
 
@@ -357,45 +356,43 @@ QuestPDF renderer.
 
 ### PayslipDocument (Application DTO — extended)
 
-Located at: `src/Payslip4All.Application/Interfaces/IPdfGenerationService.cs`
+Located at: `src/Payslip4All.Application/DTOs/PayslipDocument.cs`
 
-```
-PayslipDocument
-├── CompanyName              : string          [non-null]  Section: Employer Header
-├── CompanyAddress           : string?         [nullable]  Section: Employer Details
-├── CompanyUifNumber         : string?         [nullable]  Section: Employer Details
-├── CompanySarsPayeNumber    : string?         [nullable]  Section: Employer Details
-│
-├── EmployeeName             : string          [non-null]  Section: Employee Details
-├── EmployeeNumber           : string          [non-null]  Section: Employee Details
-├── EmployeeIdNumber         : string?         [nullable]  Section: Employee Details
-├── EmployeeUifReference     : string?         [nullable]  Section: Employee Details
-├── Occupation               : string          [non-null]  Section: Employee Details
-│
-├── PayPeriod                : string          [non-null]  Section: Header subtitle
-├── PayslipReference         : string?         [nullable]  Section: Header metadata
-│
-├── IncomeLineItems          : IReadOnlyList<(string Description, decimal Amount)>
-│                                              [non-null, ≥1 item]  Section: Income Table
-├── GrossEarnings            : decimal         [> 0]       Section: Income Table total
-│
-├── UifDeduction             : decimal         [≥ 0]       Section: Deductions Table
-├── LoanDeductions           : IReadOnlyList<(string Description, decimal Amount)>
-│                                              [non-null, may be empty]  Section: Deductions Table
-├── TotalDeductions          : decimal         [≥ 0]       Section: Deductions Table total
-│
-└── NetPay                   : decimal         [> 0]       Section: Net Pay Summary
+> **Implemented record** (20 constructor parameters — 14 required + 6 optional SA-compliance fields with defaults):
+
+```csharp
+public record PayslipDocument(
+    // ── Core fields (required, positional) ────────────────────────────────
+    string CompanyName,                // Section: Header + Employer Details
+    string? CompanyAddress,            // Section: Employer Details
+    string EmployeeName,               // Section: Employee Details
+    string EmployeeNumber,             // Section: Employee Details
+    string Occupation,                 // Section: Employee Details
+    string PayPeriod,                  // Section: Header subtitle
+    decimal GrossEarnings,             // Section: Income Table total
+    decimal UifDeduction,              // Section: Deductions Table
+    IReadOnlyList<(string Description, decimal Amount)> LoanDeductions,  // Section: Deductions Table
+    decimal TotalDeductions,           // Section: Deductions Table total
+    decimal NetPay,                    // Section: Net Pay Summary
+    // ── SA-compliance fields (optional, defaulted) ────────────────────────
+    string? CompanyUifNumber = null,       // Section: Employer Details
+    string? CompanySarsPayeNumber = null,  // Section: Employer Details
+    string EmployeeIdNumber = "",          // Section: Employee Details (non-null, default "")
+    DateOnly EmployeeStartDate = default,  // Section: Employee Details
+    string? EmployeeUifReference = null,   // Section: Employee Details
+    DateOnly PaymentDate = default         // Section: Net Pay Summary footer
+);
 ```
 
-**Derived / Computed at render time** (not stored on the record):
-- All deduction rows = `[("UIF Contribution", UifDeduction)] + LoanDeductions`
-- `DeductionLineItems` computed in `PdfGenerationService.GetDeductionLineItems()`
+**Field nullability notes**:
+- `EmployeeIdNumber` is `string` (non-nullable) with default `""` — renders as an empty cell if not set
+- All `string?` fields render `"—"` when null in the PDF
+- `LoanDeductions` is always non-null; an empty list means no loan rows are rendered
 
-**Validation rules** enforced by `PdfGenerationService` before render:
+**Validation rules** enforced by `PdfGenerationService` at render time:
 - `GrossEarnings > 0`
-- `IncomeLineItems.Count >= 1`
 - `NetPay > 0`
-- `TotalDeductions = UifDeduction + sum(LoanDeductions)`  *(assertion, not throw)*
+- `TotalDeductions = UifDeduction + sum(LoanDeductions)` *(assertion, not throw)*
 
 ---
 
@@ -443,21 +440,18 @@ PayslipDocument
 
 Two new nullable fields on `Company` (Domain entity — no behaviour change):
 
-| Field | Type | C# | Notes |
-|-------|------|----|-------|
-| `UifNumber` | `string?` | `public string? UifNumber { get; set; }` | Employer UIF registration number |
-| `SarsPayeNumber` | `string?` | `public string? SarsPayeNumber { get; set; }` | SARS PAYE employer reference |
+| Field | Type | C# | Max Length | Notes |
+|-------|------|----|------------|-------|
+| `UifNumber` | `string?` | `public string? UifNumber { get; set; }` | 50 chars | Employer UIF registration number |
+| `SarsPayeNumber` | `string?` | `public string? SarsPayeNumber { get; set; }` | 30 chars | SARS PAYE employer reference |
 
 **EF Core migration**: `AddCompanyUifAndSarsFields`  
 Both columns are nullable `TEXT`; no index required; no cascade impact.
 
 ```csharp
-// OnModelCreating addition (no change to existing entity config)
-builder.Entity<Company>(e =>
-{
-    e.Property(c => c.UifNumber).HasMaxLength(20);
-    e.Property(c => c.SarsPayeNumber).HasMaxLength(20);
-});
+// OnModelCreating addition (appended to existing Company entity config)
+e.Property(c => c.UifNumber).HasMaxLength(50);
+e.Property(c => c.SarsPayeNumber).HasMaxLength(30);
 ```
 
 ---
@@ -480,15 +474,28 @@ These are pure rendering helpers — no business logic; no DI; no DB access.
 
 ---
 
-### Mapping: Domain → PayslipDocument (in PayslipGenerationService)
+### Mapping: Domain → PayslipDocument (in `PayslipGenerationService.GetPdfAsync`)
 
-The table below shows which domain fields map to each new `PayslipDocument` property:
+> **Phase 6 note**: `PayslipDocument` is now constructed in `GetPdfAsync` (on-the-fly at download
+> time) rather than in `GeneratePayslipAsync`. The source data comes from the persisted `Payslip`
+> record and its loaded `Employee → Company` navigation properties.
 
 | PayslipDocument field | Source |
 |----------------------|--------|
-| `CompanyUifNumber` | `employee.Company.UifNumber` |
-| `CompanySarsPayeNumber` | `employee.Company.SarsPayeNumber` |
+| `CompanyName` | `payslip.Employee.Company?.Name ?? "Company"` |
+| `CompanyAddress` | `payslip.Employee.Company?.Address` |
+| `CompanyUifNumber` | `payslip.Employee.Company?.UifNumber` |
+| `CompanySarsPayeNumber` | `payslip.Employee.Company?.SarsPayeNumber` |
+| `EmployeeName` | `$"{employee.FirstName} {employee.LastName}"` |
+| `EmployeeNumber` | `employee.EmployeeNumber` |
 | `EmployeeIdNumber` | `employee.IdNumber` |
 | `EmployeeUifReference` | `employee.UifReference` |
-| `PayslipReference` | `$"PS-{command.PayPeriodYear}-{command.PayPeriodMonth:D2}-{payslip.Id.ToString()[..6].ToUpper()}"` |
-| `IncomeLineItems` | `[("Basic Salary", employee.MonthlyGrossSalary)]` *(extendable)* |
+| `Occupation` | `employee.Occupation` |
+| `PayPeriod` | `$"{monthName} {payslip.PayPeriodYear}"` |
+| `GrossEarnings` | `payslip.GrossEarnings` |
+| `UifDeduction` | `payslip.UifDeduction` |
+| `LoanDeductions` | `payslip.LoanDeductions.Select(d => (d.Description, d.Amount))` |
+| `TotalDeductions` | `payslip.TotalDeductions` |
+| `NetPay` | `payslip.NetPay` |
+| `EmployeeStartDate` | `employee.StartDate` |
+| `PaymentDate` | `new DateOnly(year, month, DateTime.DaysInMonth(year, month))` |

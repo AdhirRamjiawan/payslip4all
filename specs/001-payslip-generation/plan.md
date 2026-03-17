@@ -31,7 +31,7 @@ details, `Table` API for income and deductions, `Row` + `Background` for the net
 
 **Language/Version**: C# 12 / .NET 8 (LTS)  
 **Primary Dependencies**: QuestPDF 2024.10.4 (already in `Payslip4All.Infrastructure.csproj`); no new NuGet packages required  
-**Storage**: SQLite (dev) / MySQL (prod) via EF Core — no schema changes for the PDF layout itself; optional `Company` fields (`UifNumber`, `SarsPayeNumber`) require a new EF Core migration  
+**Storage**: SQLite (dev) / MySQL (prod) via EF Core — no schema changes for the PDF layout itself; optional `Company` fields (`UifNumber`, `SarsPayeNumber`) require migration `AddCompanyUifAndSarsFields`. Phase 6 adds migration `RemovePdfContentColumn` which drops the `PdfContent BLOB` from the `Payslips` table — PDFs are now generated on the fly at download time from stored numeric data, eliminating binary blob storage entirely.
 **Testing**: xUnit + Moq (unit tests for `PdfGenerationService` validating byte-array output and document structure; bUnit not needed — no new Blazor components for this feature)  
 **Target Platform**: PDF file generation on the server; delivered as a byte array via the existing `IPdfGenerationService` contract  
 **Project Type**: Internal service (Infrastructure layer); surface area is the `IPdfGenerationService` interface in Application  
@@ -51,14 +51,18 @@ details, `Table` API for income and deductions, `Row` + `Background` for the net
 | II | Clean Architecture | Touches Infrastructure (`PdfGenerationService`), Application (`PayslipDocument` DTO + optional `Company` fields); all inward-only dependencies preserved; still exactly 4 projects | ✅ |
 | III | Blazor Web App | No new Razor components; existing download button already wires to `IPayslipService.GetPdfAsync` — no UI change needed for this scope | ✅ |
 | IV | Basic Authentication | No new pages or service methods; existing ownership filtering in `PayslipGenerationService` unchanged | ✅ |
-| V | Database Support | If `Company` gains `UifNumber` / `SarsPayeNumber` fields, an EF Core migration (`AddCompanyUifAndSarsFields`) is required and MUST be committed alongside the code | ✅ |
-
-> All gates pass. No exceptions required.
+| V | Database Support | `AddCompanyUifAndSarsFields` migration adds two nullable `Company` columns. `RemovePdfContentColumn` migration (Phase 6) drops `PdfContent BLOB` from `Payslips`. Both migrations are committed alongside the code changes that require them. | ✅ |
+| VI | Manual Test Gate | T023 (Phase 5) — PDF layout visually verified in browser. T031 (Phase 6) — on-the-fly download verified post-`RemovePdfContentColumn` migration. Both gates passed 2026-03-17. | ✅ |
 
 **Post-Design Re-check** (after Phase 1): ✅ No new violations introduced. `PayslipDocument` is a
 DTO/record in the Application layer — it has no EF Core dependency. The two new nullable `Company`
 fields are optional and additive; the migration is purely `ALTER TABLE ADD COLUMN` compatible with
 both SQLite and MySQL.
+
+**Post-Phase 6 re-check** (2026-03-17): ✅ No new constitution violations introduced. `GetPdfAsync`
+reconstructs `PayslipDocument` from stored data and calls `_pdfService.GeneratePayslip` — Clean
+Architecture layer boundaries remain intact. The `IPdfGenerationService` and `IPayslipService`
+method signatures are unchanged.
 
 ---
 
@@ -70,12 +74,12 @@ both SQLite and MySQL.
 specs/001-payslip-generation/
 ├── plan.md              ← This file
 ├── research.md          ← Phase 0: QuestPDF API, SA compliance, typography
-├── data-model.md        ← Phase 1: PDF layout model + extended PayslipDocument
+├── data-model.md        ← Phase 1 + Phase 6: PDF layout model + entity reconciliation
 ├── quickstart.md        ← Phase 1: How to build & visually test the PDF
 ├── contracts/
 │   ├── http-endpoints.md   ← Existing (payslip download endpoint)
 │   └── ui-contracts.md     ← Existing (Blazor page contracts)
-└── tasks.md             ← Phase 2 output (speckit.tasks — not yet created)
+└── tasks.md             ← Phases 1–6 task list (31/31 tasks complete ✅)
 ```
 
 ### Source Code
@@ -84,29 +88,36 @@ specs/001-payslip-generation/
 src/
 ├── Payslip4All.Domain/
 │   └── Entities/
-│       └── Company.cs            ← +UifNumber?, +SarsPayeNumber? (optional)
+│       ├── Company.cs            ← +UifNumber? (max 50), +SarsPayeNumber? (max 30)
+│       └── Payslip.cs            ← PdfContent byte[]? removed (Phase 6)
 │
 ├── Payslip4All.Application/
-│   └── Interfaces/
-│       └── IPdfGenerationService.cs   ← PayslipDocument record extended
+│   ├── DTOs/
+│   │   └── PayslipDocument.cs    ← PayslipDocument record (moved from IPdfGenerationService.cs; +6 SA fields)
+│   └── Services/
+│       └── PayslipGenerationService.cs  ← GetPdfAsync now builds PayslipDocument on the fly (Phase 6)
 │
 └── Payslip4All.Infrastructure/
     ├── Services/
-    │   └── PdfGenerationService.cs    ← Full rewrite: tabular QuestPDF layout
+    │   └── PdfGenerationService.cs    ← Full rewrite: tabular QuestPDF layout (6 sections)
     └── Migrations/
-        └── <timestamp>_AddCompanyUifAndSarsFields.cs   ← New migration
+        ├── <timestamp>_AddCompanyUifAndSarsFields.cs   ← Phase 3: UIF/SARS columns on Company
+        └── <timestamp>_RemovePdfContentColumn.cs       ← Phase 6: drops PdfContent BLOB from Payslips
 
 tests/
 ├── Payslip4All.Domain.Tests/          ← No changes required
-├── Payslip4All.Application.Tests/     ← PayslipDocument mapping tests
+├── Payslip4All.Application.Tests/
+│   └── Services/
+│       └── PayslipGenerationServiceTests.cs  ← PayslipDocument mapping tests (GetPdfAsync; Phase 6)
 └── Payslip4All.Infrastructure.Tests/
     └── Services/
-        └── PdfGenerationServiceTests.cs   ← NEW: byte-array + structural tests
+        ├── PdfGenerationServiceTests.cs   ← Byte-array + structural tests
+        └── PdfBenchmarkTests.cs           ← Performance guard (< 500 ms / < 3 000 ms median)
 ```
 
-**Structure Decision**: Clean Architecture Option 2 (web application layers) — only
-Infrastructure and Application layers are modified. No Domain entity logic changes; the two
-new `Company` fields are purely storage additions with no behaviour.
+**Structure Decision**: Clean Architecture Option 2 (web application layers) — Domain, Application,
+and Infrastructure layers modified. `Payslip4All.Web` and `Payslip4All.Domain.Tests` are
+untouched. All dependencies remain strictly inward-only.
 
 ---
 

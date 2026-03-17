@@ -9,12 +9,11 @@ public class Payslip
     public decimal TotalLoanDeductions { get; set; }
     public decimal TotalDeductions { get; set; }
     public decimal NetPay { get; set; }
-    public byte[]? PdfContent { get; set; }
     public Guid EmployeeId { get; set; }
     public DateTimeOffset GeneratedAt { get; private set; }
     public List<PayslipLoanDeduction> LoanDeductions { get; set; } = new();
     public Employee Employee { get; set; } = null!;
-    
+
     public Payslip()
     {
         Id = Guid.NewGuid();

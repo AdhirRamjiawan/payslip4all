@@ -99,28 +99,6 @@ public class PayslipGenerationService : IPayslipService
             loan.IncrementTermsCompleted();
         }
 
-        var monthName = new System.Globalization.DateTimeFormatInfo().GetMonthName(command.PayPeriodMonth);
-        var doc = new PayslipDocument(
-            CompanyName: employee.Company?.Name ?? "Company",
-            CompanyAddress: employee.Company?.Address,
-            EmployeeName: $"{employee.FirstName} {employee.LastName}",
-            EmployeeNumber: employee.EmployeeNumber,
-            Occupation: employee.Occupation,
-            PayPeriod: $"{monthName} {command.PayPeriodYear}",
-            GrossEarnings: employee.MonthlyGrossSalary,
-            UifDeduction: uif,
-            LoanDeductions: activeLoans.Select(l => (l.Description, l.MonthlyDeductionAmount)).ToList(),
-            TotalDeductions: totalDeductions,
-            NetPay: netPay,
-            CompanyUifNumber: employee.Company?.UifNumber,
-            CompanySarsPayeNumber: employee.Company?.SarsPayeNumber,
-            EmployeeIdNumber: employee.IdNumber,
-            EmployeeStartDate: employee.StartDate,
-            EmployeeUifReference: employee.UifReference,
-            PaymentDate: new DateOnly(command.PayPeriodYear, command.PayPeriodMonth,
-                DateTime.DaysInMonth(command.PayPeriodYear, command.PayPeriodMonth))
-        );
-        payslip.PdfContent = _pdfService.GeneratePayslip(doc);
 
         await _payslipRepo.AddAsync(payslip);
 
@@ -141,7 +119,33 @@ public class PayslipGenerationService : IPayslipService
     public async Task<byte[]?> GetPdfAsync(Guid payslipId, Guid userId)
     {
         var payslip = await _payslipRepo.GetByIdAsync(payslipId, userId);
-        return payslip?.PdfContent;
+        if (payslip == null) return null;
+
+        var employee = payslip.Employee;
+        var monthName = new System.Globalization.DateTimeFormatInfo().GetMonthName(payslip.PayPeriodMonth);
+        var doc = new PayslipDocument(
+            CompanyName: employee.Company?.Name ?? "Company",
+            CompanyAddress: employee.Company?.Address,
+            EmployeeName: $"{employee.FirstName} {employee.LastName}",
+            EmployeeNumber: employee.EmployeeNumber,
+            Occupation: employee.Occupation,
+            PayPeriod: $"{monthName} {payslip.PayPeriodYear}",
+            GrossEarnings: payslip.GrossEarnings,
+            UifDeduction: payslip.UifDeduction,
+            LoanDeductions: payslip.LoanDeductions
+                .Select(d => (d.Description, d.Amount))
+                .ToList<(string, decimal)>(),
+            TotalDeductions: payslip.TotalDeductions,
+            NetPay: payslip.NetPay,
+            CompanyUifNumber: employee.Company?.UifNumber,
+            CompanySarsPayeNumber: employee.Company?.SarsPayeNumber,
+            EmployeeIdNumber: employee.IdNumber,
+            EmployeeStartDate: employee.StartDate,
+            EmployeeUifReference: employee.UifReference,
+            PaymentDate: new DateOnly(payslip.PayPeriodYear, payslip.PayPeriodMonth,
+                DateTime.DaysInMonth(payslip.PayPeriodYear, payslip.PayPeriodMonth))
+        );
+        return _pdfService.GeneratePayslip(doc);
     }
 
     private static PayslipDto ToDto(Payslip p) => new()

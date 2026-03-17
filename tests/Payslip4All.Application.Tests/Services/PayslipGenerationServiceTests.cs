@@ -102,7 +102,6 @@ public class PayslipGenerationServiceTests
 
         _mockPayslipRepo.Setup(r => r.ExistsAsync(employeeId, 1, 2024)).ReturnsAsync(false);
         _mockEmployeeRepo.Setup(r => r.GetByIdWithLoansAsync(employeeId, userId)).ReturnsAsync(employee);
-        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>())).Returns(new byte[] { 1, 2, 3 });
         _mockPayslipRepo.Setup(r => r.AddAsync(It.IsAny<Payslip>())).Returns(Task.CompletedTask);
         _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
 
@@ -142,16 +141,29 @@ public class PayslipGenerationServiceTests
     {
         var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
+        var company = new Company { Name = "Test Co", UserId = userId };
+        var employee = new Employee
+        {
+            FirstName = "John", LastName = "Doe", IdNumber = "123", EmployeeNumber = "E001",
+            Occupation = "Dev", MonthlyGrossSalary = 10000m, CompanyId = company.Id
+        };
+        employee.Company = company;
         var payslip = new Payslip
         {
-            EmployeeId = Guid.NewGuid(), PdfContent = new byte[] { 1, 2, 3 }
+            EmployeeId = employee.Id, PayPeriodMonth = 1, PayPeriodYear = 2024,
+            GrossEarnings = 10000m, UifDeduction = 100m, NetPay = 9900m,
+            TotalDeductions = 100m, TotalLoanDeductions = 0m
         };
+        payslip.Employee = employee;
+
         _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>())).Returns(new byte[] { 1, 2, 3 });
 
         var result = await _service.GetPdfAsync(payslipId, userId);
 
         Assert.NotNull(result);
         Assert.Equal(3, result!.Length);
+        _mockPdfService.Verify(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()), Times.Once);
     }
 
     [Fact]
@@ -185,211 +197,164 @@ public class PayslipGenerationServiceTests
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // T009 — New mapping tests for the 6 new PayslipDocument fields
-    // Written FIRST (TDD) — will be RED until T010 + T018 are implemented.
+    // T009 — Mapping tests for PayslipDocument fields.
+    // PDF construction now lives in GetPdfAsync (on-the-fly generation).
     // ──────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task GeneratePayslipAsync_MapsCompanyUifNumberToPayslipDocument()
+    private Payslip BuildSavedPayslip(Employee employee, int month, int year)
     {
-        // Arrange
-        var employeeId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        var company = new Company
+        var uif = Payslip4All.Domain.Services.PayslipCalculator.CalculateUifDeduction(employee.MonthlyGrossSalary);
+        var p = new Payslip
         {
-            Name = "UIF Corp", UserId = userId,
-            UifNumber = "U999888",
-            SarsPayeNumber = "SARS-001"
+            EmployeeId = employee.Id,
+            PayPeriodMonth = month, PayPeriodYear = year,
+            GrossEarnings = employee.MonthlyGrossSalary,
+            UifDeduction = uif, TotalLoanDeductions = 0m,
+            TotalDeductions = uif, NetPay = employee.MonthlyGrossSalary - uif
         };
-        var employee = CreateFullEmployee(company, employeeId);
+        p.Employee = employee;
+        return p;
+    }
 
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
+    [Fact]
+    public async Task GetPdfAsync_MapsCompanyUifNumberToPayslipDocument()
+    {
+        var payslipId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var company = new Company { Name = "UIF Corp", UserId = userId, UifNumber = "U999888", SarsPayeNumber = "SARS-001" };
+        var employee = CreateFullEmployee(company);
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
         PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
 
-        // Act
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        await _service.GetPdfAsync(payslipId, userId);
 
-        // Assert
-        Assert.True(result.Success, result.ErrorMessage);
         Assert.NotNull(capturedDoc);
         Assert.Equal("U999888", capturedDoc!.CompanyUifNumber);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_MapsCompanySarsPayeNumberToPayslipDocument()
+    public async Task GetPdfAsync_MapsCompanySarsPayeNumberToPayslipDocument()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var company = new Company
-        {
-            Name = "SARS Corp", UserId = userId,
-            UifNumber = null,
-            SarsPayeNumber = "7654321A"
-        };
-        var employee = CreateFullEmployee(company, employeeId);
+        var company = new Company { Name = "SARS Corp", UserId = userId, UifNumber = null, SarsPayeNumber = "7654321A" };
+        var employee = CreateFullEmployee(company);
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
         PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
 
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        await _service.GetPdfAsync(payslipId, userId);
 
-        Assert.True(result.Success, result.ErrorMessage);
         Assert.NotNull(capturedDoc);
         Assert.Equal("7654321A", capturedDoc!.CompanySarsPayeNumber);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_MapsEmployeeIdNumberToPayslipDocument()
+    public async Task GetPdfAsync_MapsEmployeeIdNumberToPayslipDocument()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var company = new Company { Name = "ID Corp", UserId = userId };
-        var employee = CreateFullEmployee(company, employeeId, idNumber: "9001015009087");
+        var employee = CreateFullEmployee(company, idNumber: "9001015009087");
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
         PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
 
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        await _service.GetPdfAsync(payslipId, userId);
 
-        Assert.True(result.Success, result.ErrorMessage);
         Assert.NotNull(capturedDoc);
         Assert.Equal("9001015009087", capturedDoc!.EmployeeIdNumber);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_MapsEmployeeStartDateToPayslipDocument()
+    public async Task GetPdfAsync_MapsEmployeeStartDateToPayslipDocument()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var startDate = new DateOnly(2021, 3, 1);
         var company = new Company { Name = "Start Corp", UserId = userId };
-        var employee = CreateFullEmployee(company, employeeId, startDate: startDate);
+        var employee = CreateFullEmployee(company, startDate: startDate);
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
         PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
 
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        await _service.GetPdfAsync(payslipId, userId);
 
-        Assert.True(result.Success, result.ErrorMessage);
         Assert.NotNull(capturedDoc);
         Assert.Equal(startDate, capturedDoc!.EmployeeStartDate);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_MapsEmployeeUifReferenceToPayslipDocument()
+    public async Task GetPdfAsync_MapsEmployeeUifReferenceToPayslipDocument()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var company = new Company { Name = "UIF Ref Corp", UserId = userId };
-        var employee = CreateFullEmployee(company, employeeId, uifReference: "UIF-EMP-001");
+        var employee = CreateFullEmployee(company, uifReference: "UIF-EMP-001");
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
         PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
 
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        await _service.GetPdfAsync(payslipId, userId);
 
-        Assert.True(result.Success, result.ErrorMessage);
         Assert.NotNull(capturedDoc);
         Assert.Equal("UIF-EMP-001", capturedDoc!.EmployeeUifReference);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_PaymentDateIsLastCalendarDayOfPayPeriodMonth()
+    public async Task GetPdfAsync_PaymentDateIsLastCalendarDayOfPayPeriodMonth()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var company = new Company { Name = "Payment Corp", UserId = userId };
-        var employee = CreateFullEmployee(company, employeeId);
-
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
-        PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
-
+        var employee = CreateFullEmployee(company);
         // January 2025 — last day is 31st
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 1, PayPeriodYear = 2025, OverwriteExisting = false
-        });
+        var payslip = BuildSavedPayslip(employee, 1, 2025);
 
-        Assert.True(result.Success, result.ErrorMessage);
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
+        PayslipDocument? capturedDoc = null;
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
+
+        await _service.GetPdfAsync(payslipId, userId);
+
         Assert.NotNull(capturedDoc);
         Assert.Equal(new DateOnly(2025, 1, 31), capturedDoc!.PaymentDate);
     }
 
     [Fact]
-    public async Task GeneratePayslipAsync_PaymentDateIsLastDayOfFebruary_LeapYear()
+    public async Task GetPdfAsync_PaymentDateIsLastDayOfFebruary_LeapYear()
     {
-        var employeeId = Guid.NewGuid();
+        var payslipId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var company = new Company { Name = "Leap Corp", UserId = userId };
-        var employee = CreateFullEmployee(company, employeeId);
-
-        SetupGeneratePayslipMocks(employeeId, userId, employee);
-
-        PayslipDocument? capturedDoc = null;
-        _mockPdfService
-            .Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
-            .Callback<PayslipDocument>(d => capturedDoc = d)
-            .Returns(new byte[] { 1 });
-
+        var employee = CreateFullEmployee(company);
         // February 2024 — leap year, last day is 29th
-        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
-        {
-            EmployeeId = employeeId, UserId = userId,
-            PayPeriodMonth = 2, PayPeriodYear = 2024, OverwriteExisting = false
-        });
+        var payslip = BuildSavedPayslip(employee, 2, 2024);
 
-        Assert.True(result.Success, result.ErrorMessage);
+        _mockPayslipRepo.Setup(r => r.GetByIdAsync(payslipId, userId)).ReturnsAsync(payslip);
+        PayslipDocument? capturedDoc = null;
+        _mockPdfService.Setup(p => p.GeneratePayslip(It.IsAny<PayslipDocument>()))
+            .Callback<PayslipDocument>(d => capturedDoc = d).Returns(new byte[] { 1 });
+
+        await _service.GetPdfAsync(payslipId, userId);
+
         Assert.NotNull(capturedDoc);
         Assert.Equal(new DateOnly(2024, 2, 29), capturedDoc!.PaymentDate);
     }
