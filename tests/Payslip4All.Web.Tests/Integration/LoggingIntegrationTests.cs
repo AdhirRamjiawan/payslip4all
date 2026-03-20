@@ -37,11 +37,13 @@ public class LoggingIntegrationTests : IDisposable
             {
                 var overrides = new Dictionary<string, string?>
                 {
-                    ["Serilog:WriteTo:0:Name"] = "File",
-                    ["Serilog:WriteTo:0:Args:path"] = resolvedPath,
-                    ["Serilog:WriteTo:0:Args:rollingInterval"] = "Day",
-                    ["Serilog:WriteTo:0:Args:retainedFileCountLimit"] = "31",
-                    ["Serilog:WriteTo:0:Args:buffered"] = "false",
+                    // WriteTo:0 is the Console sink; WriteTo:1 is the File sink.
+                    // Override the File sink (index 1) to redirect output to the temp dir.
+                    ["Serilog:WriteTo:1:Name"] = "File",
+                    ["Serilog:WriteTo:1:Args:path"] = resolvedPath,
+                    ["Serilog:WriteTo:1:Args:rollingInterval"] = "Day",
+                    ["Serilog:WriteTo:1:Args:retainedFileCountLimit"] = "31",
+                    ["Serilog:WriteTo:1:Args:buffered"] = "false",
                     // Suppress all namespace-level overrides so MinimumLevel:Default is authoritative
                     ["Serilog:MinimumLevel:Override:Microsoft"] = minimumLevel ?? "Warning",
                     ["Serilog:MinimumLevel:Override:Microsoft.Hosting.Lifetime"] = minimumLevel ?? "Warning",
@@ -85,11 +87,14 @@ public class LoggingIntegrationTests : IDisposable
         // Give a brief moment for the OS to flush
         await Task.Delay(100);
 
-        var todayUtc = DateTime.UtcNow.ToString("yyyyMMdd");
+        var today = DateTime.Now.ToString("yyyyMMdd");
         var logFiles = Directory.GetFiles(_tempLogDir, "*.log", SearchOption.TopDirectoryOnly);
 
         Assert.True(logFiles.Length > 0, $"No log files found in {_tempLogDir}");
-        Assert.Contains(logFiles, f => Path.GetFileName(f).Contains(todayUtc));
+        var fileNames = string.Join(", ", logFiles.Select(Path.GetFileName));
+        Assert.True(
+            logFiles.Any(f => Path.GetFileName(f).Contains(today)),
+            $"Expected a file containing '{today}' in name. Found: [{fileNames}]");
     }
 
     /// <summary>
