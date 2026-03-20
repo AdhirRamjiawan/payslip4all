@@ -190,6 +190,52 @@ Web  →  Application  →  Domain
 
 ---
 
+## Logging
+
+Payslip4All uses [Serilog](https://serilog.net/) for structured file logging with global exception handling.
+
+### Log files
+
+Log files are written to the `logs/` directory (relative to the application's working directory) and rotate daily:
+
+```
+logs/payslip4all-20260319.log
+logs/payslip4all-20260320.log
+...
+```
+
+Files are retained for **31 days** by default. The `logs/` directory is created automatically on first write.
+
+### Configuring log levels
+
+Log levels are controlled via `appsettings.json`:
+
+```json
+{
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "System": "Warning"
+      }
+    }
+  }
+}
+```
+
+Use `appsettings.Development.json` to increase verbosity locally (e.g., `"Default": "Debug"`) without changing production config.
+
+### Global exception handling
+
+All unhandled exceptions are intercepted by `GlobalExceptionMiddleware`, which:
+
+1. Logs the exception at `Error` level with request path, HTTP method, and authenticated user ID.
+2. Returns a user-friendly 500 response — stack traces are never exposed to the client.
+3. For API paths (`/payslips/...`), returns `{"error":"An unexpected error occurred."}` JSON; otherwise returns a plain-text message.
+
+---
+
 ## License
 
 QuestPDF is used under the [Community License](https://www.questpdf.com/license/community.html) (free for qualifying projects).

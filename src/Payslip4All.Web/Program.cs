@@ -9,9 +9,18 @@ using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Web.Auth;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
+using Payslip4All.Web.Extensions;
 using QuestPDF.Infrastructure;
+using Serilog;
+
+// Bootstrap Serilog early so startup errors are captured
+Serilog.Debugging.SelfLog.Enable(msg => Console.Error.WriteLine(msg));
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((ctx, lc) =>
+    lc.ReadFrom.Configuration(ctx.Configuration)
+      .Enrich.FromLogContext());
 
 // QuestPDF community licence
 QuestPDF.Settings.License = LicenseType.Community;
@@ -102,6 +111,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseGlobalExceptionHandler();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();

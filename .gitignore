@@ -69,3 +69,6 @@ dist/
 coverage/
 
 TestResults/
+
+# Serilog file logs
+logs/
