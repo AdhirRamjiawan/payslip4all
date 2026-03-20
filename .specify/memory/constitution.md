@@ -1,33 +1,39 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.2 → 1.1.0 (MINOR — new Principle VI added)
-Bump rationale: A new Core Principle VI "Manual Test Gate" has been added to the
-  Development Workflow section. This principle introduces a mandatory human-approval
-  gate after every implementation task before any git operations (commit, merge, push)
-  may be executed. This is a MINOR bump: new governance guidance added without
-  removing or redefining existing principles.
+Version change: 1.1.0 → 1.2.0 (MINOR — tech stack table updated)
+Bump rationale: Two tech stack table corrections applied:
+  (1) Added "Logging" row formalising Serilog as the mandated logging stack
+      (Serilog.AspNetCore 10.x + Serilog.Enrichers.Environment +
+      Serilog.Enrichers.Thread). These packages were added in feature
+      002-serilog-logging with the deviation documented in plan.md Complexity
+      Tracking; this amendment closes the formal constitution gap.
+  (2) Updated "PDF export" row: removed stale "(planned)" qualifier and "or
+      equivalent" hedge; locked to QuestPDF 2024.10.x as delivered in
+      feature 001-payslip-generation.
+  This is a MINOR bump: new mandatory table entry added; no principles
+  removed or redefined.
 
 Modified principles: None.
 
 Added sections:
-  - Core Principle VI: Manual Test Gate (NON-NEGOTIABLE)
-  - New row VI in Development Workflow TDD Cycle
-  - New sub-section "Manual Test Gate Protocol" under Development Workflow
+  - Tech Stack table row: Logging (Serilog.AspNetCore 10.x + enrichers)
+
+Modified sections:
+  - Tech Stack table row: PDF export — "(planned) QuestPDF or equivalent"
+    → "QuestPDF 2024.10.x"
 
 Removed sections: None.
 
-Placeholder token audit (2026-03-16):
+Placeholder token audit (2026-03-20):
   - [Authorize]  → ASP.NET Core attribute, NOT a template token. Correct as-is.
   - No other [ALL_CAPS_IDENTIFIER] template tokens remain unresolved.
 
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md   — Constitution Check table updated with
-       row VI (Manual Test Gate).
-  ✅ .specify/templates/tasks-template.md  — Notes and Implementation Strategy updated
-       with Manual Test Gate reminder.
-  ✅ .specify/templates/spec-template.md   — No changes required; principle is
-       workflow-only and does not affect spec structure.
+  ✅ .specify/templates/plan-template.md   — No changes required; tech stack
+       table rows do not affect Constitution Check gates.
+  ✅ .specify/templates/tasks-template.md  — No changes required.
+  ✅ .specify/templates/spec-template.md   — No changes required.
   ✅ .specify/templates/checklist-template.md — No changes required.
   ✅ .specify/templates/constitution-template.md — Source template; not modified
        (operates on memory/constitution.md only).
@@ -35,13 +41,9 @@ Templates requiring updates:
 
 Deferred TODOs / Manual follow-up required: None.
 
-Prior report (1.0.1 → 1.0.2):
-  All four deferred items resolved 2026-03-15:
-  specs/001-payslip-generation/contracts/http-endpoints.md,
-  specs/001-payslip-generation/contracts/ui-contracts.md,
-  specs/001-payslip-generation/quickstart.md,
-  specs/001-payslip-generation/research.md
-  — all corrected to use /Auth/Login, /Auth/Register, /Auth/Logout.
+Prior report (1.0.2 → 1.1.0):
+  Added Core Principle VI: Manual Test Gate (NON-NEGOTIABLE).
+  All dependent templates updated 2026-03-16.
 -->
 
 # Payslip4All Constitution
@@ -221,7 +223,8 @@ autonomous committer.
 | Unit / Integration   | xUnit + Moq                                           |
 | Component testing    | bUnit                                                 |
 | Password hashing     | BCrypt.Net-Next or PBKDF2 (KeyDerivation)             |
-| PDF export (planned) | QuestPDF or equivalent — one named library only       |
+| PDF export           | QuestPDF 2024.10.x                                    |
+| Logging              | `Serilog.AspNetCore` 10.x (+ `Serilog.Enrichers.Environment`, `Serilog.Enrichers.Thread`); file sink at `logs/`, daily rolling, 31-day retention |
 | CSS framework        | Bootstrap 5                                           |
 | Source control       | Git; feature branches (`###-short-description`)       |
 
@@ -309,4 +312,4 @@ All PRs and code reviews MUST verify compliance with this constitution. Any inte
 deviation from a principle MUST be documented in the `plan.md` Complexity Tracking
 table with justification before work begins.
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-16
+**Version**: 1.2.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-20
