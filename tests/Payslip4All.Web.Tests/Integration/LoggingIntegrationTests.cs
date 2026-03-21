@@ -9,7 +9,11 @@ namespace Payslip4All.Web.Tests.Integration;
 /// Verifies rolling daily file creation (US2) and configurable log level (US3).
 /// Uses WebApplicationFactory with a temp directory override so real file I/O
 /// is exercised without polluting the development logs/ directory.
+///
+/// Placed in the "WebIntegration" collection alongside StaticFilesIntegrationTests
+/// to prevent parallel factory startup from causing Serilog global-state races.
 /// </summary>
+[Collection("WebIntegration")]
 public class LoggingIntegrationTests : IDisposable
 {
     private readonly string _tempLogDir;

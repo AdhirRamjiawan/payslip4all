@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
@@ -21,6 +22,22 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((ctx, lc) =>
     lc.ReadFrom.Configuration(ctx.Configuration)
       .Enrich.FromLogContext());
+
+// Serve build-time static web assets (e.g. CSS isolation bundle) in all environments.
+// In Development this is a no-op (already loaded automatically). In Staging/Production
+// it loads the .staticwebassets.runtime.json manifest so files like
+// Payslip4All.Web.styles.css are found even when running without dotnet publish.
+builder.WebHost.UseStaticWebAssets();
+
+// Configure forwarded headers for reverse-proxy deployments (nginx, Apache, Azure, etc.).
+// Must be registered before the middleware pipeline is built.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Trust any proxy IP — restrict to specific KnownProxies entries in production.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // QuestPDF community licence
 QuestPDF.Settings.License = LicenseType.Community;
@@ -109,6 +126,9 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
+// Forwarded headers MUST be first so UseHttpsRedirection() sees the correct scheme
+// when the app is behind a TLS-terminating reverse proxy (nginx, Apache, Azure, etc.).
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseGlobalExceptionHandler();
