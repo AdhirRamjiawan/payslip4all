@@ -76,8 +76,8 @@ object Build : BuildType({
             id = "Clean"
             scriptContent = """
                 whoami
-                rm -Rf /home/apps/payslip4all/
-                mkdir /home/apps/payslip4all
+                rm -Rf /webapps/payslip4all/
+                mkdir /webapps/payslip4all
             """.trimIndent()
         }
         dotnetPublish {
