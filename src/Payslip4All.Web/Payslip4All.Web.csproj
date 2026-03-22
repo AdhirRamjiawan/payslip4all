@@ -21,4 +21,22 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Copy the generated CSS isolation bundle to wwwroot/ after every build.
+       This makes the bundle physically present for UseStaticFiles() in all deployment
+       scenarios (dotnet run, dotnet publish, manual deploy) without needing the
+       .staticwebassets.runtime.json manifest. -->
+  <Target Name="CopyCssIsolationBundleToWwwroot" AfterTargets="Build">
+    <Copy
+      SourceFiles="$(IntermediateOutputPath)scopedcss\bundle\$(AssemblyName).styles.css"
+      DestinationFolder="$(ProjectDir)wwwroot"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(IntermediateOutputPath)scopedcss\bundle\$(AssemblyName).styles.css')" />
+  </Target>
+
+  <!-- Exclude the copied file from the SDK's static web asset discovery to prevent
+       a conflict with the 'Computed' scopedcss asset that targets the same path. -->
+  <ItemGroup>
+    <Content Remove="wwwroot\$(AssemblyName).styles.css" />
+  </ItemGroup>
+
 </Project>
