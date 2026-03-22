@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-21
+Auto-generated from all feature plans. Last updated: 2026-03-22
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -15,6 +15,8 @@ Auto-generated from all feature plans. Last updated: 2026-03-21
 - File system — rolling daily log files at `logs/payslip4all-[date].log` (002-serilog-logging)
 - C# 12 / .NET 8 + ASP.NET Core 8 (`Microsoft.NET.Sdk.Web`), Blazor Server, xUnit, bUni (003-wwwroot-static-files-fix)
 - N/A (no database changes) (003-wwwroot-static-files-fix)
+- C# 12 / .NET 8 + MSBuild (in-SDK), ASP.NET Core 8, xUni (004-wwwroot-hosting-manifest-fix)
+- C# 12 / .NET 8 + Serilog.AspNetCore 10.x (already installed) (005-file-logging-published-fix)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -35,9 +37,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
+- 005-file-logging-published-fix: Added C# 12 / .NET 8 + Serilog.AspNetCore 10.x (already installed)
+- 004-wwwroot-hosting-manifest-fix: Added C# 12 / .NET 8 + MSBuild (in-SDK), ASP.NET Core 8, xUni
 - 003-wwwroot-static-files-fix: Added C# 12 / .NET 8 + ASP.NET Core 8 (`Microsoft.NET.Sdk.Web`), Blazor Server, xUnit, bUni
-- 002-serilog-logging: Added C# 12 / .NET 8 (LTS) + `Serilog.AspNetCore` 8.x (includes `Serilog.Sinks.File`, `Serilog.Settings.Configuration`, enrichers)
-- 001-payslip-generation: Added C# 12 / .NET 8 (LTS) + QuestPDF 2024.10.4 (already in `Payslip4All.Infrastructure.csproj`); no new NuGet packages required
 
 
 <!-- MANUAL ADDITIONS START -->
