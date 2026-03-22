@@ -90,7 +90,7 @@ object Build : BuildType({
         script {
             name = "Start App"
             id = "Start_App"
-            scriptContent = """nohup ${'$'}(dotnet /home/apps/payslip4all/Payslip4All.Web.dll --urls="http://localhost:5000") &"""
+            scriptContent = """nohup ${'$'}(dotnet /webapps/payslip4all/Payslip4All.Web.dll --urls="http://localhost:5000") &"""
         }
     }
 
