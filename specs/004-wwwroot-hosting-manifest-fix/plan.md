@@ -1,68 +1,13 @@
-# Implementation Plan: wwwroot Hosting — CSS Bundle Physical Copy
+# Implementation Plan: [FEATURE]
 
-**Branch**: `004-wwwroot-hosting-manifest-fix` | **Date**: 2026-03-21 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/004-wwwroot-hosting-manifest-fix/spec.md`
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
-The Blazor CSS isolation bundle (`Payslip4All.Web.styles.css`) is generated at build
-time into `obj/{config}/{tfm}/scopedcss/bundle/` but never reaches the physical
-`wwwroot/` directory until `dotnet publish` is run. Hosted environments without a
-`dotnet publish` step — or those that copy only DLLs — cannot serve this file because
-the runtime manifest (`.staticwebassets.runtime.json`) is absent outside development.
-
-Fix: Add an MSBuild `AfterTargets="Build"` target to `Payslip4All.Web.csproj` that
-copies the generated bundle to `wwwroot/` after every build. Gitignore the copied file.
-Remove the now-redundant `builder.WebHost.UseStaticWebAssets()` call from `Program.cs`.
-
-## Technical Context
-
-**Language/Version**: C# 12 / .NET 8  
-**Primary Dependencies**: MSBuild (in-SDK), ASP.NET Core 8, xUnit  
-**Storage**: N/A  
-**Testing**: xUnit + `WebApplicationFactory<Program>` — existing `StaticFilesIntegrationTests`  
-**Target Platform**: Linux/Windows server; IIS, Kestrel, published or non-published  
-**Project Type**: Blazor Server web application  
-**Performance Goals**: N/A — one file copy on build  
-**Constraints**: No new NuGet packages; MSBuild only  
-**Scale/Scope**: One csproj change, one Program.cs change, one .gitignore entry
-
-## Constitution Check
-
-| # | Principle | Gate Question | Status |
-|---|-----------|---------------|--------|
-| I | TDD | Are failing tests planned before implementation? | ✅ Existing `CssIsolationBundle_IsServed_InProductionEnvironment` test is the RED gate |
-| II | Clean Architecture | Touches ≤ 4 projects? Inward-only deps? | ✅ Only `Payslip4All.Web` (build config + Program.cs) |
-| III | Blazor Web App | New UI surfaces in Razor components? | ✅ N/A — no new UI surfaces |
-| IV | Basic Authentication | New pages carry `[Authorize]`? | ✅ N/A — no new pages |
-| V | Database Support | Schema changes as EF Core migrations? | ✅ N/A — no schema changes |
-| VI | Manual Test Gate | Gate prompt planned before each commit? | ✅ Yes |
-
-## Project Structure
-
-### Documentation (this feature)
-
-```text
-specs/004-wwwroot-hosting-manifest-fix/
-├── plan.md         ← this file
-├── research.md     ← Phase 0 output
-└── spec.md         ← feature specification
-```
-
-### Source Code
-
-```text
-src/
-└── Payslip4All.Web/
-    ├── Payslip4All.Web.csproj   ← add AfterTargets="Build" MSBuild target
-    └── Program.cs               ← remove UseStaticWebAssets() (now redundant)
-
-.gitignore                       ← add wwwroot/Payslip4All.Web.styles.css
-```
-
-## Complexity Tracking
-
-No constitution violations. All gates pass.
+[Extract from feature spec: primary requirement + technical approach from research]
 
 ## Technical Context
 
