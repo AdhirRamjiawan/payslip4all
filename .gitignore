@@ -72,3 +72,6 @@ TestResults/
 
 # Serilog file logs
 logs/
+
+# Generated CSS isolation bundle (produced by MSBuild AfterTargets="Build" target)
+src/Payslip4All.Web/wwwroot/Payslip4All.Web.styles.css
