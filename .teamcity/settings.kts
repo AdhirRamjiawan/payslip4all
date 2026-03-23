@@ -69,7 +69,7 @@ object Build : BuildType({
         script {
             name = "Stop App"
             id = "Stop_App"
-            scriptContent = """pkill -cf "dotnet /home/apps/payslip4all/Payslip4All.Web.dll" || true"""
+            scriptContent = """pkill -cf "dotnet /webapps/payslip4all/Payslip4All.Web.dll" || true"""
         }
         script {
             name = "Clean"
@@ -85,7 +85,7 @@ object Build : BuildType({
             id = "Publish"
             projects = "Payslip4All.sln"
             configuration = "Release"
-            args = "-o /home/apps/payslip4all"
+            args = "-o /webapps/payslip4all"
         }
         script {
             name = "Start App"
