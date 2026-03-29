@@ -6,9 +6,9 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 # Tasks: AWS DynamoDB Persistence Option
 
 **Input**: Design documents from `/specs/006-dynamodb-persistence/`  
-**Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `quickstart.md`
+**Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/persistence-provider-contract.md`
 
-**Tests**: Per constitution Principle I (TDD), tests are **REQUIRED** for this feature. Write the failing tests for each implementation phase before changing production files.
+**Tests**: Per constitution Principle I (TDD), tests are **REQUIRED** for this feature. Write the failing tests for each relevant phase before changing production code.
 
 **Organization**: Tasks are grouped by phase and by user story so each story remains independently implementable and testable.
 
@@ -22,10 +22,11 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 ## Phase 1: Setup
 
-**Purpose**: Align packages and shared DynamoDB test scaffolding before feature work starts.
+**Purpose**: Align package references and shared DynamoDB test scaffolding before feature work starts.
 
-- [ ] T001 [P] Confirm or update `AWSSDK.DynamoDBv2` package references in `src/Payslip4All.Infrastructure/Payslip4All.Infrastructure.csproj` and `tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj`
-- [ ] T002 [P] Reconcile shared DynamoDB test bootstrap, unique table-prefix isolation, and deterministic cleanup in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTestFixture.cs`
+- [X] T001 Update DynamoDB package references in `src/Payslip4All.Infrastructure/Payslip4All.Infrastructure.csproj`
+- [X] T002 [P] Update DynamoDB test dependencies in `tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj`
+- [X] T003 [P] Reconcile DynamoDB Local fixture setup, unique table-prefix isolation, and cleanup helpers in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTestFixture.cs`
 
 ---
 
@@ -37,16 +38,16 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 ### Tests for Foundational Infrastructure (REQUIRED — TDD)
 
-- [ ] T003 [P] Add failing environment-variable-only client factory coverage for `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbClientFactoryTests.cs`
-- [ ] T004 [P] Add failing no-op unit-of-work coverage for `SaveChangesAsync`, transaction methods, and disposal behavior in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbUnitOfWorkTests.cs`
-- [ ] T005 [P] Add failing table-provisioner coverage for default and explicit `DYNAMODB_TABLE_PREFIX`, six-table creation, missing-table logs, ACTIVE waits, and startup permission failures in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTableProvisionerTests.cs`
+- [X] T004 [P] Add failing credential-precedence coverage for explicit credentials, local-emulator dummy credentials, and hosted-AWS credential-chain fallback in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbClientFactoryTests.cs`
+- [X] T005 [P] Add failing no-op `IUnitOfWork` coverage for `SaveChangesAsync`, transaction methods, and disposal behavior in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbUnitOfWorkTests.cs`
+- [X] T006 [P] Add failing table-provisioner coverage for default and explicit table prefixes, six-table creation, created-table logs, ACTIVE waits, and startup permission failures in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTableProvisionerTests.cs`
 
 ### Implementation for Foundational Infrastructure
 
-- [ ] T006 [P] Implement environment-variable-only DynamoDB client construction and required variable validation in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbClientFactory.cs`
-- [ ] T007 [P] Implement no-op `IUnitOfWork` behavior in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbUnitOfWork.cs`
-- [ ] T008 Implement DynamoDB DI registration for the client, repositories, unit of work, and hosted table provisioner in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbServiceExtensions.cs`
-- [ ] T009 Implement six-table auto-provisioning, missing-table creation logs, ACTIVE polling, and fail-fast permission handling in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbTableProvisioner.cs`
+- [X] T007 [P] Implement DynamoDB client construction with explicit credentials, local-emulator dummy credentials, hosted-AWS credential-chain fallback, and paired credential validation in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbClientFactory.cs`
+- [X] T008 [P] Implement no-op `IUnitOfWork` behavior in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbUnitOfWork.cs`
+- [X] T009 Implement DynamoDB DI registration for the client, repositories, unit of work, and hosted table provisioner in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbServiceExtensions.cs`
+- [X] T010 Implement six-table auto-provisioning, missing-table creation logs, ACTIVE polling, and fail-fast permission handling in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbTableProvisioner.cs`
 
 **Checkpoint**: DynamoDB infrastructure is ready for provider switching and repository work.
 
@@ -56,19 +57,18 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 **Goal**: Deployment operators can select DynamoDB entirely through environment variables, and the app bypasses the relational startup path when `PERSISTENCE_PROVIDER=dynamodb`.
 
-**Independent Test**: Start the app with `PERSISTENCE_PROVIDER=dynamodb`, valid `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` values, and verify DynamoDB services register, missing tables are provisioned, relational startup is bypassed, and startup succeeds. Then start with invalid provider or missing required variables and verify fail-fast errors.
+**Independent Test**: Start the app with `PERSISTENCE_PROVIDER=dynamodb`, valid `DYNAMODB_REGION`, optional `DYNAMODB_ENDPOINT`, optional `DYNAMODB_TABLE_PREFIX`, and either explicit AWS credentials or a hosted AWS identity, and verify DynamoDB services register, missing tables are provisioned, relational startup is bypassed, and startup succeeds. Then start with an invalid provider, missing region, or partial credential pair and verify fail-fast errors.
 
 ### Tests for User Story 1 (REQUIRED — TDD)
 
-- [ ] T010 [P] [US1] Add failing provider-switching coverage for default SQLite, explicit MySQL, explicit DynamoDB, invalid values, and trim/case-insensitive parsing in `tests/Payslip4All.Web.Tests/DynamoDbProviderSwitchingTests.cs`
-- [ ] T011 [P] [US1] Add failing startup-validation coverage for `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in `tests/Payslip4All.Web.Tests/Startup/DynamoDbConfigurationValidationTests.cs`
-- [ ] T012 [P] [US1] Add failing startup-bypass coverage proving `PERSISTENCE_PROVIDER=dynamodb` skips `PayslipDbContext` registration and relational migration execution in `tests/Payslip4All.Web.Tests/Startup/DynamoDbRelationalBypassTests.cs`
+- [X] T011 [P] [US1] Add failing provider-switching coverage for default SQLite, explicit MySQL, explicit DynamoDB, invalid values, and trim/case-insensitive parsing in `tests/Payslip4All.Web.Tests/DynamoDbProviderSwitchingTests.cs`
+- [X] T012 [P] [US1] Add failing startup-validation coverage for `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, paired explicit credentials, and hosted-AWS credential-chain fallback in `tests/Payslip4All.Web.Tests/Startup/DynamoDbConfigurationValidationTests.cs`
+- [X] T013 [P] [US1] Add failing startup-bypass coverage proving `PERSISTENCE_PROVIDER=dynamodb` skips `PayslipDbContext` registration and relational migration execution in `tests/Payslip4All.Web.Tests/Startup/DynamoDbRelationalBypassTests.cs`
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Update provider selection, valid-value guards, trimming, and environment-variable-only DynamoDB validation in `src/Payslip4All.Web/Program.cs`
-- [ ] T014 [US1] Update startup branching so `src/Payslip4All.Web/Program.cs` bypasses `PayslipDbContext` initialization, EF repository registration, and relational migration execution when `PERSISTENCE_PROVIDER=dynamodb`
-- [ ] T015 [US1] Update DynamoDB operator guidance comments to reflect environment-variable-only credentials and explicit `DYNAMODB_*` variables in `src/Payslip4All.Web/Program.cs` and `src/Payslip4All.Web/appsettings.json`
+- [X] T014 [US1] Update provider selection, valid-value guards, trimming, and DynamoDB startup validation rules in `src/Payslip4All.Web/Program.cs`
+- [X] T015 [US1] Update startup branching so `src/Payslip4All.Web/Program.cs` bypasses `PayslipDbContext` initialization, EF repository registration, and relational migration execution when `PERSISTENCE_PROVIDER=dynamodb`
 
 **Checkpoint**: Provider selection works end to end, and the DynamoDB path no longer touches relational startup code.
 
@@ -76,27 +76,27 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 ## Phase 4: User Story 2 - Read and Write All Domain Data via DynamoDB (Priority: P2)
 
-**Goal**: Company owners can manage users, companies, employees, payslips, and loans through DynamoDB with correct ownership filtering, navigation hydration, table-backed persistence, and sanitized user-facing failure handling.
+**Goal**: Company owners can manage users, companies, employees, payslips, and loans through DynamoDB with correct ownership filtering, repository parity, and sanitized user-facing failure handling.
 
 **Independent Test**: Run the application against DynamoDB, then create and query employees, generate payslips, and record loans for one owner while confirming a second owner never sees that data. Trigger throttling, temporary unavailability, and permission failures and verify user-facing responses remain sanitized while operator logs keep diagnostic detail.
 
 ### Tests for User Story 2 (REQUIRED — TDD)
 
-- [ ] T016 [P] [US2] Add failing CRUD and lookup coverage for DynamoDB user persistence in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbUserRepositoryTests.cs`
-- [ ] T017 [P] [US2] Add failing ownership-filtering and company-hydration coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbCompanyRepositoryTests.cs`
-- [ ] T018 [P] [US2] Add failing employee ownership, uniqueness, company hydration, and loan-hydration coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbEmployeeRepositoryTests.cs`
-- [ ] T019 [P] [US2] Add failing loan CRUD, ownership, and optimistic-concurrency coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbLoanRepositoryTests.cs`
-- [ ] T020 [P] [US2] Add failing payslip CRUD, reverse-chronological reads, hydrated loan deductions, and payslip-loan-deduction persistence coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbPayslipRepositoryTests.cs`
-- [ ] T021 [P] [US2] Add failing sanitized-response coverage for DynamoDB throttling, temporary unavailability, and permission exceptions in `tests/Payslip4All.Web.Tests/Middleware/GlobalExceptionMiddlewareTests.cs`
+- [X] T016 [P] [US2] Add failing CRUD and lookup coverage for DynamoDB user persistence in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbUserRepositoryTests.cs`
+- [X] T017 [P] [US2] Add failing ownership-filtering and company-hydration coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbCompanyRepositoryTests.cs`
+- [X] T018 [P] [US2] Add failing employee ownership, uniqueness, company hydration, and loan-hydration coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbEmployeeRepositoryTests.cs`
+- [X] T019 [P] [US2] Add failing loan CRUD, ownership, and repayment-progress coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbLoanRepositoryTests.cs`
+- [X] T020 [P] [US2] Add failing payslip CRUD, reverse-chronological reads, hydrated loan deductions, and payslip-loan-deduction persistence coverage in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/Repositories/DynamoDbPayslipRepositoryTests.cs`
+- [X] T021 [P] [US2] Add failing sanitized-response coverage for DynamoDB throttling, temporary unavailability, and permission exceptions in `tests/Payslip4All.Web.Tests/Middleware/GlobalExceptionMiddlewareTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T022 [P] [US2] Implement or reconcile DynamoDB user persistence against `IUserRepository` in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbUserRepository.cs`
-- [ ] T023 [P] [US2] Implement or reconcile DynamoDB company persistence and ownership filtering against `ICompanyRepository` in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbCompanyRepository.cs`
-- [ ] T024 [US2] Implement or reconcile employee persistence, denormalized `userId`, uniqueness checks, and hydrated `Company` and `Loans` navigation data in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbEmployeeRepository.cs`
-- [ ] T025 [US2] Implement or reconcile loan persistence, conditional `termsCompleted` updates, and ownership-safe reads in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbLoanRepository.cs`
-- [ ] T026 [US2] Implement or reconcile payslip persistence, hydrated loan deductions, and payslip-loan-deduction storage inside `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbPayslipRepository.cs`
-- [ ] T027 [US2] Update DynamoDB runtime exception sanitization and operator logging in `src/Payslip4All.Web/Middleware/GlobalExceptionMiddleware.cs`
+- [X] T022 [P] [US2] Implement or reconcile DynamoDB user persistence against `IUserRepository` in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbUserRepository.cs`
+- [X] T023 [P] [US2] Implement or reconcile DynamoDB company persistence and ownership filtering against `ICompanyRepository` in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbCompanyRepository.cs`
+- [X] T024 [US2] Implement or reconcile employee persistence, denormalized `userId`, uniqueness checks, and hydrated `Company` and `Loans` navigation data in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbEmployeeRepository.cs`
+- [X] T025 [US2] Implement or reconcile loan persistence, repayment progress updates, and ownership-safe reads in `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbLoanRepository.cs`
+- [X] T026 [US2] Implement or reconcile payslip persistence, hydrated loan deductions, and payslip-loan-deduction storage inside `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbPayslipRepository.cs`
+- [X] T027 [US2] Update DynamoDB runtime exception sanitization and operator logging in `src/Payslip4All.Web/Middleware/GlobalExceptionMiddleware.cs`
 
 **Checkpoint**: DynamoDB repository parity is achieved while keeping payslip-loan-deduction persistence inside `DynamoDbPayslipRepository.cs`.
 
@@ -106,17 +106,17 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 **Goal**: Developers can run the app and tests against DynamoDB Local using only environment variables and without an AWS account.
 
-**Independent Test**: Start DynamoDB Local on `http://localhost:8000`, set `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_ENDPOINT=http://localhost:8000`, dummy `AWS_ACCESS_KEY_ID`, dummy `AWS_SECRET_ACCESS_KEY`, and a unique `DYNAMODB_TABLE_PREFIX`, then boot the app and verify startup creates the required tables before serving requests.
+**Independent Test**: Start DynamoDB Local on `http://localhost:8000`, set `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION=us-east-1`, and `DYNAMODB_ENDPOINT=http://localhost:8000` while leaving explicit AWS credentials unset, then boot the app and verify startup supplies dummy credentials, creates the required prefixed tables, and completes a create-read cycle successfully.
 
 ### Tests for User Story 3 (REQUIRED — TDD)
 
-- [ ] T028 [P] [US3] Add failing DynamoDB Local client coverage for `DYNAMODB_ENDPOINT=http://localhost:8000`, dummy environment-variable credentials, and no AWS account assumptions in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbClientFactoryTests.cs`
-- [ ] T029 [P] [US3] Add failing end-to-end DynamoDB Local startup coverage for prefixed table creation and startup logs before request handling in `tests/Payslip4All.Web.Tests/Integration/DynamoDbLocalStartupTests.cs`
+- [X] T028 [P] [US3] Add failing DynamoDB Local client coverage for `DYNAMODB_ENDPOINT=http://localhost:8000`, automatic dummy credentials, and no AWS account assumptions in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbClientFactoryTests.cs`
+- [ ] T029 [P] [US3] Add failing end-to-end DynamoDB Local startup coverage for prefixed table creation, automatic dummy credentials, and startup logs before request handling in `tests/Payslip4All.Web.Tests/Integration/DynamoDbLocalStartupTests.cs`
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] Reconcile local-emulator fixture and provisioner behavior for deterministic table creation and cleanup with unique prefixes in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTestFixture.cs` and `src/Payslip4All.Infrastructure/Persistence/DynamoDB/DynamoDbTableProvisioner.cs`
-- [ ] T031 [US3] Update local-development and AWS deployment guidance to environment-variable-only DynamoDB configuration in `specs/006-dynamodb-persistence/quickstart.md`
+- [X] T030 [US3] Reconcile local-emulator fixture defaults and startup verification helpers in `tests/Payslip4All.Infrastructure.Tests/DynamoDB/DynamoDbTestFixture.cs`
+- [X] T031 [US3] Update local-development and AWS deployment guidance to cover local dummy credentials plus hosted-AWS standard authentication in `specs/006-dynamodb-persistence/quickstart.md`
 
 **Checkpoint**: Developers can run and validate the feature locally with DynamoDB Local only.
 
@@ -126,9 +126,9 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 **Purpose**: Preserve non-DynamoDB behavior, finalize operator documentation, and lock in regression coverage.
 
-- [ ] T032 [P] Add or update startup regression coverage for unchanged SQLite and MySQL behavior and removal of `DatabaseProvider` fallback assumptions in `tests/Payslip4All.Web.Tests/Startup/StartupDependencyTests.cs`
-- [ ] T033 [P] Add or update relational repository regression coverage so SQLite and MySQL behavior stays green after DynamoDB changes in `tests/Payslip4All.Infrastructure.Tests/Repositories/RepositoryIntegrationTests.cs`
-- [ ] T034 Update provider-configuration documentation to reflect environment-variable-only DynamoDB credentials, missing-table auto-creation, and unsupported cross-provider migration in `README.md`
+- [X] T032 [P] Add or update startup regression coverage for unchanged SQLite and MySQL behavior and removal of `DatabaseProvider` fallback assumptions in `tests/Payslip4All.Web.Tests/Startup/StartupDependencyTests.cs`
+- [X] T033 [P] Add or update relational repository regression coverage so SQLite and MySQL behavior stays green after DynamoDB changes in `tests/Payslip4All.Infrastructure.Tests/Repositories/RepositoryIntegrationTests.cs`
+- [X] T034 Update provider-configuration documentation to reflect standard AWS authentication, missing-table auto-creation, unsupported cross-provider migration, and required `CreateTable` IAM permission in `README.md`
 
 ---
 
@@ -169,10 +169,10 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 ## Parallel Opportunities
 
-- **Setup**: `T001` and `T002` can run in parallel
-- **Foundational tests**: `T003`, `T004`, and `T005` can run in parallel
-- **Foundational implementation**: `T006` and `T007` can run in parallel; `T008` depends on the client and unit-of-work shapes from those tasks
-- **US1 tests**: `T010`, `T011`, and `T012` can run in parallel
+- **Setup**: `T002` and `T003` can run in parallel after `T001`
+- **Foundational tests**: `T004`, `T005`, and `T006` can run in parallel
+- **Foundational implementation**: `T007` and `T008` can run in parallel; `T009` depends on their shared contracts, and `T010` depends on `T007`
+- **US1 tests**: `T011`, `T012`, and `T013` can run in parallel
 - **US2 tests**: `T016` through `T021` can run in parallel
 - **US2 implementation**: `T022` and `T023` can run in parallel; `T024` through `T026` follow as entity relationships deepen
 - **US3 tests**: `T028` and `T029` can run in parallel
@@ -184,9 +184,9 @@ description: "Regenerated task list for 006-dynamodb-persistence implementation"
 
 ```bash
 # Write the startup tests together
-Task: "T010 Update tests/Payslip4All.Web.Tests/DynamoDbProviderSwitchingTests.cs"
-Task: "T011 Add tests/Payslip4All.Web.Tests/Startup/DynamoDbConfigurationValidationTests.cs"
-Task: "T012 Add tests/Payslip4All.Web.Tests/Startup/DynamoDbRelationalBypassTests.cs"
+Task: "T011 Update tests/Payslip4All.Web.Tests/DynamoDbProviderSwitchingTests.cs"
+Task: "T012 Add tests/Payslip4All.Web.Tests/Startup/DynamoDbConfigurationValidationTests.cs"
+Task: "T013 Add tests/Payslip4All.Web.Tests/Startup/DynamoDbRelationalBypassTests.cs"
 ```
 
 ## Parallel Example: User Story 2
@@ -231,13 +231,13 @@ Task: "T029 Add tests/Payslip4All.Web.Tests/Integration/DynamoDbLocalStartupTest
 
 1. Keep all DynamoDB persistence under `src/Payslip4All.Infrastructure/Persistence/DynamoDB/`
 2. Keep payslip-loan-deduction persistence inside `src/Payslip4All.Infrastructure/Persistence/DynamoDB/Repositories/DynamoDbPayslipRepository.cs`
-3. Do **not** add IAM role support, shared credential-file support, or generic SDK credential-chain fallback work for DynamoDB configuration
+3. Use standard AWS authentication behavior: explicit credentials when provided, dummy credentials for local emulators, and the default credential chain for hosted AWS deployments
 
 ---
 
 ## Notes
 
-- Explicitly cover `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`
+- Explicitly cover `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`, while allowing hosted AWS deployments to rely on the standard credential chain
 - When `PERSISTENCE_PROVIDER=dynamodb`, the relational path must not initialize `PayslipDbContext` or execute EF Core migrations
 - Missing DynamoDB tables must be auto-created at startup and logged clearly for operators
 - Throttling, temporary unavailability, and permission failures must show sanitized user-facing errors while preserving operator diagnostics in logs

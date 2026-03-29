@@ -37,12 +37,32 @@ public static class DynamoDbClientFactory
             config.ServiceURL = endpoint;
         }
 
-        if (!string.IsNullOrWhiteSpace(accessKey) && !string.IsNullOrWhiteSpace(secretKey))
+        if (HasExplicitCredentials(accessKey, secretKey))
         {
-            var credentials = new BasicAWSCredentials(accessKey, secretKey);
+            var credentials = new BasicAWSCredentials(accessKey!, secretKey!);
             return new AmazonDynamoDBClient(credentials, config);
         }
 
-        return new AmazonDynamoDBClient(new AnonymousAWSCredentials(), config);
+        if (!string.IsNullOrWhiteSpace(endpoint))
+        {
+            // Local emulators commonly require syntactically valid credentials even though
+            // they do not authenticate them, so use standard dummy values when no explicit
+            // credentials were supplied.
+            return new AmazonDynamoDBClient(new BasicAWSCredentials("dummy", "dummy"), config);
+        }
+
+        return new AmazonDynamoDBClient(config);
+    }
+
+    private static bool HasExplicitCredentials(string? accessKey, string? secretKey)
+    {
+        var hasAccessKey = !string.IsNullOrWhiteSpace(accessKey);
+        var hasSecretKey = !string.IsNullOrWhiteSpace(secretKey);
+
+        if (hasAccessKey != hasSecretKey)
+            throw new InvalidOperationException(
+                "When using explicit DynamoDB credentials, both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set.");
+
+        return hasAccessKey;
     }
 }

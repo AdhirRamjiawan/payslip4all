@@ -111,6 +111,44 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
         var uow = scope.ServiceProvider.GetService<IUnitOfWork>();
         Assert.NotNull(uow);
     }
+
+    [Fact]
+    public void LegacyDatabaseProviderSetting_DoesNotOverrideSqliteDefault()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"p4a_legacy_{Guid.NewGuid():N}.db");
+
+        try
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("DatabaseProvider", "mysql");
+                builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={dbPath}");
+
+                builder.ConfigureServices(services =>
+                {
+                    var descriptor = services.SingleOrDefault(
+                        d => d.ServiceType == typeof(DbContextOptions<PayslipDbContext>));
+                    if (descriptor != null)
+                        services.Remove(descriptor);
+
+                    services.AddDbContext<PayslipDbContext>(options =>
+                        options.UseSqlite($"Data Source={dbPath}"));
+                });
+            });
+
+            using var scope = factory.Services.CreateScope();
+            Assert.NotNull(scope.ServiceProvider.GetService<PayslipDbContext>());
+            Assert.NotNull(scope.ServiceProvider.GetService<IUserRepository>());
+            Assert.IsNotType<Payslip4All.Infrastructure.Persistence.DynamoDB.DynamoDbUnitOfWork>(
+                scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+        }
+    }
 }
 
 /// <summary>
@@ -141,7 +179,6 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IDispos
         });
 
         builder.UseSetting("PERSISTENCE_PROVIDER", "sqlite");
-        builder.UseSetting("DatabaseProvider", "sqlite");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
     }
 

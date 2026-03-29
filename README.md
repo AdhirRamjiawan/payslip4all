@@ -42,7 +42,7 @@ A web application for generating and managing employee payslips, built for South
 | Framework | .NET 8 / ASP.NET Core 8 |
 | UI | Blazor Server (C# 12) |
 | ORM | Entity Framework Core 8 |
-| Database | SQLite (default) · MySQL 8+ (optional) |
+| Database | SQLite (default) · MySQL 8+ (optional) · AWS DynamoDB (optional) |
 | PDF | QuestPDF 2024.10.4 (Community license) |
 | Auth | ASP.NET Core Cookie Authentication |
 | Passwords | BCrypt.Net-Next (work factor 12) |
@@ -77,6 +77,7 @@ payslip4all/
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - Git
 - *(Optional)* MySQL 8+ — only needed if switching from the default SQLite backend
+- *(Optional)* Docker — only needed for local DynamoDB emulation
 
 ---
 
@@ -102,18 +103,49 @@ Open **https://localhost:5001** in your browser. The database is created automat
 
 ### 3. Run (MySQL — optional)
 
-Edit `src/Payslip4All.Web/appsettings.Development.json`:
-
-```json
-{
-  "DatabaseProvider": "mysql",
-  "ConnectionStrings": {
-    "MySqlConnection": "Server=localhost;Database=payslip4all;User=root;Password=yourpassword;"
-  }
-}
+```bash
+export PERSISTENCE_PROVIDER=mysql
+export ConnectionStrings__MySqlConnection="Server=localhost;Database=payslip4all;User=root;Password=yourpassword;"
+cd src/Payslip4All.Web
+dotnet run
 ```
 
-Then run normally with `dotnet run`. Migrations are applied automatically on startup.
+Migrations are applied automatically on startup for SQLite and MySQL.
+
+### 4. Run (DynamoDB — optional)
+
+#### Local DynamoDB emulator
+
+```bash
+docker run -d --name dynamodb-local -p 8000:8000 amazon/dynamodb-local \
+  -jar DynamoDBLocal.jar -sharedDb -inMemory
+
+export PERSISTENCE_PROVIDER=dynamodb
+export DYNAMODB_REGION=us-east-1
+export DYNAMODB_ENDPOINT=http://localhost:8000
+export DYNAMODB_TABLE_PREFIX=payslip4all
+
+cd src/Payslip4All.Web
+dotnet run
+```
+
+If `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are both unset while `DYNAMODB_ENDPOINT`
+is configured, the app supplies dummy credentials automatically for local emulators.
+
+#### Hosted AWS
+
+```bash
+export PERSISTENCE_PROVIDER=dynamodb
+export DYNAMODB_REGION=af-south-1
+export DYNAMODB_TABLE_PREFIX=payslip4all
+
+cd src/Payslip4All.Web
+dotnet run
+```
+
+For hosted AWS, either set both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` explicitly or
+let the AWS SDK resolve credentials from its default chain (for example IAM roles, container
+credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 
 ### First-run walkthrough
 
@@ -129,13 +161,39 @@ Then run normally with `dotnet run`. Migrations are applied automatically on sta
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `DatabaseProvider` | `"sqlite"` | `"sqlite"` or `"mysql"` |
+| `PERSISTENCE_PROVIDER` | `"sqlite"` | `"sqlite"`, `"mysql"`, or `"dynamodb"` |
 | `ConnectionStrings:DefaultConnection` | `"Data Source=payslip4all.db"` | SQLite file path |
 | `ConnectionStrings:MySqlConnection` | `""` | MySQL connection string |
+| `DYNAMODB_REGION` | — | Required when `PERSISTENCE_PROVIDER=dynamodb` |
+| `DYNAMODB_ENDPOINT` | — | Optional endpoint override for DynamoDB Local or other emulators |
+| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the six required DynamoDB tables |
+| `AWS_ACCESS_KEY_ID` | — | Optional explicit DynamoDB credential; must be paired with `AWS_SECRET_ACCESS_KEY` |
+| `AWS_SECRET_ACCESS_KEY` | — | Optional explicit DynamoDB credential; must be paired with `AWS_ACCESS_KEY_ID` |
 | `Auth:Cookie:ExpireDays` | `30` | Session lifetime in days |
 | `BCrypt:WorkFactor` | `12` | Password hashing cost (10–15 recommended) |
 
 Configuration is loaded from `appsettings.json`, overridden by `appsettings.Development.json` in development, and can be further overridden via environment variables using the standard `__` separator (e.g. `Auth__Cookie__ExpireDays=7`).
+
+### DynamoDB startup behavior
+
+When `PERSISTENCE_PROVIDER=dynamodb`:
+
+1. The application bypasses `PayslipDbContext` registration and EF Core migration startup.
+2. Startup provisions these tables automatically if they are missing:
+   - `{prefix}_users`
+   - `{prefix}_companies`
+   - `{prefix}_employees`
+   - `{prefix}_employee_loans`
+   - `{prefix}_payslips`
+   - `{prefix}_payslip_loan_deductions`
+3. Explicit AWS credentials win when both are set.
+4. If only one explicit credential variable is set, startup fails fast.
+5. If `DYNAMODB_ENDPOINT` is set and explicit credentials are absent, the app uses dummy credentials for local emulators.
+6. If `DYNAMODB_ENDPOINT` is absent and explicit credentials are absent, the AWS SDK default credential chain is used.
+
+**Operational notes:**
+- Cross-provider data migration is out of scope. Switching providers does not migrate existing data.
+- Hosted AWS environments must allow the application identity to call `CreateTable`, `DescribeTable`, and related DynamoDB APIs during startup provisioning.
 
 ---
 
@@ -150,6 +208,13 @@ dotnet test --collect:"XPlat Code Coverage"
 ```
 
 The test suite covers all four layers (128 tests total across Domain, Application, Infrastructure, and Web).
+
+For DynamoDB-specific work, prefer non-integration validation unless a local emulator is running:
+
+```bash
+dotnet test tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj --filter "Category!=Integration"
+dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj
+```
 
 Coverage requirements (enforced in CI):
 - **Domain layer** — ≥ 80% line coverage

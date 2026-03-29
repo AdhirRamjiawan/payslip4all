@@ -34,8 +34,8 @@ public class DynamoDbClientFactoryTests : IDisposable
     {
         SetEnv("DYNAMODB_REGION", "us-east-1");
         SetEnv("DYNAMODB_ENDPOINT", null);
-        SetEnv("AWS_ACCESS_KEY_ID", "dummy");
-        SetEnv("AWS_SECRET_ACCESS_KEY", "dummy");
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
         var client = DynamoDbClientFactory.Create();
 
@@ -49,8 +49,8 @@ public class DynamoDbClientFactoryTests : IDisposable
         var endpoint = GetTestEndpoint();
         SetEnv("DYNAMODB_REGION", "us-east-1");
         SetEnv("DYNAMODB_ENDPOINT", endpoint);
-        SetEnv("AWS_ACCESS_KEY_ID", "dummy");
-        SetEnv("AWS_SECRET_ACCESS_KEY", "dummy");
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
         var client = DynamoDbClientFactory.Create();
 
@@ -84,6 +84,32 @@ public class DynamoDbClientFactoryTests : IDisposable
     }
 
     [Fact]
+    public void Create_WithOnlyAccessKey_ThrowsInvalidOperationException()
+    {
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", null);
+        SetEnv("AWS_ACCESS_KEY_ID", "test-key");
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DynamoDbClientFactory.Create());
+        Assert.Contains("AWS_ACCESS_KEY_ID", ex.Message);
+        Assert.Contains("AWS_SECRET_ACCESS_KEY", ex.Message);
+    }
+
+    [Fact]
+    public void Create_WithOnlySecretKey_ThrowsInvalidOperationException()
+    {
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", null);
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", "test-secret");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DynamoDbClientFactory.Create());
+        Assert.Contains("AWS_ACCESS_KEY_ID", ex.Message);
+        Assert.Contains("AWS_SECRET_ACCESS_KEY", ex.Message);
+    }
+
+    [Fact]
     public void Create_WithExplicitCredentials_ReturnsClient()
     {
         SetEnv("DYNAMODB_REGION", "eu-west-1");
@@ -105,6 +131,24 @@ public class DynamoDbClientFactoryTests : IDisposable
         SetEnv("DYNAMODB_ENDPOINT", endpoint);
         SetEnv("AWS_ACCESS_KEY_ID", "dummy");
         SetEnv("AWS_SECRET_ACCESS_KEY", "dummy");
+
+        var client = DynamoDbClientFactory.Create();
+
+        Assert.NotNull(client);
+        var amazonClient = (AmazonDynamoDBClient)client;
+        Assert.Equal(NormalizeServiceUrl(endpoint), amazonClient.Config.ServiceURL);
+
+        client.Dispose();
+    }
+
+    [Fact]
+    public void Create_WithEndpointAndNoExplicitCredentials_ReturnsClientWithServiceURL()
+    {
+        var endpoint = GetTestEndpoint();
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", endpoint);
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
         var client = DynamoDbClientFactory.Create();
 

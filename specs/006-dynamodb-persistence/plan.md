@@ -1,51 +1,66 @@
 # Implementation Plan: AWS DynamoDB Persistence Option
 
-**Branch**: `006-dynamodb-persistence` | **Date**: 2026-03-28 | **Spec**: [spec.md](spec.md)
+**Branch**: `006-dynamodb-persistence` | **Date**: 2026-03-29 | **Spec**: [spec.md](spec.md)  
 **Input**: Feature specification from `/specs/006-dynamodb-persistence/spec.md`
+
+---
 
 ## Summary
 
-Add AWS DynamoDB as a third configurable persistence backend alongside the existing SQLite
-and MySQL providers. Provider selection is driven entirely by the `PERSISTENCE_PROVIDER`
-environment variable (`sqlite` / `mysql` / `dynamodb`; default: `sqlite`). The existing
-Application-layer repository interfaces are unchanged; a parallel set of DynamoDB
-repository implementations is added to `Payslip4All.Infrastructure`. The existing EF
-Core path and all its tests are preserved and unaffected.
+Add DynamoDB as a third persistence provider selected entirely by environment variables,
+without changing any `Application`-layer repository interfaces or the existing SQLite/MySQL
+paths. The DynamoDB design uses a parallel Infrastructure implementation: `Program.cs`
+switches on `PERSISTENCE_PROVIDER`, registers DynamoDB repositories plus a startup table
+provisioner, bypasses `PayslipDbContext` and EF Core migrations when DynamoDB is active,
+and keeps ownership filtering aligned with the existing relational behavior.
 
-A key complication is that the existing `Program.cs` uses `DatabaseProvider` as its
-configuration key. This feature standardises the key to `PERSISTENCE_PROVIDER` across all
-three providers; the old `DatabaseProvider` key is retired and must be updated in
-`appsettings.json`, deployment documentation, and any CI/CD configuration.
+AWS authentication follows the approved operator contract:
+
+1. use `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` when both are explicitly supplied,
+2. use standard dummy credentials when `DYNAMODB_ENDPOINT` points at a local emulator and
+   explicit credentials are absent,
+3. otherwise allow the AWS SDK for .NET default credential chain / hosted identity
+   (for example IAM roles, container credentials, instance metadata, or configured profiles)
+   to resolve credentials for real AWS.
+
+---
 
 ## Technical Context
 
-**Language/Version**: C# / .NET 8 (LTS)
-**Primary Dependencies**: `AWSSDK.DynamoDBv2` (approved in constitution amendment v1.3.0);
-  existing: EF Core 8, xUnit, Moq, bUnit
-**Storage**: DynamoDB (multi-table design; 6 tables); SQLite and MySQL paths unchanged
-**Testing**: xUnit + Moq (unit), DynamoDB-local Docker image (integration)
-**Target Platform**: ASP.NET Core 8 Blazor Server (Linux/Windows server)
-**Project Type**: Web application
-**Performance Goals**: Standard web app expectations (p95 < 2 s for list operations)
-**Constraints**: No live AWS account permitted in CI; all DynamoDB integration tests
-  MUST run against the local emulator (`amazon/dynamodb-local` Docker image)
-**Scale/Scope**: Same as existing providers (single-company deployments to
-  small-medium business payroll)
+**Language/Version**: C# 12 / .NET 8 (LTS)  
+**Primary Dependencies**: `AWSSDK.DynamoDBv2`, Entity Framework Core 8 (retained for SQLite/MySQL), Serilog, xUnit, Moq, `Microsoft.AspNetCore.Mvc.Testing`  
+**Storage**: SQLite (default), MySQL, or AWS DynamoDB selected by `PERSISTENCE_PROVIDER`; DynamoDB uses six auto-provisioned tables with optional `DYNAMODB_TABLE_PREFIX`  
+**Testing**: xUnit + Moq + WebApplicationFactory integration tests; DynamoDB repository/infrastructure tests run against DynamoDB Local via fixture-backed test infrastructure  
+**Target Platform**: ASP.NET Core 8 Blazor Server app running locally, in CI, or on hosted AWS infrastructure  
+**Project Type**: Clean Architecture web application; feature implementation is primarily Infrastructure + Web startup wiring  
+**Performance Goals**: Startup validation errors surface within 5 seconds; table provisioning completes before first request; normal repository operations preserve existing user-facing responsiveness for employee, payslip, and loan workflows  
+**Constraints**: Keep `Application` repository interfaces unchanged; touch no more than Web + Infrastructure in production code; enforce `UserId` ownership filtering on every DynamoDB query; bypass `PayslipDbContext` and EF migrations when DynamoDB is active; use environment variables only for DynamoDB runtime configuration; support explicit credentials, local-emulator dummy credentials, and the AWS SDK credential chain for real AWS; no live AWS account required in CI  
+**Scale/Scope**: 5 repository interfaces, 6 DynamoDB tables, 2 production projects (`Payslip4All.Infrastructure`, `Payslip4All.Web`), 2 test projects (`Payslip4All.Infrastructure.Tests`, `Payslip4All.Web.Tests`)
+
+---
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
+Verify compliance with each Payslip4All constitution principle before proceeding:
+
 | # | Principle | Gate Question | Status |
 |---|-----------|---------------|--------|
-| I | TDD | Are failing tests planned/written before any implementation task begins? | ✅ Yes — test tasks are defined first in every phase |
-| II | Clean Architecture | Does the feature touch ≤ 4 projects (Domain/Application/Infrastructure/Web)? Does each layer only depend inward? | ✅ Yes — Domain and Application are untouched; changes in Infrastructure and Web (Program.cs) only |
-| III | Blazor Web App | Are all new UI surfaces Razor components? Is business logic kept out of `.razor` files? | ✅ N/A — no new UI surfaces |
-| IV | Basic Authentication | Do new pages carry `[Authorize]`? Do new service methods filter by `UserId`? | ✅ N/A for new pages; DynamoDB repositories enforce ownership filtering (see C1 below) |
-| V | Database Support | For EF Core providers (SQLite/MySQL): are all schema changes EF Core migrations? Is raw SQL avoided? For DynamoDB provider (`PERSISTENCE_PROVIDER=dynamodb`): do DynamoDB repositories implement all Application interfaces? Is ownership filtering enforced? | ✅ EF Core path unchanged; DynamoDB exception formally approved in constitution v1.3.0 |
-| VI | Manual Test Gate | Is the Manual Test Gate prompt planned at the end of each implementation task, before any `git commit`, `git merge`, or `git push`? | ✅ Yes — gate is mandatory at the end of each phase |
+| I | TDD | DynamoDB provider-switching, client-factory, table-provisioning, repository, and multi-tenant ownership tests are planned to fail first before implementation tasks begin. | ✅ |
+| II | Clean Architecture | Production changes remain within `Payslip4All.Infrastructure` and `Payslip4All.Web`; `Application` interfaces and `Domain` entities stay unchanged; all dependencies still point inward. | ✅ |
+| III | Blazor Web App | No new UI surfaces are introduced; existing Razor components/pages remain the only UI surface and business logic stays outside `.razor` files. | ✅ |
+| IV | Basic Authentication | No new auth pages are required; DynamoDB repositories and existing services continue to enforce `UserId`-scoped reads/writes for company-owner isolation. | ✅ |
+| V | Database Support | DynamoDB work stays within the constitution's approved provider exception: all existing repository interfaces are implemented, EF Core startup is bypassed only for `PERSISTENCE_PROVIDER=dynamodb`, and ownership filtering is enforced on every DynamoDB path. | ✅ |
+| VI | Manual Test Gate | Implementation tasks must end with a Manual Test Gate prompt before any `git commit`, `git merge`, or `git push`; this will be preserved in `tasks.md` generation. | ✅ |
 
-> **All gates pass.** Justified deviations documented in Complexity Tracking below.
+**Gate Result**: PASS — no constitution violations or unresolved clarifications block Phase 0.
+
+**Post-Design Re-check**: PASS — Phase 1 design keeps the feature within the same approved
+scope: operator-facing configuration is documented, DynamoDB stays an Infrastructure concern,
+and no new cross-layer dependency or UI/auth deviation is introduced.
+
+---
 
 ## Project Structure
 
@@ -53,61 +68,82 @@ three providers; the old `DatabaseProvider` key is retired and must be updated i
 
 ```text
 specs/006-dynamodb-persistence/
-├── spec.md
-├── plan.md                   (this file)
-├── research.md               (Phase 0 output)
-├── data-model.md             (Phase 1 output)
-├── quickstart.md             (Phase 1 output)
-└── checklists/
-    └── requirements.md
+├── plan.md                           # This file
+├── research.md                       # Phase 0 output
+├── data-model.md                     # Phase 1 output
+├── quickstart.md                     # Phase 1 output
+├── contracts/
+│   └── persistence-provider-contract.md
+└── tasks.md                          # Phase 2 output (/speckit.tasks)
 ```
 
-### Source Code (repository root)
+### Source Code
 
 ```text
 src/
-├── Payslip4All.Domain/           (no changes)
-├── Payslip4All.Application/      (no changes)
+├── Payslip4All.Application/
+│   └── Interfaces/Repositories/
+│       ├── IUserRepository.cs
+│       ├── ICompanyRepository.cs
+│       ├── IEmployeeRepository.cs
+│       ├── ILoanRepository.cs
+│       └── IPayslipRepository.cs
+├── Payslip4All.Domain/
+│   └── Entities/
+│       ├── User.cs
+│       ├── Company.cs
+│       ├── Employee.cs
+│       ├── EmployeeLoan.cs
+│       ├── Payslip.cs
+│       └── PayslipLoanDeduction.cs
 ├── Payslip4All.Infrastructure/
 │   └── Persistence/
-│       ├── PayslipDbContext.cs               (unchanged)
-│       ├── Repositories/                     (existing EF Core — unchanged)
+│       ├── PayslipDbContext.cs
+│       ├── Repositories/                           # Existing EF Core repositories for sqlite/mysql
 │       └── DynamoDB/
-│           ├── DynamoDbClientFactory.cs      (new)
-│           ├── DynamoDbTableProvisioner.cs   (new — auto-creates tables)
-│           ├── DynamoDbUnitOfWork.cs         (new — no-op IUnitOfWork)
+│           ├── DynamoDbClientFactory.cs
+│           ├── DynamoDbServiceExtensions.cs
+│           ├── DynamoDbTableProvisioner.cs
+│           ├── DynamoDbUnitOfWork.cs
 │           └── Repositories/
 │               ├── DynamoDbUserRepository.cs
 │               ├── DynamoDbCompanyRepository.cs
 │               ├── DynamoDbEmployeeRepository.cs
 │               ├── DynamoDbLoanRepository.cs
-│               ├── DynamoDbPayslipRepository.cs
-│               └── DynamoDbPayslipLoanDeductionStore.cs
+│               └── DynamoDbPayslipRepository.cs
 └── Payslip4All.Web/
-    └── Program.cs              (provider switching logic updated)
+    ├── Program.cs
+    ├── Middleware/GlobalExceptionMiddleware.cs
+    └── appsettings.json
 
 tests/
 ├── Payslip4All.Infrastructure.Tests/
 │   └── DynamoDB/
-│       ├── DynamoDbUserRepositoryTests.cs
-│       ├── DynamoDbCompanyRepositoryTests.cs
-│       ├── DynamoDbEmployeeRepositoryTests.cs
-│       ├── DynamoDbLoanRepositoryTests.cs
-│       ├── DynamoDbPayslipRepositoryTests.cs
-│       └── DynamoDbTableProvisionerTests.cs
+│       ├── DynamoDbClientFactoryTests.cs
+│       ├── DynamoDbTableProvisionerTests.cs
+│       ├── DynamoDbUnitOfWorkTests.cs
+│       ├── DynamoDbTestFixture.cs
+│       └── Repositories/
+│           ├── DynamoDbUserRepositoryTests.cs
+│           ├── DynamoDbCompanyRepositoryTests.cs
+│           ├── DynamoDbEmployeeRepositoryTests.cs
+│           ├── DynamoDbLoanRepositoryTests.cs
+│           └── DynamoDbPayslipRepositoryTests.cs
 └── Payslip4All.Web.Tests/
-    └── DynamoDbProviderSwitchingTests.cs   (startup integration tests)
+    └── DynamoDbProviderSwitchingTests.cs
 ```
 
-**Structure Decision**: All DynamoDB infrastructure lives under
-`Payslip4All.Infrastructure/Persistence/DynamoDB/` — a peer namespace to the existing
-EF Core `Repositories/` directory. This keeps the parallel nature explicit without
-polluting the existing namespace.
+**Structure Decision**: Use the existing Clean Architecture web-application structure.
+Production changes are constrained to Infrastructure (DynamoDB implementation) and Web
+(`Program.cs` provider switching and startup behavior). Application and Domain remain
+stable contracts that both relational and DynamoDB providers implement.
+
+---
 
 ## Complexity Tracking
 
+> No constitution violations — table intentionally empty.
+
 | Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| C1 — DynamoDB repos bypass EF Core | DynamoDB cannot use EF Core as its ORM; constitution v1.3.0 explicitly approves this deviation | Using EF Core with a custom DynamoDB provider is not supported and would require maintaining a full EF Core provider — disproportionate complexity |
-| C2 — `PERSISTENCE_PROVIDER` replaces `DatabaseProvider` | Standardises the env var name as specified in the approved feature spec; prevents two competing keys | Keeping `DatabaseProvider` would require supporting two keys indefinitely, complicating startup logic and operator documentation |
-| C3 — `DynamoDbUnitOfWork` is a no-op | DynamoDB has no ambient transaction context; each repo method commits immediately (mirroring the existing EF Core repo behaviour where `SaveChangesAsync` is called inside each method) | Implementing full DynamoDB TransactWriteItems for the entire unit of work is disproportionate; the payslip generation service already calls `SaveChangesAsync` as a second call on an already-saved EF context |
+|-----------|------------|--------------------------------------|
+| — | — | — |

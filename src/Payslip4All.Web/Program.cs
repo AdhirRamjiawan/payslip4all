@@ -37,6 +37,23 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // QuestPDF community licence
 QuestPDF.Settings.License = LicenseType.Community;
 
+static void ValidateDynamoDbStartupConfiguration()
+{
+    var region = Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim();
+    if (string.IsNullOrWhiteSpace(region))
+        throw new InvalidOperationException(
+            "PERSISTENCE_PROVIDER is set to 'dynamodb' but the required environment variable DYNAMODB_REGION is not set.");
+
+    var accessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID")?.Trim();
+    var secretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")?.Trim();
+    var hasAccessKey = !string.IsNullOrWhiteSpace(accessKey);
+    var hasSecretKey = !string.IsNullOrWhiteSpace(secretKey);
+
+    if (hasAccessKey != hasSecretKey)
+        throw new InvalidOperationException(
+            "When using explicit DynamoDB credentials, both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set.");
+}
+
 // Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -55,12 +72,7 @@ if (provider is not ("sqlite" or "mysql" or "dynamodb"))
         $"Unknown persistence provider '{provider}'. Valid values are: sqlite, mysql, dynamodb.");
 
 if (provider == "dynamodb")
-{
-    var dynamoRegion = Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim();
-    if (string.IsNullOrWhiteSpace(dynamoRegion))
-        throw new InvalidOperationException(
-            "PERSISTENCE_PROVIDER is set to 'dynamodb' but the required environment variable DYNAMODB_REGION is not set.");
-}
+    ValidateDynamoDbStartupConfiguration();
 
 if (provider == "dynamodb")
 {

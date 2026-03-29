@@ -1,7 +1,7 @@
 # Specification Quality Checklist: AWS DynamoDB Persistence Option
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning  
-**Created**: 2026-03-28  
+**Created**: 2026-03-29  
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -31,6 +31,8 @@
 
 ## Notes
 
-- Constitution alignment for the DynamoDB provider exception is now reflected directly in the spec, including startup table creation, env-only configuration, and bypass of relational migrations when DynamoDB is active.
-- Data migration between providers is explicitly out of scope and documented in Assumptions.
-- FR-011 remains explicit: auto-create DynamoDB tables on startup and require `CreateTable` IAM permission.
+- Architecture scope wording was corrected so the spec now reflects production changes in Infrastructure plus Web startup and middleware, while Application and Domain remain unchanged.
+- User Story 1 was narrowed to startup selection, environment validation, table provisioning, and relational-path bypass so it now aligns with the current task breakdown instead of implying CRUD verification.
+- The runtime configuration contract now explicitly distinguishes hosted AWS, local emulator, explicit credential pair, default credential fallback, and invalid partial credential scenarios, including required versus optional variables.
+- Operator diagnostic logging is now an explicit requirement alongside sanitized user-facing errors for startup failures, provisioning failures, and runtime persistence failures.
+- Validation review found no remaining checklist failures and no lingering `[NEEDS CLARIFICATION]` markers.

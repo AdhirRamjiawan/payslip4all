@@ -188,8 +188,10 @@ rules apply as an approved deviation from the EF Core mandate above:
 - Required DynamoDB tables MUST be created automatically at startup if they do not
   exist, with each creation logged. The `CreateTable` IAM permission is a required
   prerequisite for the configured AWS credentials.
-- All DynamoDB configuration (region, endpoint, table prefix, credentials) MUST be
-  provided exclusively via environment variables — no hardcoded values are permitted.
+- All DynamoDB runtime configuration (region, endpoint, table prefix) MUST be
+  provided via environment variables. Credentials MUST come either from environment
+  variables or the AWS SDK standard credential chain (for example IAM roles on AWS);
+  hardcoded production credentials are PROHIBITED.
 - Ownership filtering (Company Owner data isolation) MUST be enforced in every DynamoDB
   repository query, matching the behaviour of the EF Core implementations.
 - The `AWSSDK.DynamoDBv2` package is the sole approved AWS SDK entry point for this

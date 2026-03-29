@@ -172,7 +172,7 @@ public class SecurityTestWebApplicationFactory : WebApplicationFactory<Program>,
                     TestScheme, _ => { });
         });
 
-        builder.UseSetting("DatabaseProvider", "sqlite");
+        builder.UseSetting("PERSISTENCE_PROVIDER", "sqlite");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
     }
 

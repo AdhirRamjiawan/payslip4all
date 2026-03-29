@@ -14,6 +14,7 @@ namespace Payslip4All.Web.Tests;
 /// T010 — Integration tests verifying PERSISTENCE_PROVIDER configuration drives correct DI registration.
 /// Uses builder.UseSetting() so tests don't pollute process-wide environment variables.
 /// </summary>
+[Collection(Payslip4All.Web.Tests.Startup.DynamoDbStartupTestCollection.Name)]
 public class DynamoDbProviderSwitchingTests
 {
     private static string GetTestEndpoint()

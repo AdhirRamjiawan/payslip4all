@@ -1,254 +1,256 @@
 # Data Model: AWS DynamoDB Persistence Option
 
-**Feature**: 006-dynamodb-persistence
-**Phase**: 1 — Design
-**Date**: 2026-03-28
+**Feature**: 006-dynamodb-persistence  
+**Phase**: 1 — Design  
+**Date**: 2026-03-29
 
-> This document describes the DynamoDB storage model only. Domain entities
-> (`Payslip4All.Domain`) are unchanged. The DynamoDB representation is an
-> Infrastructure concern; no Application or Domain code is modified.
-
----
-
-## Overview
-
-Six DynamoDB tables mirror the existing relational schema. All table names are
-prefixed with `DYNAMODB_TABLE_PREFIX` (default: `payslip4all`). Each table uses a
-single string partition key (`id`) holding the entity's GUID.
-
-Ownership filtering is enforced by denormalising `userId` onto every child entity
-item. This avoids cross-table lookups (which DynamoDB does not natively support).
+> Domain entities remain unchanged. This document describes the DynamoDB storage model and
+> the runtime configuration model required to activate it.
 
 ---
 
-## Tables
+## 1. Runtime Configuration Model
 
-### 1. `{prefix}_users`
+### 1.1 `PersistenceProviderSelection`
 
-**Purpose**: Stores registered user accounts.
+**Purpose**: Determines which persistence path the application activates at startup.
 
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `email` | S | Unique; used for login lookup |
-| `passwordHash` | S | BCrypt hash |
-| `createdAt` | S | ISO 8601 UTC |
+| Field | Type | Required | Validation / Rules |
+|---|---|---|---|
+| `PERSISTENCE_PROVIDER` | `string` | No | Trimmed, case-insensitive. Valid values: `sqlite`, `mysql`, `dynamodb`. Defaults to `sqlite` when unset. Invalid values fail startup with a message listing valid options. |
 
-**GSI — `email-index`**:
-- PK: `email` (S)
-- Projection: ALL
-- Used by: `GetByEmailAsync`, `ExistsAsync`
+**State transitions**:
+- `unset` → `sqlite`
+- `sqlite` / `mysql` → relational EF Core path
+- `dynamodb` → DynamoDB DI path + table provisioning path
+- any other value → startup failure
 
-**Access patterns**:
-- `GetByEmailAsync(email)` → Query `email-index` PK=email, limit 1
-- `AddAsync(user)` → PutItem
-- `ExistsAsync(email)` → Query `email-index` PK=email, Select COUNT
+### 1.2 `DynamoDbRuntimeConfig`
 
----
+**Purpose**: Operator-facing runtime settings used only when
+`PERSISTENCE_PROVIDER=dynamodb`.
 
-### 2. `{prefix}_companies`
+| Field | Type | Required | Validation / Rules |
+|---|---|---|---|
+| `DYNAMODB_REGION` | `string` | Yes | Required for DynamoDB; trimmed; must map to an AWS region understood by `RegionEndpoint.GetBySystemName`. Missing value fails fast at startup. |
+| `DYNAMODB_ENDPOINT` | `string` | No | Optional endpoint override, primarily for local emulators such as `http://localhost:8000`. When present and explicit credentials are absent, dummy credentials are supplied. |
+| `DYNAMODB_TABLE_PREFIX` | `string` | No | Optional; defaults to `payslip4all`; prefixes all six table names. |
+| `AWS_ACCESS_KEY_ID` | `string` | Conditionally | Optional overall, but if provided then `AWS_SECRET_ACCESS_KEY` must also be provided. Explicit credentials take precedence over every other auth mechanism. |
+| `AWS_SECRET_ACCESS_KEY` | `string` | Conditionally | Optional overall, but if provided then `AWS_ACCESS_KEY_ID` must also be provided. |
 
-**Purpose**: Stores companies owned by users.
+**Credential resolution order**:
+1. explicit `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`,
+2. dummy credentials for local-emulator mode when `DYNAMODB_ENDPOINT` is set and explicit credentials are absent,
+3. AWS SDK default credential chain / hosted identity for real AWS when explicit credentials are absent and no endpoint override is configured.
 
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `name` | S | Max 200 chars |
-| `address` | S | Optional; max 500 chars |
-| `uifNumber` | S | Optional; max 50 chars |
-| `sarsPayeNumber` | S | Optional; max 30 chars |
-| `userId` | S | Owner; used for ownership filtering |
-| `createdAt` | S | ISO 8601 UTC |
+**Validation rules**:
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are all-or-nothing.
+- Missing `DYNAMODB_REGION` is a startup error.
+- Real AWS deployments must rely on either explicit credentials or a resolvable AWS SDK
+  credential source; local-emulator mode may use dummy placeholder credentials.
 
-**GSI — `userId-index`**:
-- PK: `userId` (S)
-- Projection: ALL
-- Used by: `GetAllByUserIdAsync`
+### 1.3 `ProvisionedTable`
 
-**Access patterns**:
-- `GetAllByUserIdAsync(userId)` → Query `userId-index` PK=userId
-- `GetByIdAsync(id, userId)` → GetItem PK=id; verify `userId` attribute matches
-- `GetByIdWithEmployeesAsync(id, userId)` → GetItem + Query employees table (companyId-index)
-- `AddAsync` → PutItem
-- `UpdateAsync` → PutItem (full replace)
-- `DeleteAsync` → DeleteItem
-- `HasEmployeesAsync(id)` → Query employees `companyId-index` PK=companyId, limit 1, Select COUNT
+**Purpose**: Represents the operational status of each required DynamoDB table during
+startup provisioning.
 
----
+| Field | Type | Notes |
+|---|---|---|
+| `TableName` | `string` | `{prefix}_{entity}` naming convention |
+| `Exists` | `bool` | Derived from `DescribeTable` |
+| `CreatedByStartup` | `bool` | True when `CreateTable` ran in the current startup cycle |
+| `Status` | `string` | Expected lifecycle: `Missing` → `Creating` → `ACTIVE`, or `Existing` → `ACTIVE` |
+| `Logged` | `bool` | True once the operator-facing startup log entry is written |
 
-### 3. `{prefix}_employees`
-
-**Purpose**: Stores employees belonging to companies.
-
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `firstName` | S | Max 100 chars |
-| `lastName` | S | Max 100 chars |
-| `idNumber` | S | Max 20 chars |
-| `employeeNumber` | S | Unique per company |
-| `startDate` | S | ISO 8601 date (YYYY-MM-DD) |
-| `occupation` | S | Max 150 chars |
-| `uifReference` | S | Optional; max 50 chars |
-| `monthlyGrossSalary` | S | Stored as string to preserve decimal precision |
-| `companyId` | S | FK reference |
-| `userId` | S | Denormalised from Company for ownership filtering |
-| `createdAt` | S | ISO 8601 UTC |
-
-**GSI — `companyId-index`**:
-- PK: `companyId` (S)
-- Projection: ALL
-- Used by: `GetAllByCompanyIdAsync`
-
-**Uniqueness constraint** (`employeeNumber` per `companyId`): Enforced via a
-conditional PutItem expression — the DynamoDB repository checks existence before
-insert using a Query on `companyId-index` filtered by `employeeNumber`.
-
-**Access patterns**:
-- `GetAllByCompanyIdAsync(companyId, userId)` → Query `companyId-index` PK=companyId;
-  filter items where `userId` attribute matches (client-side filter post-query)
-- `GetByIdAsync(id, userId)` → GetItem PK=id; verify `userId` matches
-- `GetByIdWithLoansAsync(id, userId)` → GetItem + Query loans `employeeId-index`
-- `AddAsync` → PutItem
-- `UpdateAsync` → PutItem (full replace)
-- `DeleteAsync` → DeleteItem
-- `HasPayslipsAsync(id)` → Query payslips `employeeId-index` PK=id, limit 1, Select COUNT
+**State transitions**:
+- `Missing` → `Creating` → `ACTIVE`
+- `Existing` → `ACTIVE`
+- permission/config failure → startup abort
 
 ---
 
-### 4. `{prefix}_employee_loans`
+## 2. Storage Model Overview
 
-**Purpose**: Stores loan records for employees.
+The DynamoDB persistence design uses six tables mirroring the existing relational data
+shape. Every table name is prefixed with `DYNAMODB_TABLE_PREFIX` (default `payslip4all`).
+Each table uses a string `id` partition key holding the entity GUID.
 
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `description` | S | Max 300 chars |
-| `totalLoanAmount` | S | Decimal as string |
-| `numberOfTerms` | N | Integer |
-| `monthlyDeductionAmount` | S | Decimal as string |
-| `paymentStartDate` | S | ISO 8601 date |
-| `termsCompleted` | N | Integer; updated on payslip generation |
-| `status` | N | `0` = Active, `1` = Completed (enum int) |
-| `employeeId` | S | FK reference |
-| `userId` | S | Denormalised for ownership filtering |
-| `createdAt` | S | ISO 8601 UTC |
-
-**GSI — `employeeId-index`**:
-- PK: `employeeId` (S)
-- Projection: ALL
-- Used by: `GetAllByEmployeeIdAsync`
-
-**Concurrency on `termsCompleted`**: The EF Core model marks `TermsCompleted` as a
-concurrency token. For DynamoDB, `UpdateAsync` uses a conditional UpdateItem
-expression: `SET termsCompleted = :newVal IF termsCompleted = :expectedVal`. If the
-condition fails, a `ConditionalCheckFailedException` is thrown and propagated as an
-`InvalidOperationException` (matching existing domain behaviour).
-
-**Access patterns**:
-- `GetAllByEmployeeIdAsync(employeeId, userId)` → Query `employeeId-index` PK=employeeId;
-  verify `userId` matches on each item
-- `GetByIdAsync(id, userId)` → GetItem PK=id; verify `userId` matches
-- `AddAsync` → PutItem
-- `UpdateAsync` → UpdateItem with `termsCompleted` condition
-- `DeleteAsync` → DeleteItem
+Ownership filtering is enforced by storing `userId` on all multi-tenant records that need
+company-owner isolation without relational joins.
 
 ---
 
-### 5. `{prefix}_payslips`
+## 3. Tables
 
-**Purpose**: Stores generated payslips for employees.
+### 3.1 `{prefix}_users`
 
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `payPeriodMonth` | N | 1–12 |
-| `payPeriodYear` | N | e.g., 2026 |
-| `grossEarnings` | S | Decimal as string |
-| `uifDeduction` | S | Decimal as string |
-| `totalLoanDeductions` | S | Decimal as string |
-| `totalDeductions` | S | Decimal as string |
-| `netPay` | S | Decimal as string |
-| `employeeId` | S | FK reference |
-| `userId` | S | Denormalised for ownership filtering |
-| `generatedAt` | S | ISO 8601 UTC |
+**Purpose**: Stores registered application users.
 
-**GSI — `employeeId-index`**:
-- PK: `employeeId` (S)
-- Sort key: `generatedAt` (S) — enables ordering by recency
-- Projection: ALL
-- Used by: `GetAllByEmployeeIdAsync`
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `email` | `S` | Unique login lookup value; normalized email |
+| `passwordHash` | `S` | BCrypt/PBKDF2 output; never plain text |
+| `createdAt` | `S` | ISO-8601 UTC timestamp |
 
-**Uniqueness constraint** (`employeeId` + `payPeriodMonth` + `payPeriodYear`): Enforced
-client-side via `ExistsAsync` check before insert (mirrors the EF Core unique index).
+**GSI**: `email-index` on `email`
 
-**Access patterns**:
-- `GetAllByEmployeeIdAsync(employeeId, userId)` → Query `employeeId-index`
-  PK=employeeId ScanIndexForward=false; verify `userId` matches; load loan deductions
-  per payslip via batch Query on `payslipId-index`
-- `GetByIdAsync(id, userId)` → GetItem PK=id; verify `userId`; load deductions
-- `ExistsAsync(employeeId, month, year)` → Query `employeeId-index`, filter by
-  `payPeriodMonth` and `payPeriodYear`, Select COUNT
-- `AddAsync` → PutItem payslip + PutItem each `PayslipLoanDeduction`
-- `DeleteAsync` → DeleteItem payslip + Query + DeleteItem each deduction
+**Relationships**:
+- one `User` owns many `Company` records
+
+### 3.2 `{prefix}_companies`
+
+**Purpose**: Stores employer companies owned by a user.
+
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `name` | `S` | Required; max 200 chars |
+| `address` | `S` | Optional; max 500 chars |
+| `uifNumber` | `S` | Optional; max 50 chars |
+| `sarsPayeNumber` | `S` | Optional; max 30 chars |
+| `userId` | `S` | Required owner reference; primary ownership filter |
+| `createdAt` | `S` | ISO-8601 UTC timestamp |
+
+**GSI**: `userId-index` on `userId`
+
+**Relationships**:
+- belongs to one `User`
+- has many `Employee` records
+
+### 3.3 `{prefix}_employees`
+
+**Purpose**: Stores employees belonging to a company.
+
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `firstName` | `S` | Required; max 100 chars |
+| `lastName` | `S` | Required; max 100 chars |
+| `idNumber` | `S` | Required; max 20 chars |
+| `employeeNumber` | `S` | Required; unique within company |
+| `startDate` | `S` | Required; ISO date |
+| `occupation` | `S` | Required; max 150 chars |
+| `uifReference` | `S` | Optional; max 50 chars |
+| `monthlyGrossSalary` | `S` | Decimal stored as string to preserve precision |
+| `companyId` | `S` | Required FK reference |
+| `userId` | `S` | Required denormalized owner id for query filtering |
+| `createdAt` | `S` | ISO-8601 UTC timestamp |
+
+**GSI**: `companyId-index` on `companyId`
+
+**Relationships**:
+- belongs to one `Company`
+- has many `EmployeeLoan` records
+- has many `Payslip` records
+
+### 3.4 `{prefix}_employee_loans`
+
+**Purpose**: Stores employee loan schedules and repayment progress.
+
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `description` | `S` | Required; max 300 chars |
+| `totalLoanAmount` | `S` | Decimal stored as string |
+| `numberOfTerms` | `N` | Positive integer |
+| `monthlyDeductionAmount` | `S` | Decimal stored as string |
+| `paymentStartDate` | `S` | ISO date |
+| `termsCompleted` | `N` | Integer; concurrency-sensitive |
+| `status` | `N` | Enum value for active/completed |
+| `employeeId` | `S` | Required FK reference |
+| `userId` | `S` | Required denormalized owner id |
+| `createdAt` | `S` | ISO-8601 UTC timestamp |
+
+**GSI**: `employeeId-index` on `employeeId`
+
+**State transitions**:
+- `Active` with `termsCompleted = 0..(numberOfTerms-1)`
+- `Completed` once `termsCompleted >= numberOfTerms`
+
+### 3.5 `{prefix}_payslips`
+
+**Purpose**: Stores generated payslips for an employee and pay period.
+
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `payPeriodMonth` | `N` | 1–12 |
+| `payPeriodYear` | `N` | Four-digit year |
+| `grossEarnings` | `S` | Decimal stored as string |
+| `uifDeduction` | `S` | Decimal stored as string |
+| `totalLoanDeductions` | `S` | Decimal stored as string |
+| `totalDeductions` | `S` | Decimal stored as string |
+| `netPay` | `S` | Decimal stored as string |
+| `employeeId` | `S` | Required FK reference |
+| `userId` | `S` | Required denormalized owner id |
+| `generatedAt` | `S` | ISO-8601 UTC timestamp |
+
+**GSI**: `employeeId-index` on `employeeId` (with chronological ordering support in the
+repository query strategy)
+
+**Validation / uniqueness**:
+- one payslip per employee + pay period
+- must remain readable only by the owning `userId`
+
+### 3.6 `{prefix}_payslip_loan_deductions`
+
+**Purpose**: Stores per-loan deduction lines associated with a payslip.
+
+| Attribute | Type | Validation / Notes |
+|---|---|---|
+| `id` | `S` | Primary key; GUID |
+| `payslipId` | `S` | Required FK reference |
+| `employeeLoanId` | `S` | Required FK reference |
+| `description` | `S` | Required; max 300 chars |
+| `amount` | `S` | Decimal stored as string |
+
+**GSI**: `payslipId-index` on `payslipId`
+
+**Relationships**:
+- belongs to one `Payslip`
+- references one `EmployeeLoan`
 
 ---
 
-### 6. `{prefix}_payslip_loan_deductions`
+## 4. Cross-Table Relationship Rules
 
-**Purpose**: Stores per-loan deduction line items for a payslip. Stored separately to
-avoid DynamoDB item size limits and to enable querying by payslip.
-
-| Attribute | DynamoDB Type | Notes |
-|-----------|---------------|-------|
-| `id` | S (PK) | GUID |
-| `payslipId` | S | FK reference |
-| `employeeLoanId` | S | FK reference |
-| `description` | S | Max 300 chars |
-| `amount` | S | Decimal as string |
-
-**GSI — `payslipId-index`**:
-- PK: `payslipId` (S)
-- Projection: ALL
-- Used by: load deductions for a payslip
-
-**Access patterns**:
-- Load all deductions for a payslip → Query `payslipId-index` PK=payslipId
+| Parent | Child | Rule |
+|---|---|---|
+| `User` | `Company` | `Company.userId` must equal owning user |
+| `Company` | `Employee` | `Employee.companyId` references the parent company; `Employee.userId` must equal the owning company's `userId` |
+| `Employee` | `EmployeeLoan` | `EmployeeLoan.employeeId` references the employee; `EmployeeLoan.userId` must equal the owning employee's `userId` |
+| `Employee` | `Payslip` | `Payslip.employeeId` references the employee; `Payslip.userId` must equal the owning employee's `userId` |
+| `Payslip` | `PayslipLoanDeduction` | `PayslipLoanDeduction.payslipId` references the payslip |
 
 ---
 
-## Entity Hydration
+## 5. Storage Conventions
 
-When the DynamoDB repositories return domain entities (e.g., `Employee`), they must
-hydrate navigation properties that the Application services depend on:
+### Monetary values
 
-- `Employee.Company` — required by `PayslipGenerationService.GetPdfAsync` to access
-  `Company.Name`, `Company.Address`, etc. DynamoDB employee repositories MUST fetch
-  the company record and populate this navigation property when
-  `GetByIdWithLoansAsync` is called.
-- `Payslip.Employee` + `Employee.Company` — required by `GetPdfAsync`.
-  `PayslipRepository.GetByIdAsync` MUST fetch and hydrate both.
-- `Payslip.LoanDeductions` — populated by querying `payslipId-index`.
+All monetary values are stored as strings (`S`) rather than DynamoDB numbers when precise
+decimal round-tripping is required:
 
----
+- `monthlyGrossSalary`
+- `totalLoanAmount`
+- `monthlyDeductionAmount`
+- `grossEarnings`
+- `uifDeduction`
+- `totalLoanDeductions`
+- `totalDeductions`
+- `netPay`
+- `amount`
 
-## Decimal Storage Convention
+### Ownership filtering
 
-DynamoDB's `N` type loses decimal precision for values like `1234.56` stored as
-numbers due to floating-point representation. All monetary values (`MonthlyGrossSalary`,
-`TotalLoanAmount`, `MonthlyDeductionAmount`, `GrossEarnings`, etc.) MUST be stored as
-`S` (string) using `decimal.ToString("G")` and parsed back with
-`decimal.Parse(value, CultureInfo.InvariantCulture)`.
+Every repository method returning company-scoped data must verify `userId` before returning
+results. Ownership filtering is a storage-level invariant, not just an application-service
+concern.
 
----
+### Startup invariants
 
-## Table Provisioning
-
-`DynamoDbTableProvisioner` creates all six tables at startup if they do not exist.
-Each `CreateTable` call specifies:
-- `BillingMode`: PAY_PER_REQUEST (on-demand; no capacity planning required for dev/small prod)
-- All GSIs defined above with `ALL` projection
-- Waits for table status `ACTIVE` before proceeding to the next table
-
-The provisioner logs at `Information` level: `"DynamoDB table '{tableName}' created."` or
-`"DynamoDB table '{tableName}' already exists — skipping."`.
+When `PERSISTENCE_PROVIDER=dynamodb`:
+- `PayslipDbContext` is not constructed,
+- EF Core migration execution is skipped,
+- all required DynamoDB tables must be confirmed active before serving traffic.

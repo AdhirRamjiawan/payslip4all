@@ -2,120 +2,146 @@
 
 **Feature Branch**: `006-dynamodb-persistence`  
 **Created**: 2026-03-28  
-**Status**: Draft  
+**Status**: Refined  
 **Input**: User description: "I want to include another data persistence option for AWS DynamoDB in addition to sqlite and mysql. It's important to make it configurable by environment variables"
 
 ## Architecture & TDD Alignment *(mandatory for Payslip4All)*
 
-This feature lives entirely in the **Infrastructure** layer. It introduces a new set of repository implementations that satisfy the same `Application`-layer interfaces (`IUserRepository`, `ICompanyRepository`, `IEmployeeRepository`, `IPayslipRepository`, `ILoanRepository`) already defined by the existing EF Core implementations. The **Domain** and **Application** layers require zero changes.
+This feature adds DynamoDB as an alternative persistence provider selected entirely through runtime environment variables. Production changes are limited to the **Infrastructure** layer plus **Web** startup and middleware behavior needed to select the provider, bypass the relational startup path, provision required tables, and surface sanitized runtime failures. The **Application** layer contracts and **Domain** entities remain unchanged.
 
-**Constitution alignment notice (Principle V)**: The constitution now includes an approved DynamoDB provider exception for this feature. When `PERSISTENCE_PROVIDER=dynamodb`, the feature must keep the existing `Application`-layer repository interfaces unchanged, bypass the relational migration path entirely, create missing DynamoDB tables automatically at startup, and source all DynamoDB configuration from environment variables only.
+**Constitution alignment notice (Principles I, II, IV, and V)**: The approved DynamoDB provider exception allows a parallel Infrastructure implementation when `PERSISTENCE_PROVIDER=dynamodb`. The feature must keep the existing repository contracts unchanged, preserve ownership filtering, bypass relational migrations only for the DynamoDB path, create required tables before serving traffic, and obtain runtime configuration from environment variables.
 
 **Layer assignment**:
 
 | Concern | Layer |
 |---------|-------|
-| Repository interfaces (unchanged) | Application |
-| DynamoDB repository implementations | Infrastructure |
-| Provider selection via env var at startup | Infrastructure / Web (Program.cs) |
-| Domain entities (unchanged) | Domain |
-| UI (no change) | Web |
+| Repository contracts and service contracts (unchanged) | Application |
+| DynamoDB persistence behavior, repository parity, and table provisioning | Infrastructure |
+| Provider selection, relational-startup bypass, and sanitized request error handling | Web |
+| Business entities and payroll rules (unchanged) | Domain |
 
-### User Story 1 - Configure DynamoDB Provider via Environment Variables (Priority: P1)
+### User Story 1 - Select DynamoDB at Startup (Priority: P1)
 
-As a deployment operator, I can set an environment variable to select DynamoDB as the persistence backend so that I can deploy the application to AWS without modifying any code or config files checked into source control.
+As a deployment operator, I can select DynamoDB entirely through environment variables so that I can start the application in AWS or against a local emulator without changing code or checked-in configuration files.
 
-**Why this priority**: This is the foundational capability everything else depends on. Without provider selection via environment variables, there is no DynamoDB feature. It also directly addresses the core user requirement.
+**Why this priority**: This is the minimum viable capability. Without correct provider selection, startup validation, and relational-path bypass behavior, DynamoDB cannot be used safely in any environment.
 
-**Independent Test**: Can be fully tested by starting the application with `PERSISTENCE_PROVIDER=dynamodb` set and confirming the app starts successfully, connects to DynamoDB, and a basic read/write operation completes — without touching any other environment.
+**Independent Test**: Start the application with `PERSISTENCE_PROVIDER=dynamodb` under each supported runtime mode and verify startup selects the DynamoDB path, validates the environment contract, provisions missing tables, bypasses relational startup, and either starts successfully or fails fast with a descriptive operator-facing error. This story does not require CRUD parity testing.
 
 **Acceptance Scenarios**:
 
-1. **Given** the environment variable `PERSISTENCE_PROVIDER` is not set, **When** the application starts, **Then** it uses SQLite (the existing default) and all existing behaviour is preserved.
-2. **Given** `PERSISTENCE_PROVIDER=sqlite`, **When** the application starts, **Then** it uses SQLite as the persistence backend.
-3. **Given** `PERSISTENCE_PROVIDER=mysql`, **When** the application starts, **Then** it uses MySQL as the persistence backend (existing behaviour unchanged).
-4. **Given** `PERSISTENCE_PROVIDER=dynamodb` and the required DynamoDB environment variables are set, **When** the application starts, **Then** it registers and uses the DynamoDB repository implementations and bypasses the relational database migration path.
-5. **Given** `PERSISTENCE_PROVIDER=dynamodb` but required DynamoDB environment variables are missing or invalid, **When** the application starts, **Then** it fails fast with a clear, descriptive error message indicating which variable is missing.
-6. **Given** `PERSISTENCE_PROVIDER` is set to an unrecognised value, **When** the application starts, **Then** it fails fast with a clear error listing the valid options (`sqlite`, `mysql`, `dynamodb`).
-7. **Given** `PERSISTENCE_PROVIDER=dynamodb` and one or more required DynamoDB tables do not yet exist, **When** the application starts, **Then** the missing tables are created automatically before user traffic is served and each created table is logged for operators.
+1. **Given** `PERSISTENCE_PROVIDER` is not set, **When** the application starts, **Then** it uses the existing SQLite startup path and preserves current behavior.
+2. **Given** `PERSISTENCE_PROVIDER=mysql`, **When** the application starts, **Then** it uses the existing MySQL startup path and preserves current behavior.
+3. **Given** `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION` is set, no local endpoint is configured, and no explicit AWS credential pair is provided, **When** the application starts in a hosted AWS environment, **Then** it uses DynamoDB, relies on the hosting environment's standard AWS identity resolution, bypasses relational startup, and starts successfully.
+4. **Given** `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION` is set, and both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are provided, **When** the application starts, **Then** it uses that explicit credential pair for DynamoDB access and bypasses relational startup.
+5. **Given** `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION` is set, `DYNAMODB_ENDPOINT` points to a local emulator, and no explicit AWS credential pair is provided, **When** the application starts, **Then** it connects to the local emulator using automatically supplied placeholder credentials, bypasses relational startup, and starts successfully.
+6. **Given** `PERSISTENCE_PROVIDER=dynamodb` and only one of `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` is provided, **When** the application starts, **Then** startup fails fast with a clear message that both values must be supplied together.
+7. **Given** `PERSISTENCE_PROVIDER=dynamodb` and `DYNAMODB_REGION` is missing, **When** the application starts, **Then** startup fails fast with a clear message identifying the missing required variable.
+8. **Given** `PERSISTENCE_PROVIDER` is set to an unrecognized value, **When** the application starts, **Then** startup fails fast with a clear message listing the supported provider values.
+9. **Given** `PERSISTENCE_PROVIDER=dynamodb` and one or more required tables do not exist, **When** the application starts, **Then** the missing tables are created before requests are served and each created table is recorded in operator logs.
 
 ---
 
-### User Story 2 - Read and Write All Domain Data via DynamoDB (Priority: P2)
+### User Story 2 - Use DynamoDB for Business Data (Priority: P2)
 
-As a Company Owner using an AWS-hosted deployment, I can perform all standard application tasks (managing employees, generating payslips, recording loans) with data persisted in DynamoDB, and all data remains correctly scoped to my company.
+As a Company Owner, I can perform the existing employee, payslip, and loan workflows while DynamoDB is the active persistence provider so that DynamoDB is a viable production option without changing how I use the application.
 
-**Why this priority**: Functional parity with the existing relational providers is essential for DynamoDB to be a viable production choice. Without it, the provider is unusable.
+**Why this priority**: Provider selection alone is not enough. DynamoDB must support the application's existing business workflows and ownership isolation before it can be considered production-ready.
 
-**Independent Test**: Can be fully tested by running the full application against a DynamoDB backend (local or AWS) and exercising employee creation, payslip generation, and loan recording end-to-end — each operation reads back correctly and is scoped to the authenticated company owner.
+**Independent Test**: Run the application with DynamoDB enabled, perform the existing employee, payslip, and loan workflows for one Company Owner, verify the resulting data can be read back correctly, and confirm a second owner cannot access that data. Trigger transient and permission-related persistence failures and verify users receive sanitized messages while operators receive diagnostic logs.
 
 **Acceptance Scenarios**:
 
-1. **Given** a Company Owner is authenticated with `PERSISTENCE_PROVIDER=dynamodb`, **When** they create an employee, **Then** the employee is persisted in DynamoDB and appears in subsequent list requests scoped to their company only.
-2. **Given** a Company Owner is authenticated with `PERSISTENCE_PROVIDER=dynamodb`, **When** they generate a payslip for an employee, **Then** the payslip record is persisted in DynamoDB and is retrievable by that owner.
-3. **Given** a Company Owner is authenticated with `PERSISTENCE_PROVIDER=dynamodb`, **When** they record a loan for an employee, **Then** the loan is persisted in DynamoDB and is visible in the employee's loan history.
-4. **Given** two different Company Owners exist in DynamoDB, **When** Owner A queries their employees, **Then** only Owner A's employees are returned — Owner B's data is never exposed (ownership filtering is enforced).
-5. **Given** a DynamoDB connection is temporarily unavailable, **When** a user attempts to read or write data, **Then** a user-friendly error message is displayed without leaking infrastructure details.
+1. **Given** a Company Owner is authenticated while DynamoDB is active, **When** they create and later retrieve an employee, **Then** the employee data is persisted and returned correctly for that owner.
+2. **Given** a Company Owner is authenticated while DynamoDB is active, **When** they generate a payslip, **Then** the payslip is persisted and can be retrieved in the same workflow context.
+3. **Given** a Company Owner is authenticated while DynamoDB is active, **When** they record a loan for an employee, **Then** the loan is persisted and appears in that employee's loan history.
+4. **Given** two Company Owners have data stored while DynamoDB is active, **When** either owner retrieves companies, employees, payslips, or loans, **Then** only records belonging to that owner are returned.
+5. **Given** DynamoDB throttles a request, becomes temporarily unavailable, or denies access, **When** a user performs a data operation, **Then** the user receives a sanitized error response and operator logs retain enough detail to diagnose the failure.
 
 ---
 
-### User Story 3 - Local Development with DynamoDB Local (Priority: P3)
+### User Story 3 - Develop Locally with a DynamoDB Emulator (Priority: P3)
 
-As a developer, I can run a local DynamoDB emulator and point the application at it using environment variables so that I can develop and test DynamoDB behaviour without incurring AWS costs or requiring internet access.
+As a developer, I can run the application against a local DynamoDB emulator using environment variables only so that I can validate DynamoDB behavior without requiring a live AWS account.
 
-**Why this priority**: Developer experience is important but not blocking — production DynamoDB usage (P1/P2) is the primary goal. Local emulation is a quality-of-life improvement.
+**Why this priority**: Local emulator support improves development and testability, but it depends on the higher-priority startup contract and repository parity already being in place.
 
-**Independent Test**: Can be fully tested by running the application with `PERSISTENCE_PROVIDER=dynamodb` and `DYNAMODB_ENDPOINT=http://localhost:8000` against a locally running DynamoDB emulator and exercising a create-read cycle.
+**Independent Test**: Start a local DynamoDB emulator, set `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, and `DYNAMODB_ENDPOINT`, leave explicit AWS credentials unset, and verify startup succeeds, required tables are created with the configured prefix behavior, and a create-read cycle completes successfully.
 
 **Acceptance Scenarios**:
 
-1. **Given** `PERSISTENCE_PROVIDER=dynamodb` and `DYNAMODB_ENDPOINT` points to a local emulator, **When** the application starts, **Then** it connects to the local emulator rather than AWS.
-2. **Given** `DYNAMODB_ENDPOINT` is not set and `PERSISTENCE_PROVIDER=dynamodb`, **When** the application starts, **Then** it connects to the AWS DynamoDB service using the configured region and environment-variable credentials.
+1. **Given** `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION` is set, and `DYNAMODB_ENDPOINT` points to a local emulator, **When** explicit AWS credentials are absent, **Then** the application uses placeholder credentials acceptable to the emulator and starts successfully.
+2. **Given** a local emulator is configured and required tables do not yet exist, **When** the application starts, **Then** it creates the missing prefixed tables before serving requests.
+3. **Given** a developer performs a basic create-read cycle against the local emulator, **When** the operation completes, **Then** the data is persisted and retrieved without requiring a live AWS account.
 
 ---
 
 ### Edge Cases
 
-- What happens when a DynamoDB table that the application depends on does not exist at startup? → The application must create the missing table automatically before serving requests and record which table was created in startup logs.
-- What happens when DynamoDB throttles a request (provisioned capacity exceeded)? → The application must surface a generic transient error message to the user, avoid exposing provider-specific error codes, and preserve enough detail in operator logs for troubleshooting.
-- What happens when data written by one provider (e.g., SQLite) is expected in another (e.g., DynamoDB) after a switch? → Data migration between providers is explicitly out of scope for this feature. Switching providers on a live dataset with existing data is unsupported and must be documented.
-- What happens when environment variables contain whitespace or incorrect casing (e.g., `DynamoDB` instead of `dynamodb`)? → The provider value comparison must be case-insensitive and trimmed.
-- What happens if the configured DynamoDB credentials lack the required permissions? → The application must fail fast at startup with a permission error, not at runtime during a user action.
+- What happens when only one credential from the explicit AWS key pair is supplied? → Startup must fail fast and explain that both credential variables must be supplied together.
+- What happens when `DYNAMODB_ENDPOINT` targets a local emulator that is unavailable? → Startup must fail clearly before serving requests and operator logs must identify the connection failure context.
+- What happens when the configured credentials can read data but cannot create missing tables? → Startup must fail before the application serves traffic, and operator logs must make the permission problem diagnosable.
+- What happens when providers are switched after data already exists in a different backend? → Cross-provider data migration is out of scope and must be documented as unsupported by this feature.
+- What happens when provider values contain surrounding whitespace or different casing? → Provider selection must trim and compare values case-insensitively.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST select the active persistence provider based on the value of the `PERSISTENCE_PROVIDER` environment variable at application startup.
-- **FR-002**: The system MUST support `sqlite`, `mysql`, and `dynamodb` as valid values for `PERSISTENCE_PROVIDER` (case-insensitive). When not set, it MUST default to `sqlite`.
-- **FR-003**: The system MUST fail fast at startup with a descriptive error message when `PERSISTENCE_PROVIDER=dynamodb` and any required DynamoDB environment variable is absent.
-- **FR-004**: The system MUST fail fast at startup with a descriptive error message listing valid options when `PERSISTENCE_PROVIDER` is set to an unrecognised value.
-- **FR-005**: The DynamoDB persistence implementation MUST satisfy all existing `Application`-layer repository interfaces without modification to those interfaces.
-- **FR-006**: The DynamoDB persistence implementation MUST enforce company-ownership filtering on all multi-tenant queries, matching the behaviour of the existing SQLite and MySQL implementations.
-- **FR-007**: The system MUST support the following DynamoDB configuration environment variables: `DYNAMODB_REGION` (AWS region), `DYNAMODB_ENDPOINT` (optional; overrides the AWS endpoint for local emulation), `DYNAMODB_TABLE_PREFIX` (optional; controls table naming), `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
-- **FR-008**: The system MUST support all existing domain entity operations (Users, Companies, Employees, Payslips, Loans) when running with the DynamoDB provider.
-- **FR-009**: Switching the `PERSISTENCE_PROVIDER` value MUST NOT require any code changes — only environment variable updates.
-- **FR-010**: The existing SQLite and MySQL persistence paths MUST remain fully functional and unchanged when their respective provider values are configured.
-- **FR-011**: The application MUST automatically create any required DynamoDB tables at startup if they do not already exist. A clear log entry MUST be written for each table created. The `CreateTable` IAM permission is therefore a prerequisite for the configured AWS credentials.
-- **FR-012**: When `PERSISTENCE_PROVIDER=dynamodb`, the system MUST bypass the relational persistence startup path entirely, including `PayslipDbContext` initialization and relational migration execution.
-- **FR-013**: When DynamoDB requests fail because of throttling, temporary unavailability, or permission issues, the system MUST show a sanitized error message to the affected user and MUST NOT expose raw infrastructure details in the user-facing response.
+- **FR-001**: The system MUST select the active persistence provider from the `PERSISTENCE_PROVIDER` runtime environment variable during application startup.
+- **FR-002**: The system MUST support `sqlite`, `mysql`, and `dynamodb` as valid provider values, treat those values case-insensitively, trim surrounding whitespace, and default to `sqlite` when the variable is not supplied.
+- **FR-003**: The DynamoDB provider path MUST leave existing Application-layer contracts and Domain entities unchanged while activating only Infrastructure behavior plus Web startup and middleware behavior needed for the DynamoDB runtime path.
+- **FR-004**: The system MUST fail fast at startup with a descriptive message listing valid options when `PERSISTENCE_PROVIDER` is set to an unrecognized value.
+- **FR-005**: When `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION` MUST be treated as required and startup MUST fail fast when it is missing or blank.
+- **FR-006**: When `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_ENDPOINT` MUST be optional and, when supplied, MUST direct the application to the specified DynamoDB-compatible endpoint instead of the hosted AWS service endpoint.
+- **FR-007**: When `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_TABLE_PREFIX` MUST be optional and the system MUST apply a documented default prefix when the variable is absent.
+- **FR-008**: When both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are supplied, the system MUST use them together as the explicit AWS credential pair for DynamoDB access.
+- **FR-009**: When only one of `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` is supplied, startup MUST fail fast with a descriptive message explaining that the credential variables are valid only as a complete pair.
+- **FR-010**: When `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_ENDPOINT` targets a local emulator, and no explicit AWS credential pair is supplied, the system MUST automatically use non-empty placeholder credentials suitable for local emulators.
+- **FR-011**: When `PERSISTENCE_PROVIDER=dynamodb`, no local emulator endpoint is configured, and no explicit AWS credential pair is supplied, the system MUST rely on the hosting environment's standard AWS credential resolution path.
+- **FR-012**: When `PERSISTENCE_PROVIDER=dynamodb`, the system MUST automatically create any required DynamoDB tables that do not already exist before serving requests.
+- **FR-013**: When table creation occurs at startup, the system MUST record an operator log entry for each created table, and when table creation cannot complete because of permissions or connectivity, startup MUST fail before serving traffic.
+- **FR-014**: When `PERSISTENCE_PROVIDER=dynamodb`, the system MUST bypass relational persistence startup behavior, including relational database initialization and relational migration execution.
+- **FR-015**: The DynamoDB persistence path MUST support the application's existing business operations for Users, Companies, Employees, Payslips, and Loans without changing the visible user workflow.
+- **FR-016**: The DynamoDB persistence path MUST enforce Company Owner ownership filtering on all business-data reads so that one owner cannot retrieve another owner's records.
+- **FR-017**: Switching between supported persistence providers MUST require only runtime configuration changes and MUST NOT require source-code changes.
+- **FR-018**: The existing SQLite and MySQL persistence paths MUST remain available and behaviorally unchanged when their respective providers are selected.
+- **FR-019**: When DynamoDB operations fail because of throttling, temporary unavailability, startup misconfiguration, or permission problems, the system MUST return sanitized user-facing error messages that do not expose raw infrastructure details.
+- **FR-020**: The system MUST capture operator-facing diagnostic logs for DynamoDB startup validation failures, credential-contract violations, table-provisioning outcomes, and runtime persistence failures so operators can identify the failing mode, request context, or missing permission without relying on user reports alone.
+
+### Runtime Configuration Contract
+
+| Runtime mode | DYNAMODB_REGION | DYNAMODB_ENDPOINT | DYNAMODB_TABLE_PREFIX | AWS_ACCESS_KEY_ID | AWS_SECRET_ACCESS_KEY | Required behavior |
+|--------------|-----------------|-------------------|-----------------------|-------------------|-----------------------|-------------------|
+| Hosted AWS with explicit credentials | Required | Optional | Optional | Required | Required | Use the supplied credential pair for DynamoDB access. |
+| Hosted AWS with default credential fallback | Required | Optional | Optional | Optional (leave unset unless both credential variables are supplied) | Optional (leave unset unless both credential variables are supplied) | If both credential variables are absent, rely on the hosting environment's standard AWS credential resolution path. |
+| Local emulator with explicit credentials | Required | Required | Optional | Required | Required | Connect to the local endpoint and use the supplied credential pair. |
+| Local emulator without explicit credentials | Required | Required | Optional | Optional (leave unset unless both credential variables are supplied) | Optional (leave unset unless both credential variables are supplied) | Connect to the local endpoint and auto-supply placeholder credentials acceptable to the emulator. |
+| Invalid partial credential pair | Required | Optional | Optional | Invalid if supplied without `AWS_SECRET_ACCESS_KEY` | Invalid if supplied without `AWS_ACCESS_KEY_ID` | Fail fast at startup and explain that explicit credentials must be supplied as a complete pair. |
 
 ### Assumptions
 
-- DynamoDB access credentials are supplied through environment variables so deployment behavior remains explicit and consistent with the constitution-approved provider rules.
-- DynamoDB table names will follow a predictable naming convention using the configured `DYNAMODB_TABLE_PREFIX`, defaulting to `payslip4all` when the variable is unset.
-- Data migration between providers (e.g., from SQLite to DynamoDB) is out of scope for this feature.
-- The DynamoDB data model will be designed to satisfy the existing query patterns (e.g., list employees by company, list payslips by employee) without requiring changes to the Application layer.
+- Local DynamoDB emulators accept syntactically valid placeholder credentials even when they do not verify those values against AWS.
+- Hosted AWS deployments can supply credentials either through an explicit environment-variable pair or through the environment's standard AWS identity resolution path.
+- The default table prefix is a stable documented value used consistently when `DYNAMODB_TABLE_PREFIX` is absent.
+- Cross-provider data migration is out of scope for this feature; switching providers changes where future data is stored, not how existing data is migrated.
+- Existing user workflows, ownership rules, and business calculations remain unchanged by the introduction of DynamoDB as an additional persistence option.
+
+### Key Entities *(include if feature involves data)*
+
+- **Persistence Provider Configuration**: The runtime settings that determine which persistence backend is active and, for DynamoDB, which region, endpoint, table prefix, and credential mode are used.
+- **Company-Owned Business Records**: The set of Users, Companies, Employees, Payslips, and Loans that must remain functionally available and ownership-scoped regardless of which persistence provider is active.
+- **Operator Diagnostics**: Startup and runtime records that capture configuration errors, provisioning results, and persistence failure details needed for support and incident response.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Switching between SQLite, MySQL, and DynamoDB requires only environment variable changes — zero code changes and zero redeployment of binaries.
-- **SC-002**: All existing acceptance scenarios for employee management, payslip generation, and loan recording pass without modification when run against the DynamoDB provider.
-- **SC-003**: Application startup with an invalid or misconfigured `PERSISTENCE_PROVIDER` produces a clear, actionable error message within 5 seconds — no silent failures or cryptic stack traces exposed to the operator.
-- **SC-004**: Ownership isolation is maintained across providers: a Company Owner's queries against DynamoDB never return another owner's data, verifiable by integration tests covering multi-tenant scenarios.
-- **SC-005**: The existing SQLite and MySQL provider test suites continue to pass at 100% after this feature is merged — no regression introduced.
-- **SC-006**: A developer can run the full application against a local DynamoDB emulator with no AWS account required, following documented setup steps.
-- **SC-007**: When DynamoDB is selected and required tables are missing, startup prepares all required tables before the first user action can fail because of missing table infrastructure.
-- **SC-008**: In all tested DynamoDB outage, throttling, and permission-error scenarios, end users see a generic recoverable error message with no provider-specific exception text.
+- **SC-001**: Operators can switch between SQLite, MySQL, and DynamoDB using runtime configuration changes only, with zero source-code changes required.
+- **SC-002**: In validation testing, each supported DynamoDB startup mode succeeds or fails exactly as specified: hosted AWS with explicit credentials, hosted AWS with default credential fallback, local emulator with explicit credentials, local emulator without explicit credentials, and invalid partial credential pair.
+- **SC-003**: Misconfigured provider or DynamoDB startup settings produce a clear, actionable startup failure within 5 seconds of application launch.
+- **SC-004**: All existing employee, payslip, and loan workflows complete successfully against DynamoDB in end-to-end validation without changing the user-facing workflow.
+- **SC-005**: Ownership-isolation validation demonstrates that 100% of tested cross-owner queries return only the requesting owner's data while DynamoDB is active.
+- **SC-006**: When required DynamoDB tables are missing, startup creates all missing tables before the first request is served and records each creation in operator logs.
+- **SC-007**: In tested throttling, temporary unavailability, and permission-failure scenarios, 100% of user-facing error responses remain sanitized and 100% of corresponding failures produce operator log entries with diagnostic context.
+- **SC-008**: A developer can complete the documented local-emulator startup and a basic create-read validation flow without a live AWS account.

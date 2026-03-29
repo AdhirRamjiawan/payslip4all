@@ -1,182 +1,174 @@
 # Research: AWS DynamoDB Persistence Option
 
-**Feature**: 006-dynamodb-persistence
-**Phase**: 0 — Research & Decision Log
-**Date**: 2026-03-28
+**Feature**: 006-dynamodb-persistence  
+**Phase**: 0 — Research & Decision Log  
+**Date**: 2026-03-29
 
 ---
 
-## Decision 1: Configuration Key Naming
+## Decision 1: Persistence Provider Selection Contract
 
-**Decision**: Standardise on `PERSISTENCE_PROVIDER` as the single environment variable
-for selecting the persistence backend, replacing the existing `DatabaseProvider`
-configuration key.
+**Decision**: Standardize on `PERSISTENCE_PROVIDER` as the single runtime selector for
+`sqlite`, `mysql`, and `dynamodb`, with case-insensitive, trimmed matching and a default
+of `sqlite` when unset.
 
-**Rationale**: The feature spec explicitly mandates `PERSISTENCE_PROVIDER`. The
-existing `DatabaseProvider` key lives in `appsettings.json` and is read via
-`builder.Configuration["DatabaseProvider"]`; it is not yet a formal standard.
-Unifying under one key reduces operator confusion.
-
-**Migration impact**: `Program.cs` must be updated to read `PERSISTENCE_PROVIDER`
-instead of `DatabaseProvider`. The `appsettings.json` key `DatabaseProvider` must be
-removed; its value was `sqlite` (the default). In .NET, environment variables map
-directly to configuration keys, so `PERSISTENCE_PROVIDER=dynamodb` will be read by
-`builder.Configuration["PERSISTENCE_PROVIDER"]`.
+**Rationale**: The feature spec requires environment-variable-driven provider selection
+with zero code changes across environments. Keeping one explicit selector in `Program.cs`
+preserves existing SQLite/MySQL behavior while making the DynamoDB path operationally
+obvious to deployers and test fixtures.
 
 **Alternatives considered**:
-- Keep `DatabaseProvider` and add `dynamodb` as a third value — rejected because it
-  conflicts with the approved spec and leaves a poorly named key in the codebase.
-- Support both keys with a fallback — rejected as it permanently complicates startup
-  logic for no lasting benefit.
+- Keep a legacy `DatabaseProvider` setting in parallel — rejected because it creates
+  conflicting startup precedence and operator confusion.
+- Use provider-specific boolean flags — rejected because it does not scale and makes
+  invalid mixed states likely.
 
 ---
 
-## Decision 2: DynamoDB Table Design Strategy
+## Decision 2: AWS Authentication Precedence
 
-**Decision**: Multi-table design — one DynamoDB table per entity type (6 tables).
+**Decision**: Use the following credential resolution behavior for DynamoDB:
 
-**Rationale**: The existing access patterns are inherently relational (filter by
-`userId`, `companyId`, `employeeId`). Multi-table design maps 1:1 to the existing
-entity model, making the implementation readable for a team experienced with EF Core.
-DynamoDB Global Secondary Indexes (GSIs) handle the secondary access patterns.
+1. if `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are both supplied, construct the
+   DynamoDB client with those explicit credentials,
+2. else, if `DYNAMODB_ENDPOINT` is set, assume a local emulator and supply syntactically
+   valid dummy credentials,
+3. else, for real AWS, let `AmazonDynamoDBClient(config)` use the AWS SDK for .NET
+   default credential chain / hosted identity.
+
+**Rationale**: This matches the feature update and aligns with standard AWS SDK behavior:
+explicit credentials must win when intentionally supplied, local emulators usually require
+non-empty placeholder credentials even though they do not authenticate them, and hosted
+AWS deployments should rely on the SDK's normal provider chain (for example IAM roles,
+container credentials, instance metadata, and configured profiles) instead of hardcoded
+production secrets.
 
 **Alternatives considered**:
-- Single-table design (DynamoDB best practice for high-scale SaaS) — rejected because
-  it would require a complete redesign of the access patterns and the skill investment
-  is not justified at the current scale. Single-table can be migrated to later.
-
-**Table list**:
-
-| Table (with prefix) | PK | SK | GSIs |
-|---|---|---|---|
-| `{prefix}_users` | `id` (S) | — | `email-index` (PK: email) |
-| `{prefix}_companies` | `id` (S) | — | `userId-index` (PK: userId) |
-| `{prefix}_employees` | `id` (S) | — | `companyId-index` (PK: companyId) |
-| `{prefix}_employee_loans` | `id` (S) | — | `employeeId-index` (PK: employeeId) |
-| `{prefix}_payslips` | `id` (S) | — | `employeeId-index` (PK: employeeId) |
-| `{prefix}_payslip_loan_deductions` | `id` (S) | — | `payslipId-index` (PK: payslipId) |
-
-Default prefix: `payslip4all` (overridable via `DYNAMODB_TABLE_PREFIX` env var).
+- Require explicit access keys in every environment — rejected because it breaks hosted
+  AWS best practice and conflicts with the constitution's prohibition on hardcoded
+  production credentials.
+- Always inject dummy credentials when explicit credentials are absent — rejected because
+  that would disable standard hosted-AWS identity resolution for real DynamoDB.
+- Require `AWS_SESSION_TOKEN` as part of the base contract — rejected because the feature
+  only mandates access-key pairs when explicitly provided; the SDK chain can already
+  resolve temporary credentials where needed.
 
 ---
 
-## Decision 3: Ownership Filtering Strategy
+## Decision 3: DynamoDB Table Topology
 
-**Decision**: Denormalise `userId` onto all child entities (Employee, EmployeeLoan,
-Payslip, PayslipLoanDeduction) as a stored attribute. Ownership filtering in DynamoDB
-repositories uses this denormalised field rather than cross-table lookups.
+**Decision**: Use a multi-table DynamoDB design with one table per persisted aggregate or
+line-item collection:
 
-**Rationale**: DynamoDB has no JOIN operation. The EF Core repositories enforce
-ownership via navigation properties (e.g., `e.Company.UserId == userId`). In DynamoDB,
-the equivalent requires either a cross-table read (fetch parent company to get userId)
-or storing `userId` directly on the child. Denormalisation is the DynamoDB standard
-pattern and avoids the read amplification of cross-table ownership lookups.
+| Table (with prefix) | PK | GSI(s) |
+|---|---|---|
+| `{prefix}_users` | `id` | `email-index` |
+| `{prefix}_companies` | `id` | `userId-index` |
+| `{prefix}_employees` | `id` | `companyId-index` |
+| `{prefix}_employee_loans` | `id` | `employeeId-index` |
+| `{prefix}_payslips` | `id` | `employeeId-index` |
+| `{prefix}_payslip_loan_deductions` | `id` | `payslipId-index` |
 
-**Impact on data model**: Each DynamoDB item for Employee, EmployeeLoan, Payslip, and
-PayslipLoanDeduction will include a `userId` attribute. This attribute is written at
-insert time and never updated (companies cannot change ownership). The Application-layer
-interfaces and Domain entities are unchanged — `userId` is only a DynamoDB storage
-concern.
+**Rationale**: The existing repository contracts and domain model are already organized by
+entity. A multi-table design maps more directly to those interfaces, keeps repository code
+readable for a team accustomed to EF Core, and still supports the needed query patterns
+through targeted GSIs.
 
 **Alternatives considered**:
-- Cross-table ownership verification (fetch company by companyId, check userId) —
-  rejected due to read amplification and latency cost on every query.
+- Single-table DynamoDB design — rejected for this feature because it would require a much
+  broader access-pattern redesign and substantially higher implementation complexity.
 
 ---
 
-## Decision 4: IUnitOfWork for DynamoDB
+## Decision 4: Ownership Filtering Strategy
 
-**Decision**: Implement `DynamoDbUnitOfWork` as a no-op for all methods.
+**Decision**: Denormalize `userId` onto DynamoDB child items (`Company`, `Employee`,
+`EmployeeLoan`, `Payslip`, and stored payslip loan deductions when needed for traversal)
+and enforce ownership in every repository query or post-fetch validation.
 
-**Rationale**: Examining the existing EF Core repositories, every `AddAsync`,
-`UpdateAsync`, and `DeleteAsync` method calls `_db.SaveChangesAsync()` immediately —
-they do not rely on deferred commit. The `PayslipGenerationService` calls
-`_unitOfWork.SaveChangesAsync()` at the end of `GeneratePayslipAsync()`, but this is a
-second call on an already-committed EF Core context (effectively a no-op in EF Core too
-when no pending changes exist). DynamoDB repositories commit on each SDK call, so there
-is nothing to flush at the unit-of-work level. The `BeginTransactionAsync`,
-`CommitTransactionAsync`, and `RollbackTransactionAsync` methods are also no-ops.
-
-**Atomicity note**: The payslip generation flow (add payslip + update N loans) is not
-atomic across DynamoDB calls in this implementation. The `ExistsAsync` duplicate check
-and the idempotent overwrite path in `PayslipGenerationService` provide sufficient
-safety for the current scale. Full atomicity can be introduced via DynamoDB
-`TransactWriteItems` in a future iteration if required.
+**Rationale**: DynamoDB does not support relational joins, but the constitution requires
+the same company-owner isolation guarantees as the relational providers. Storing `userId`
+with the item avoids repeated parent lookups and keeps repository implementations aligned
+with the existing `Application` contracts.
 
 **Alternatives considered**:
-- DynamoDB TransactWriteItems for payslip + loan updates — rejected for this feature
-  because it would require threading the loan update items through the PayslipRepository
-  interface (a cross-cutting concern), changing the repository contract and adding
-  scope not required by the spec.
+- Resolve ownership by loading parent records on every read — rejected due to extra
+  latency, read amplification, and unnecessary complexity on high-frequency paths.
+- Move ownership checks into the Application layer only — rejected because the
+  constitution requires data-access filtering, not just service-layer filtering.
 
 ---
 
-## Decision 5: AWS SDK and Local Emulation
+## Decision 5: Startup Provisioning Strategy
 
-**Decision**: Use `AWSSDK.DynamoDBv2` (the AWS SDK v3 .NET DynamoDB client).
-For local development and CI integration tests, use the `amazon/dynamodb-local`
-Docker image. Test infrastructure is wrapped in an `IAsyncLifetime` xUnit fixture.
+**Decision**: Provision missing DynamoDB tables at application startup through a hosted
+service, log each created table, and bypass EF Core migration execution entirely when
+`PERSISTENCE_PROVIDER=dynamodb`.
 
-**Rationale**: `AWSSDK.DynamoDBv2` is the officially mandated package per constitution
-v1.3.0. DynamoDB Local is the official AWS emulator, available as a Docker image with
-no licensing restrictions. It is fully compatible with `AWSSDK.DynamoDBv2` and supports
-all required APIs (CreateTable, PutItem, GetItem, Query, DeleteItem, UpdateItem).
+**Rationale**: The spec requires first-run operability without manual relational-style
+migration steps and explicitly states that DynamoDB tables must be created before user
+traffic is served. A startup provisioner gives local development, CI, and new AWS
+deployments the same deterministic boot path.
 
-**Env var configuration**:
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `PERSISTENCE_PROVIDER` | No | `sqlite` | One of: `sqlite`, `mysql`, `dynamodb` |
-| `DYNAMODB_REGION` | When dynamodb | `us-east-1` | AWS region |
-| `DYNAMODB_ENDPOINT` | No | AWS endpoint | Override for local emulator |
-| `AWS_ACCESS_KEY_ID` | When dynamodb (non-IAM) | — | AWS access key |
-| `AWS_SECRET_ACCESS_KEY` | When dynamodb (non-IAM) | — | AWS secret key |
-| `DYNAMODB_TABLE_PREFIX` | No | `payslip4all` | Prefix for all table names |
-
-When `DYNAMODB_ENDPOINT` is set, the SDK is configured to use it instead of the
-regional AWS endpoint. This supports `http://localhost:8000` for DynamoDB Local.
-When running on AWS with an IAM role attached, `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` can be omitted; the SDK's credential chain resolves the role.
+**Alternatives considered**:
+- Require operators to pre-create all tables manually — rejected because it violates the
+  spec and slows down developer onboarding.
+- Reuse `PayslipDbContext` migration startup for DynamoDB — rejected because the
+  constitution's DynamoDB exception explicitly bypasses EF Core in this provider path.
 
 ---
 
-## Decision 6: DynamoDB Client Registration
+## Decision 6: Unit of Work Semantics
 
-**Decision**: Register `IAmazonDynamoDB` (the SDK client interface) as a `Singleton`
-in the DI container. All DynamoDB repository implementations receive it via constructor
-injection.
+**Decision**: Keep `IUnitOfWork` unchanged and implement a DynamoDB no-op
+`DynamoDbUnitOfWork`.
 
-**Rationale**: The SDK client is thread-safe and designed to be a long-lived singleton.
-Creating a new client per request (Scoped) would waste connection pool resources.
+**Rationale**: The feature must preserve existing `Application` contracts. Existing
+repository methods already save immediately in the relational implementation, so a no-op
+unit of work maintains compatibility without pushing DynamoDB transaction concerns into
+the Application layer.
 
-**Factory**: A `DynamoDbClientFactory` static helper builds the `AmazonDynamoDBClient`
-from environment variables and is called once during `builder.Services` registration.
-
----
-
-## Decision 7: Table Auto-Creation
-
-**Decision**: Implement `DynamoDbTableProvisioner` as an `IHostedService` that runs
-at startup. It calls `DescribeTable` for each required table; if the table does not
-exist (`ResourceNotFoundException`), it calls `CreateTable` and waits for the table
-to become `ACTIVE`. Each creation is logged at Information level.
-
-**Rationale**: Auto-creation (FR-011, Option A) simplifies developer onboarding and
-reduces the operational burden for small deployments. The provisioner runs before the
-application begins serving requests, ensuring tables exist before any repository call.
-
-**CI impact**: The DynamoDB integration tests also call the provisioner (or create
-tables directly via the SDK fixture) before running test assertions.
+**Alternatives considered**:
+- Introduce DynamoDB-specific transactional repository contracts — rejected because it
+  would violate the requirement to keep existing Application interfaces unchanged.
+- Force every service to branch on provider type — rejected because it breaks Clean
+  Architecture and scatters infrastructure concerns into application services.
 
 ---
 
-## Resolved Unknowns
+## Decision 7: Test Strategy and Failure Surface
 
-| Unknown | Resolution |
+**Decision**: Cover the DynamoDB provider with:
+
+- startup/provider-switching tests in `Payslip4All.Web.Tests`,
+- client-factory, provisioner, and repository tests in `Payslip4All.Infrastructure.Tests`,
+- DynamoDB Local for integration coverage,
+- explicit scenarios for invalid provider values, missing region, credential-pair
+  validation, ownership isolation, and startup table creation.
+
+User-facing failures from throttling, temporary unavailability, or permission issues
+should be surfaced as sanitized messages while detailed exception information is retained
+in logs.
+
+**Rationale**: The constitution requires TDD and DynamoDB-local CI coverage, while the spec
+requires fail-fast startup validation and sanitized user messaging. Separating startup,
+repository, and operator-facing behavior into dedicated test layers keeps the provider
+exception auditable and maintainable.
+
+**Alternatives considered**:
+- Live AWS integration tests in CI — rejected by the constitution.
+- Repository-only tests without startup wiring coverage — rejected because provider
+  registration and EF Core bypass are core feature requirements.
+
+---
+
+## Resolved Clarifications
+
+| Clarification | Resolution |
 |---|---|
-| How to enforce ownership without EF Core JOINs | Denormalise `userId` onto child entities |
-| How to handle `IUnitOfWork` without a DbContext | No-op `DynamoDbUnitOfWork` (matches actual EF Core runtime behaviour) |
-| Should tables be auto-created? | Yes (Option A — chosen by engineer) |
-| Which DynamoDB SDK to use? | `AWSSDK.DynamoDBv2` (constitution-mandated) |
-| How to test without a live AWS account? | `amazon/dynamodb-local` Docker image in CI |
-| How to name the config key? | `PERSISTENCE_PROVIDER` (replaces `DatabaseProvider`) |
+| Which runtime key selects the provider? | `PERSISTENCE_PROVIDER`, trimmed and case-insensitive, default `sqlite` |
+| How should AWS auth behave? | Explicit keys first; dummy creds for local endpoint; SDK default chain for real AWS |
+| How are tables created? | Startup hosted service provisions missing tables and logs each creation |
+| How is tenant isolation preserved without joins? | `userId` is denormalized and checked on every repository path |
+| Must Application interfaces change? | No — all DynamoDB work remains an Infrastructure implementation of existing contracts |
+| How is CI/local testing handled? | DynamoDB Local plus xUnit/WebApplicationFactory/repository fixture coverage |
