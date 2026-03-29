@@ -140,6 +140,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IDispos
                 options.UseSqlite($"Data Source={_dbPath}"));
         });
 
+        builder.UseSetting("PERSISTENCE_PROVIDER", "sqlite");
         builder.UseSetting("DatabaseProvider", "sqlite");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
     }

@@ -1,37 +1,36 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.0 → 1.2.0 (MINOR — tech stack table updated)
-Bump rationale: Two tech stack table corrections applied:
-  (1) Added "Logging" row formalising Serilog as the mandated logging stack
-      (Serilog.AspNetCore 10.x + Serilog.Enrichers.Environment +
-      Serilog.Enrichers.Thread). These packages were added in feature
-      002-serilog-logging with the deviation documented in plan.md Complexity
-      Tracking; this amendment closes the formal constitution gap.
-  (2) Updated "PDF export" row: removed stale "(planned)" qualifier and "or
-      equivalent" hedge; locked to QuestPDF 2024.10.x as delivered in
-      feature 001-payslip-generation.
-  This is a MINOR bump: new mandatory table entry added; no principles
-  removed or redefined.
+Version change: 1.2.0 → 1.3.0 (MINOR — Principle V extended; tech stack table updated)
+Bump rationale: Feature 006-dynamodb-persistence requires a formal constitution
+  amendment to permit non-EF Core repository implementations when the application
+  is configured to use AWS DynamoDB as the persistence backend. The EF Core mandate
+  in Principle V is extended with an explicit approved exception for DynamoDB
+  provider implementations. No principles are removed or fundamentally redefined;
+  the core EF Core requirement remains the default. This is a MINOR bump.
 
-Modified principles: None.
+Modified principles:
+  - V. Database Support (Entity Framework Core)
+    New sub-section "DynamoDB Provider Exception" added, formally permitting
+    non-EF Core repository implementations scoped to PERSISTENCE_PROVIDER=dynamodb.
+    All existing rules remain unchanged for SQLite/MySQL providers.
 
 Added sections:
-  - Tech Stack table row: Logging (Serilog.AspNetCore 10.x + enrichers)
+  - Principle V: DynamoDB Provider Exception sub-section
+  - Tech Stack table row: DB (DynamoDB) — AWS DynamoDB via AWSSDK.DynamoDBv2
 
 Modified sections:
-  - Tech Stack table row: PDF export — "(planned) QuestPDF or equivalent"
-    → "QuestPDF 2024.10.x"
+  - Tech Stack table row: DB (production) — added DynamoDB as an approved option
 
 Removed sections: None.
 
-Placeholder token audit (2026-03-20):
+Placeholder token audit (2026-03-28):
   - [Authorize]  → ASP.NET Core attribute, NOT a template token. Correct as-is.
   - No other [ALL_CAPS_IDENTIFIER] template tokens remain unresolved.
 
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md   — No changes required; tech stack
-       table rows do not affect Constitution Check gates.
+  ✅ .specify/templates/plan-template.md   — UPDATED: Principle V Constitution
+       Check gate question updated to accommodate DynamoDB provider path.
   ✅ .specify/templates/tasks-template.md  — No changes required.
   ✅ .specify/templates/spec-template.md   — No changes required.
   ✅ .specify/templates/checklist-template.md — No changes required.
@@ -41,9 +40,11 @@ Templates requiring updates:
 
 Deferred TODOs / Manual follow-up required: None.
 
+Prior report (1.1.0 → 1.2.0):
+  Added "Logging" row formalising Serilog. Updated "PDF export" row.
+
 Prior report (1.0.2 → 1.1.0):
   Added Core Principle VI: Manual Test Gate (NON-NEGOTIABLE).
-  All dependent templates updated 2026-03-16.
 -->
 
 # Payslip4All Constitution
@@ -172,6 +173,32 @@ All persistent data access MUST go through Entity Framework Core:
 migration low-risk. Centralized migration management prevents schema drift between
 environments and ensures reproducible deployments for every developer and CI run.
 
+#### DynamoDB Provider Exception (feature 006-dynamodb-persistence)
+
+When `PERSISTENCE_PROVIDER=dynamodb` is set via environment variable, the following
+rules apply as an approved deviation from the EF Core mandate above:
+
+- The `Application` layer repository interfaces (`IUserRepository`, `ICompanyRepository`,
+  `IEmployeeRepository`, `IPayslipRepository`, `ILoanRepository`) MUST remain unchanged.
+  The DynamoDB implementation is a parallel Infrastructure concern only.
+- A complete set of DynamoDB repository implementations MUST be provided in
+  `Payslip4All.Infrastructure`, satisfying every existing Application-layer interface.
+- `PayslipDbContext` and EF Core migrations are BYPASSED entirely when DynamoDB is
+  active; `MigrateAsync()` MUST NOT be called for the DynamoDB provider path.
+- Required DynamoDB tables MUST be created automatically at startup if they do not
+  exist, with each creation logged. The `CreateTable` IAM permission is a required
+  prerequisite for the configured AWS credentials.
+- All DynamoDB configuration (region, endpoint, table prefix, credentials) MUST be
+  provided exclusively via environment variables — no hardcoded values are permitted.
+- Ownership filtering (Company Owner data isolation) MUST be enforced in every DynamoDB
+  repository query, matching the behaviour of the EF Core implementations.
+- The `AWSSDK.DynamoDBv2` package is the sole approved AWS SDK entry point for this
+  provider; direct HTTP calls to the DynamoDB API are PROHIBITED.
+- This exception applies ONLY when `PERSISTENCE_PROVIDER=dynamodb`. All other provider
+  values (`sqlite`, `mysql`, unset) MUST use the EF Core path without modification.
+- Integration tests MUST cover the DynamoDB provider path using a local DynamoDB
+  emulator; tests requiring a live AWS account are PROHIBITED in CI.
+
 ### VI. Manual Test Gate (NON-NEGOTIABLE)
 
 After completing any implementation task, the agent MUST NOT automatically execute
@@ -219,7 +246,8 @@ autonomous committer.
 | UI Framework         | Blazor Server (ASP.NET Core 8)                        |
 | ORM                  | Entity Framework Core 8                               |
 | DB (development)     | SQLite                                                |
-| DB (production)      | SQLite, MySQL (`Pomelo.EntityFrameworkCore.MySql`), or SQL Server (via config, no code change — see C2 deviation in feature-001 plan.md) |
+| DB (production)      | SQLite, MySQL (`Pomelo.EntityFrameworkCore.MySql`), DynamoDB (`AWSSDK.DynamoDBv2`), or SQL Server (via config, no code change — see C2 deviation in feature-001 plan.md; DynamoDB exception in Principle V) |
+| DB (DynamoDB)        | `AWSSDK.DynamoDBv2`; selected via `PERSISTENCE_PROVIDER=dynamodb`; tables auto-created at startup; local emulation via `DYNAMODB_ENDPOINT` env var |
 | Unit / Integration   | xUnit + Moq                                           |
 | Component testing    | bUnit                                                 |
 | Password hashing     | BCrypt.Net-Next or PBKDF2 (KeyDerivation)             |
@@ -312,4 +340,4 @@ All PRs and code reviews MUST verify compliance with this constitution. Any inte
 deviation from a principle MUST be documented in the `plan.md` Complexity Tracking
 table with justification before work begins.
 
-**Version**: 1.2.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-20
+**Version**: 1.3.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-28
