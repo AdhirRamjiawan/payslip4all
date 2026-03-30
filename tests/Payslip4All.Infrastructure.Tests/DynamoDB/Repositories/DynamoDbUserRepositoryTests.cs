@@ -7,6 +7,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB.Repositories;
 /// Integration tests for <see cref="DynamoDbUserRepository"/>.
 /// Requires DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000).
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 [Trait("Category", "Integration")]
 public class DynamoDbUserRepositoryTests : IClassFixture<DynamoDbTestFixture>
 {
@@ -65,5 +66,16 @@ public class DynamoDbUserRepositoryTests : IClassFixture<DynamoDbTestFixture>
     {
         var email = $"nope_{Guid.NewGuid():N}@example.com";
         Assert.False(await _sut.ExistsAsync(email));
+    }
+
+    [Fact]
+    public async Task AddAsync_WhenEmailAlreadyExists_ThrowsInvalidOperationException()
+    {
+        var email = $"dupe_{Guid.NewGuid():N}@example.com";
+
+        await _sut.AddAsync(new User { Email = email, PasswordHash = "hash1" });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.AddAsync(new User { Email = email.ToUpperInvariant(), PasswordHash = "hash2" }));
     }
 }

@@ -10,6 +10,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB;
 /// Integration tests for <see cref="DynamoDbTableProvisioner"/>.
 /// Requires DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000).
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 [Trait("Category", "Integration")]
 public class DynamoDbTableProvisionerTests : IAsyncLifetime
 {

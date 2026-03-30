@@ -2,6 +2,8 @@ using Payslip4All.Domain.Enums;
 namespace Payslip4All.Domain.Entities;
 public class EmployeeLoan
 {
+    private int _persistedTermsCompleted;
+
     public Guid Id { get; private set; }
     public string Description { get; set; } = string.Empty;
     public decimal TotalLoanAmount { get; set; }
@@ -20,6 +22,7 @@ public class EmployeeLoan
         Status = LoanStatus.Active;
         TermsCompleted = 0;
         CreatedAt = DateTimeOffset.UtcNow;
+        _persistedTermsCompleted = TermsCompleted;
     }
     
     public void IncrementTermsCompleted()
@@ -38,4 +41,8 @@ public class EmployeeLoan
             && periodDate >= PaymentStartDate
             && TermsCompleted < NumberOfTerms;
     }
+
+    public int GetPersistedTermsCompleted() => _persistedTermsCompleted;
+
+    public void CapturePersistedState() => _persistedTermsCompleted = TermsCompleted;
 }

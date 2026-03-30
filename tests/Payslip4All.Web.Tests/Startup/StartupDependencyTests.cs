@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Infrastructure.Persistence;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
+using Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 using System.IO;
 
 namespace Payslip4All.Web.Tests.Startup;
@@ -141,6 +143,48 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
             Assert.NotNull(scope.ServiceProvider.GetService<PayslipDbContext>());
             Assert.NotNull(scope.ServiceProvider.GetService<IUserRepository>());
             Assert.IsNotType<Payslip4All.Infrastructure.Persistence.DynamoDB.DynamoDbUnitOfWork>(
+                scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void MySqlProvider_WithWhitespace_RemainsOnRelationalRegistrations()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"p4a_mysql_{Guid.NewGuid():N}.db");
+
+        try
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("PERSISTENCE_PROVIDER", " MySQL ");
+                builder.UseSetting(
+                    "ConnectionStrings:MySqlConnection",
+                    "Server=localhost;Database=payslip4all;User=root;Password=placeholder;");
+
+                builder.ConfigureServices(services =>
+                {
+                    var descriptor = services.SingleOrDefault(
+                        d => d.ServiceType == typeof(DbContextOptions<PayslipDbContext>));
+                    if (descriptor != null)
+                        services.Remove(descriptor);
+
+                    services.AddDbContext<PayslipDbContext>(options =>
+                        options.UseSqlite($"Data Source={dbPath}"));
+                });
+            });
+
+            using var scope = factory.Services.CreateScope();
+
+            Assert.NotNull(scope.ServiceProvider.GetService<PayslipDbContext>());
+            Assert.IsNotType<DynamoDbUserRepository>(
+                scope.ServiceProvider.GetRequiredService<IUserRepository>());
+            Assert.IsNotType<DynamoDbUnitOfWork>(
                 scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
         }
         finally

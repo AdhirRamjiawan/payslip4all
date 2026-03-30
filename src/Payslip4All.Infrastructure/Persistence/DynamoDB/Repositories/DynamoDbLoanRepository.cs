@@ -3,19 +3,19 @@ using Amazon.DynamoDBv2.Model;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Domain.Entities;
 using Payslip4All.Domain.Enums;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
 /// <summary>
 /// DynamoDB implementation of <see cref="ILoanRepository"/>.
-/// Uses conditional UpdateItem for termsCompleted to enforce optimistic concurrency.
+/// Uses the loan entity's persisted terms-completed snapshot for optimistic concurrency.
 /// </summary>
 public sealed class DynamoDbLoanRepository : ILoanRepository
 {
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
     private readonly string _employeeTableName;
-    private readonly string _companyTableName;
 
     public DynamoDbLoanRepository(IAmazonDynamoDB dynamoDb)
     {
@@ -23,7 +23,6 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
         var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
         _tableName = $"{prefix}_employee_loans";
         _employeeTableName = $"{prefix}_employees";
-        _companyTableName = $"{prefix}_companies";
     }
 
     public async Task<IReadOnlyList<EmployeeLoan>> GetAllByEmployeeIdAsync(Guid employeeId, Guid userId)
@@ -75,34 +74,19 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
             },
         });
 
-        var userId = empResponse.IsItemSet && empResponse.Item.TryGetValue("userId", out var u)
-            ? u.S
-            : string.Empty;
+        var userId = DynamoDbOwnership.GetRequiredUserId(empResponse, "Employee", loan.EmployeeId);
 
         await _dynamoDb.PutItemAsync(new PutItemRequest
         {
             TableName = _tableName,
             Item = ToItem(loan, userId),
         });
+
+        loan.CapturePersistedState();
     }
 
     public async Task UpdateAsync(EmployeeLoan loan)
     {
-        // Get the current termsCompleted to use as optimistic concurrency condition
-        var existing = await _dynamoDb.GetItemAsync(new GetItemRequest
-        {
-            TableName = _tableName,
-            Key = new Dictionary<string, AttributeValue>
-            {
-                ["id"] = new AttributeValue { S = loan.Id.ToString() },
-            },
-        });
-
-        if (!existing.IsItemSet)
-            throw new InvalidOperationException($"Loan {loan.Id} not found.");
-
-        var expectedTermsCompleted = existing.Item["termsCompleted"].N;
-
         try
         {
             await _dynamoDb.UpdateItemAsync(new UpdateItemRequest
@@ -114,8 +98,8 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
                 },
                 UpdateExpression = "SET termsCompleted = :newTerms, #st = :newStatus, description = :desc, " +
                                    "totalLoanAmount = :tla, numberOfTerms = :not, monthlyDeductionAmount = :mda, " +
-                                   "paymentStartDate = :psd",
-                ConditionExpression = "termsCompleted = :expectedTerms",
+                                    "paymentStartDate = :psd",
+                ConditionExpression = "attribute_exists(id) AND termsCompleted = :expectedTerms",
                 ExpressionAttributeNames = new Dictionary<string, string>
                 {
                     ["#st"] = "status",
@@ -124,7 +108,7 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
                 {
                     [":newTerms"] = new AttributeValue { N = loan.TermsCompleted.ToString() },
                     [":newStatus"] = new AttributeValue { N = ((int)loan.Status).ToString() },
-                    [":expectedTerms"] = new AttributeValue { N = expectedTermsCompleted },
+                    [":expectedTerms"] = new AttributeValue { N = loan.GetPersistedTermsCompleted().ToString() },
                     [":desc"] = new AttributeValue { S = loan.Description },
                     [":tla"] = new AttributeValue { S = loan.TotalLoanAmount.ToString("G", System.Globalization.CultureInfo.InvariantCulture) },
                     [":not"] = new AttributeValue { N = loan.NumberOfTerms.ToString() },
@@ -132,9 +116,23 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
                     [":psd"] = new AttributeValue { S = loan.PaymentStartDate.ToString("yyyy-MM-dd") },
                 },
             });
+
+            loan.CapturePersistedState();
         }
         catch (ConditionalCheckFailedException ex)
         {
+            var existing = await _dynamoDb.GetItemAsync(new GetItemRequest
+            {
+                TableName = _tableName,
+                Key = new Dictionary<string, AttributeValue>
+                {
+                    ["id"] = new AttributeValue { S = loan.Id.ToString() },
+                },
+            });
+
+            if (!existing.IsItemSet)
+                throw new InvalidOperationException($"Loan {loan.Id} not found.", ex);
+
             throw new InvalidOperationException(
                 $"Concurrency conflict updating loan {loan.Id}: termsCompleted was modified by another process.", ex);
         }
@@ -183,6 +181,7 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
         SetProperty(loan, "Status", (LoanStatus)int.Parse(item["status"].N));
         loan.EmployeeId = Guid.Parse(item["employeeId"].S);
         SetProperty(loan, "CreatedAt", DateTimeOffset.Parse(item["createdAt"].S));
+        loan.CapturePersistedState();
         return loan;
     }
 

@@ -2,6 +2,7 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Domain.Entities;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
@@ -28,7 +29,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
 
     public async Task<IReadOnlyList<Employee>> GetAllByCompanyIdAsync(Guid companyId, Guid userId)
     {
-        var response = await _dynamoDb.QueryAsync(new QueryRequest
+        var items = await QueryAllAsync(new QueryRequest
         {
             TableName = _tableName,
             IndexName = "companyId-index",
@@ -39,7 +40,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
             },
         });
 
-        return response.Items
+        return items
             .Where(item => item.TryGetValue("userId", out var u) && u.S == userId.ToString())
             .Select(MapToEmployee)
             .ToList();
@@ -83,7 +84,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
         if (employee == null) return null;
 
         // Hydrate Loans
-        var loansResponse = await _dynamoDb.QueryAsync(new QueryRequest
+        var loanItems = await QueryAllAsync(new QueryRequest
         {
             TableName = _loanTableName,
             IndexName = "employeeId-index",
@@ -94,7 +95,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
             },
         });
 
-        employee.Loans = loansResponse.Items.Select(MapToLoan).ToList();
+        employee.Loans = loanItems.Select(MapToLoan).ToList();
 
         return employee;
     }
@@ -111,9 +112,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
             },
         });
 
-        var userId = companyResponse.IsItemSet && companyResponse.Item.TryGetValue("userId", out var u)
-            ? u.S
-            : string.Empty;
+        var userId = DynamoDbOwnership.GetRequiredUserId(companyResponse, "Company", employee.CompanyId);
 
         await _dynamoDb.PutItemAsync(new PutItemRequest
         {
@@ -134,9 +133,7 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
             },
         });
 
-        var userId = existing.IsItemSet && existing.Item.TryGetValue("userId", out var u)
-            ? u.S
-            : string.Empty;
+        var userId = DynamoDbOwnership.GetRequiredUserId(existing, "Employee", employee.Id);
 
         await _dynamoDb.PutItemAsync(new PutItemRequest
         {
@@ -173,6 +170,23 @@ public sealed class DynamoDbEmployeeRepository : IEmployeeRepository
         });
 
         return response.Count > 0;
+    }
+
+    private async Task<List<Dictionary<string, AttributeValue>>> QueryAllAsync(QueryRequest request)
+    {
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastEvaluatedKey = null;
+
+        do
+        {
+            request.ExclusiveStartKey = lastEvaluatedKey;
+            var response = await _dynamoDb.QueryAsync(request);
+            items.AddRange(response.Items);
+            lastEvaluatedKey = response.LastEvaluatedKey;
+        }
+        while (lastEvaluatedKey is { Count: > 0 });
+
+        return items;
     }
 
     private static Dictionary<string, AttributeValue> ToItem(Employee employee, string userId)

@@ -3,8 +3,9 @@ using Payslip4All.Application.Interfaces;
 namespace Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 /// <summary>
-/// No-op implementation of <see cref="IUnitOfWork"/> for DynamoDB.
-/// DynamoDB repositories commit on each SDK call; there is nothing to flush.
+/// Save-only implementation of <see cref="IUnitOfWork"/> for DynamoDB.
+/// DynamoDB repositories commit on each SDK call and this adapter does not expose
+/// transactional guarantees through the relational unit-of-work contract.
 /// </summary>
 public sealed class DynamoDbUnitOfWork : IUnitOfWork
 {
@@ -12,11 +13,14 @@ public sealed class DynamoDbUnitOfWork : IUnitOfWork
         => Task.FromResult(0);
 
     public Task BeginTransactionAsync()
-        => Task.CompletedTask;
+        => throw new NotSupportedException(
+            "DynamoDB provider does not support IUnitOfWork transactions. Use idempotent writes or DynamoDB transactional APIs explicitly.");
 
     public Task CommitTransactionAsync()
-        => Task.CompletedTask;
+        => throw new NotSupportedException(
+            "DynamoDB provider does not support IUnitOfWork transactions. Use idempotent writes or DynamoDB transactional APIs explicitly.");
 
     public Task RollbackTransactionAsync()
-        => Task.CompletedTask;
+        => throw new NotSupportedException(
+            "DynamoDB provider does not support IUnitOfWork transactions. Use idempotent writes or DynamoDB transactional APIs explicitly.");
 }

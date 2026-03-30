@@ -9,6 +9,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB.Repositories;
 /// Integration tests for <see cref="DynamoDbEmployeeRepository"/>.
 /// Requires DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000).
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 [Trait("Category", "Integration")]
 public class DynamoDbEmployeeRepositoryTests : IClassFixture<DynamoDbTestFixture>
 {
@@ -135,6 +136,22 @@ public class DynamoDbEmployeeRepositoryTests : IClassFixture<DynamoDbTestFixture
         var updated = await _sut.GetByIdAsync(employee.Id, userId);
         Assert.Equal("Jane", updated!.FirstName);
         Assert.Equal(60000.00m, updated.MonthlyGrossSalary);
+    }
+
+    [Fact]
+    public async Task AddAsync_WhenCompanyDoesNotExist_ThrowsInvalidOperationException()
+    {
+        var employee = MakeEmployee(Guid.NewGuid());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.AddAsync(employee));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenEmployeeDoesNotExist_ThrowsInvalidOperationException()
+    {
+        var employee = MakeEmployee(Guid.NewGuid());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateAsync(employee));
     }
 
     [Fact]

@@ -4,8 +4,9 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB;
 
 /// <summary>
 /// Unit tests for <see cref="DynamoDbUnitOfWork"/>.
-/// All methods are no-ops; verify they complete without exception.
+/// SaveChanges is a no-op, but transactional members should fail fast.
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 public class DynamoDbUnitOfWorkTests
 {
     private readonly DynamoDbUnitOfWork _sut = new();
@@ -26,22 +27,21 @@ public class DynamoDbUnitOfWorkTests
     }
 
     [Fact]
-    public async Task BeginTransactionAsync_CompletesWithoutException()
+    public async Task BeginTransactionAsync_ThrowsNotSupportedException()
     {
-        await _sut.BeginTransactionAsync();
-        // No assertion needed — just verify no exception is thrown
+        await Assert.ThrowsAsync<NotSupportedException>(() => _sut.BeginTransactionAsync());
     }
 
     [Fact]
-    public async Task CommitTransactionAsync_CompletesWithoutException()
+    public async Task CommitTransactionAsync_ThrowsNotSupportedException()
     {
-        await _sut.CommitTransactionAsync();
+        await Assert.ThrowsAsync<NotSupportedException>(() => _sut.CommitTransactionAsync());
     }
 
     [Fact]
-    public async Task RollbackTransactionAsync_CompletesWithoutException()
+    public async Task RollbackTransactionAsync_ThrowsNotSupportedException()
     {
-        await _sut.RollbackTransactionAsync();
+        await Assert.ThrowsAsync<NotSupportedException>(() => _sut.RollbackTransactionAsync());
     }
 
     [Fact]

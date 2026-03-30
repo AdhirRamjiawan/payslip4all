@@ -22,19 +22,53 @@ public sealed class DynamoDbUserRepository : IUserRepository
 
     public async Task AddAsync(User user)
     {
+        var normalizedEmail = user.Email.ToLowerInvariant();
         var item = new Dictionary<string, AttributeValue>
         {
             ["id"] = new AttributeValue { S = user.Id.ToString() },
-            ["email"] = new AttributeValue { S = user.Email.ToLower() },
+            ["email"] = new AttributeValue { S = normalizedEmail },
             ["passwordHash"] = new AttributeValue { S = user.PasswordHash },
             ["createdAt"] = new AttributeValue { S = user.CreatedAt.ToString("O") },
         };
 
-        await _dynamoDb.PutItemAsync(new PutItemRequest
+        var reservationItem = new Dictionary<string, AttributeValue>
         {
-            TableName = _tableName,
-            Item = item,
-        });
+            ["id"] = new AttributeValue { S = GetEmailReservationId(normalizedEmail) },
+            ["markerType"] = new AttributeValue { S = "email-reservation" },
+            ["createdAt"] = new AttributeValue { S = user.CreatedAt.ToString("O") },
+        };
+
+        try
+        {
+            await _dynamoDb.TransactWriteItemsAsync(new TransactWriteItemsRequest
+            {
+                TransactItems = new List<TransactWriteItem>
+                {
+                    new()
+                    {
+                        Put = new Put
+                        {
+                            TableName = _tableName,
+                            Item = reservationItem,
+                            ConditionExpression = "attribute_not_exists(id)",
+                        },
+                    },
+                    new()
+                    {
+                        Put = new Put
+                        {
+                            TableName = _tableName,
+                            Item = item,
+                            ConditionExpression = "attribute_not_exists(id)",
+                        },
+                    },
+                },
+            });
+        }
+        catch (TransactionCanceledException ex)
+        {
+            throw new InvalidOperationException($"A user with email '{normalizedEmail}' already exists.", ex);
+        }
     }
 
     public async Task<User?> GetByEmailAsync(string email)
@@ -70,6 +104,9 @@ public sealed class DynamoDbUserRepository : IUserRepository
 
         return response.Count > 0;
     }
+
+    private static string GetEmailReservationId(string normalizedEmail)
+        => $"EMAIL#{normalizedEmail}";
 
     private static User MapToUser(Dictionary<string, AttributeValue> item)
     {

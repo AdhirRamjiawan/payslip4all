@@ -6,6 +6,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB;
 /// <summary>
 /// Unit tests for <see cref="DynamoDbClientFactory"/>.
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 public class DynamoDbClientFactoryTests : IDisposable
 {
     private readonly Dictionary<string, string?> _savedEnv = new();
@@ -174,8 +175,7 @@ public class DynamoDbClientFactoryTests : IDisposable
         SetEnv("AWS_SECRET_ACCESS_KEY", "dummy");
 
         var prefix = $"t027_{Guid.NewGuid():N}";
-        Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", prefix);
-        _savedEnv.TryAdd("DYNAMODB_TABLE_PREFIX", null);
+        SetEnv("DYNAMODB_TABLE_PREFIX", prefix);
 
         var client = DynamoDbClientFactory.Create();
         var amazonClient = (AmazonDynamoDBClient)client;

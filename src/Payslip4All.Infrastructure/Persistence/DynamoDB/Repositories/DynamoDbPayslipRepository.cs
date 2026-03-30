@@ -3,6 +3,7 @@ using Amazon.DynamoDBv2.Model;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Domain.Entities;
 using Payslip4All.Domain.Enums;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
@@ -143,9 +144,7 @@ public sealed class DynamoDbPayslipRepository : IPayslipRepository
             },
         });
 
-        var userId = empResponse.IsItemSet && empResponse.Item.TryGetValue("userId", out var u)
-            ? u.S
-            : string.Empty;
+        var userId = DynamoDbOwnership.GetRequiredUserId(empResponse, "Employee", payslip.EmployeeId);
 
         // PutItem payslip
         await _dynamoDb.PutItemAsync(new PutItemRequest

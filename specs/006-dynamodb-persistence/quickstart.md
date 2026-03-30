@@ -135,9 +135,35 @@ With DynamoDB selected, startup should create or confirm the following tables:
 
 Look for log messages indicating each table was created or already existed.
 
+If you have the AWS CLI installed, you can also verify the prefixed tables directly against the
+local emulator:
+
+```bash
+aws dynamodb list-tables \
+  --endpoint-url http://localhost:8000 \
+  --region us-east-1
+```
+
+You should see the six `{prefix}_...` tables listed for the configured `DYNAMODB_TABLE_PREFIX`.
+
 ---
 
-## 6. Running Relevant Tests
+## 6. Validate a Create-Read Cycle
+
+After the app starts successfully, confirm the local emulator path works end-to-end:
+
+1. Register or log in as a Company Owner.
+2. Create a company.
+3. Add an employee to that company.
+4. Generate a payslip for the employee.
+5. Refresh the relevant page and confirm the company, employee, and payslip still load correctly.
+
+This verifies that startup provisioning completed and that the DynamoDB repositories can persist
+and read back business data without a live AWS account.
+
+---
+
+## 7. Running Relevant Tests
 
 ### Web startup/provider-switching tests
 
@@ -157,7 +183,7 @@ These tests are intended to run against DynamoDB Local rather than a live AWS ac
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Likely cause | Action |
 |---|---|---|

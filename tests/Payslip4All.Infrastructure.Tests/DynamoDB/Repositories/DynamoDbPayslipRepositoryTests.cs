@@ -9,6 +9,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB.Repositories;
 /// Integration tests for <see cref="DynamoDbPayslipRepository"/>.
 /// Requires DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000).
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 [Trait("Category", "Integration")]
 public class DynamoDbPayslipRepositoryTests : IClassFixture<DynamoDbTestFixture>
 {
@@ -193,6 +194,15 @@ public class DynamoDbPayslipRepositoryTests : IClassFixture<DynamoDbTestFixture>
 
         var result = await _sut.GetByIdAsync(payslip.Id, userId);
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task AddAsync_WhenEmployeeDoesNotExist_ThrowsInvalidOperationException()
+    {
+        var payslip = MakePayslip(Guid.NewGuid());
+        payslip.LoanDeductions[0].PayslipId = payslip.Id;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.AddAsync(payslip));
     }
 
     [Fact]

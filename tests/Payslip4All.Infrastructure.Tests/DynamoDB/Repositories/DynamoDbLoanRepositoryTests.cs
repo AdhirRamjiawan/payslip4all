@@ -10,6 +10,7 @@ namespace Payslip4All.Infrastructure.Tests.DynamoDB.Repositories;
 /// Integration tests for <see cref="DynamoDbLoanRepository"/>.
 /// Requires DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000).
 /// </summary>
+[Collection(DynamoDbTestCollection.Name)]
 [Trait("Category", "Integration")]
 public class DynamoDbLoanRepositoryTests : IClassFixture<DynamoDbTestFixture>
 {
@@ -141,6 +142,8 @@ public class DynamoDbLoanRepositoryTests : IClassFixture<DynamoDbTestFixture>
         var (_, employee) = await SeedCompanyAndEmployeeAsync(userId);
         var loan = MakeLoan(employee.Id);
         await _sut.AddAsync(loan);
+        var loadedLoan = await _sut.GetByIdAsync(loan.Id, userId);
+        Assert.NotNull(loadedLoan);
 
         // Simulate concurrent modification: update the stored termsCompleted to a different value
         await _fixture.Client.UpdateItemAsync(new UpdateItemRequest
@@ -157,8 +160,9 @@ public class DynamoDbLoanRepositoryTests : IClassFixture<DynamoDbTestFixture>
             },
         });
 
-        // Try to update with original termsCompleted=0 — should fail
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateAsync(loan));
+        loadedLoan!.IncrementTermsCompleted();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateAsync(loadedLoan));
     }
 
     [Fact]
@@ -168,12 +172,22 @@ public class DynamoDbLoanRepositoryTests : IClassFixture<DynamoDbTestFixture>
         var (_, employee) = await SeedCompanyAndEmployeeAsync(userId);
         var loan = MakeLoan(employee.Id);
         await _sut.AddAsync(loan);
+        var loadedLoan = await _sut.GetByIdAsync(loan.Id, userId);
+        Assert.NotNull(loadedLoan);
 
         // Increment within domain
-        loan.IncrementTermsCompleted();
-        await _sut.UpdateAsync(loan);
+        loadedLoan!.IncrementTermsCompleted();
+        await _sut.UpdateAsync(loadedLoan);
 
         var updated = await _sut.GetByIdAsync(loan.Id, userId);
         Assert.Equal(1, updated!.TermsCompleted);
+    }
+
+    [Fact]
+    public async Task AddAsync_WhenEmployeeDoesNotExist_ThrowsInvalidOperationException()
+    {
+        var loan = MakeLoan(Guid.NewGuid());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.AddAsync(loan));
     }
 }

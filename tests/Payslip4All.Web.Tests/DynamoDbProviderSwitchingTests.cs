@@ -45,11 +45,20 @@ public class DynamoDbProviderSwitchingTests
     [Fact]
     public void UnsetProvider_DefaultsToSqlite_DbContextRegistered()
     {
-        // Don't set PERSISTENCE_PROVIDER — program defaults to sqlite
-        using var factory = CreateSqliteFactory(provider: null);
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetService<PayslipDbContext>();
-        Assert.NotNull(db);
+        var savedProvider = Environment.GetEnvironmentVariable("PERSISTENCE_PROVIDER");
+        Environment.SetEnvironmentVariable("PERSISTENCE_PROVIDER", null);
+
+        try
+        {
+            using var factory = CreateSqliteFactory(provider: null);
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetService<PayslipDbContext>();
+            Assert.NotNull(db);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PERSISTENCE_PROVIDER", savedProvider);
+        }
     }
 
     [Fact]
@@ -70,6 +79,7 @@ public class DynamoDbProviderSwitchingTests
         var savedKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID");
         var savedSecret = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY");
         var savedEndpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT");
+        var savedRegion = Environment.GetEnvironmentVariable("DYNAMODB_REGION");
         Environment.SetEnvironmentVariable("AWS_ACCESS_KEY_ID", "dummy");
         Environment.SetEnvironmentVariable("AWS_SECRET_ACCESS_KEY", "dummy");
         Environment.SetEnvironmentVariable("DYNAMODB_REGION", "us-east-1");
@@ -106,7 +116,7 @@ public class DynamoDbProviderSwitchingTests
         {
             Environment.SetEnvironmentVariable("AWS_ACCESS_KEY_ID", savedKey);
             Environment.SetEnvironmentVariable("AWS_SECRET_ACCESS_KEY", savedSecret);
-            Environment.SetEnvironmentVariable("DYNAMODB_REGION", null);
+            Environment.SetEnvironmentVariable("DYNAMODB_REGION", savedRegion);
             Environment.SetEnvironmentVariable("DYNAMODB_ENDPOINT", savedEndpoint);
         }
     }

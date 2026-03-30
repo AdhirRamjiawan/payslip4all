@@ -11,16 +11,27 @@ namespace Payslip4All.Infrastructure.Persistence.DynamoDB;
 /// </summary>
 public sealed class DynamoDbTableProvisioner : IHostedService
 {
+    private static readonly TimeSpan DefaultActivationTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(500);
+
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly ILogger<DynamoDbTableProvisioner> _logger;
     private readonly string _prefix;
+    private readonly TimeSpan _activationTimeout;
+    private readonly TimeSpan _pollInterval;
 
-    public DynamoDbTableProvisioner(IAmazonDynamoDB dynamoDb, ILogger<DynamoDbTableProvisioner> logger)
+    public DynamoDbTableProvisioner(
+        IAmazonDynamoDB dynamoDb,
+        ILogger<DynamoDbTableProvisioner> logger,
+        TimeSpan? activationTimeout = null,
+        TimeSpan? pollInterval = null)
     {
         _dynamoDb = dynamoDb;
         _logger = logger;
         _prefix = (Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim()
                    ?? "payslip4all");
+        _activationTimeout = activationTimeout ?? DefaultActivationTimeout;
+        _pollInterval = pollInterval ?? DefaultPollInterval;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -38,25 +49,57 @@ public sealed class DynamoDbTableProvisioner : IHostedService
     {
         try
         {
-            await _dynamoDb.DescribeTableAsync(request.TableName, cancellationToken);
-            _logger.LogInformation("DynamoDB table '{TableName}' already exists — skipping.", request.TableName);
+            var response = await _dynamoDb.DescribeTableAsync(request.TableName, cancellationToken);
+            _logger.LogInformation(
+                "DynamoDB table '{TableName}' already exists with status {Status}.",
+                request.TableName,
+                response.Table.TableStatus);
+
+            if (response.Table.TableStatus != TableStatus.ACTIVE)
+                await WaitForTableActiveAsync(request.TableName, cancellationToken);
         }
         catch (ResourceNotFoundException)
         {
-            await _dynamoDb.CreateTableAsync(request, cancellationToken);
-            _logger.LogInformation("DynamoDB table '{TableName}' created.", request.TableName);
+            try
+            {
+                await _dynamoDb.CreateTableAsync(request, cancellationToken);
+                _logger.LogInformation("DynamoDB table '{TableName}' created.", request.TableName);
+            }
+            catch (ResourceInUseException)
+            {
+                _logger.LogInformation(
+                    "DynamoDB table '{TableName}' is already being created by another instance.",
+                    request.TableName);
+            }
+
             await WaitForTableActiveAsync(request.TableName, cancellationToken);
         }
     }
 
     private async Task WaitForTableActiveAsync(string tableName, CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        var deadline = DateTimeOffset.UtcNow + _activationTimeout;
+
+        while (true)
         {
-            var response = await _dynamoDb.DescribeTableAsync(tableName, cancellationToken);
-            if (response.Table.TableStatus == TableStatus.ACTIVE)
-                break;
-            await Task.Delay(500, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var response = await _dynamoDb.DescribeTableAsync(tableName, cancellationToken);
+                if (response.Table.TableStatus == TableStatus.ACTIVE)
+                    return;
+            }
+            catch (ResourceNotFoundException)
+            {
+                // Table creation is eventually consistent; keep polling until it becomes visible.
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+                throw new TimeoutException(
+                    $"Timed out waiting for DynamoDB table '{tableName}' to become ACTIVE.");
+
+            await Task.Delay(_pollInterval, cancellationToken);
         }
     }
 

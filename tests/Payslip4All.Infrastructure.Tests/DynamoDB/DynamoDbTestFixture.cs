@@ -1,6 +1,7 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Runtime;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Tests.DynamoDB;
 
@@ -13,6 +14,11 @@ public class DynamoDbTestFixture : IAsyncLifetime
 {
     public IAmazonDynamoDB Client { get; private set; } = null!;
     public string Prefix { get; private set; } = null!;
+    private string? _originalTablePrefix;
+    private string? _originalRegion;
+    private string? _originalEndpoint;
+    private string? _originalAccessKey;
+    private string? _originalSecretKey;
 
     // Table names
     public string UsersTable => $"{Prefix}_users";
@@ -24,21 +30,28 @@ public class DynamoDbTestFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        _originalTablePrefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX");
+        _originalRegion = Environment.GetEnvironmentVariable("DYNAMODB_REGION");
+        _originalEndpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT");
+        _originalAccessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID");
+        _originalSecretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY");
         // Use a unique prefix per test run to avoid conflicts between parallel runs
         Prefix = $"test_{Guid.NewGuid():N}";
 
-        var endpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT")?.Trim()
-                       ?? "http://localhost:8000";
-        var region = Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim()
-                     ?? "us-east-1";
+        Environment.SetEnvironmentVariable(
+            "DYNAMODB_REGION",
+            Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim() ?? "us-east-1");
+        Environment.SetEnvironmentVariable(
+            "DYNAMODB_ENDPOINT",
+            Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT")?.Trim() ?? "http://localhost:8000");
 
-        var config = new AmazonDynamoDBConfig
-        {
-            ServiceURL = endpoint,
-            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(region),
-        };
-        var credentials = new BasicAWSCredentials("dummy", "dummy");
-        Client = new AmazonDynamoDBClient(credentials, config);
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID")))
+            Environment.SetEnvironmentVariable("AWS_ACCESS_KEY_ID", "dummy");
+
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")))
+            Environment.SetEnvironmentVariable("AWS_SECRET_ACCESS_KEY", "dummy");
+
+        Client = DynamoDbClientFactory.Create();
 
         // Set env vars so repositories can find tables
         Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", Prefix);
@@ -50,6 +63,11 @@ public class DynamoDbTestFixture : IAsyncLifetime
     {
         await DeleteAllTablesAsync();
         Client.Dispose();
+        Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", _originalTablePrefix);
+        Environment.SetEnvironmentVariable("DYNAMODB_REGION", _originalRegion);
+        Environment.SetEnvironmentVariable("DYNAMODB_ENDPOINT", _originalEndpoint);
+        Environment.SetEnvironmentVariable("AWS_ACCESS_KEY_ID", _originalAccessKey);
+        Environment.SetEnvironmentVariable("AWS_SECRET_ACCESS_KEY", _originalSecretKey);
     }
 
     private async Task CreateAllTablesAsync()
@@ -88,9 +106,17 @@ public class DynamoDbTestFixture : IAsyncLifetime
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         while (!cts.Token.IsCancellationRequested)
         {
-            var response = await Client.DescribeTableAsync(tableName, cts.Token);
-            if (response.Table.TableStatus == TableStatus.ACTIVE)
-                return;
+            try
+            {
+                var response = await Client.DescribeTableAsync(tableName, cts.Token);
+                if (response.Table.TableStatus == TableStatus.ACTIVE)
+                    return;
+            }
+            catch (ResourceNotFoundException)
+            {
+                // Table creation is eventually consistent; keep polling until it becomes visible.
+            }
+
             await Task.Delay(200, cts.Token);
         }
         throw new TimeoutException($"Table {tableName} did not become ACTIVE within 30 seconds.");
