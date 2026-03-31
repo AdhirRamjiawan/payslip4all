@@ -65,7 +65,7 @@ public class LoggingIntegrationTests : IDisposable
             builder.ConfigureAppConfiguration((_, cfg) =>
                 cfg.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["DatabaseProvider"] = "sqlite",
+                    ["PERSISTENCE_PROVIDER"] = "sqlite",
                     ["ConnectionStrings:DefaultConnection"] = $"Data Source={Path.Combine(_tempLogDir, "test.db")}"
                 }));
         });

@@ -7,6 +7,7 @@ using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Application.Services;
 using Payslip4All.Infrastructure.Auth;
 using Payslip4All.Infrastructure.Persistence;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 using Payslip4All.Web.Auth;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
@@ -36,6 +37,23 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // QuestPDF community licence
 QuestPDF.Settings.License = LicenseType.Community;
 
+static void ValidateDynamoDbStartupConfiguration()
+{
+    var region = Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim();
+    if (string.IsNullOrWhiteSpace(region))
+        throw new InvalidOperationException(
+            "PERSISTENCE_PROVIDER is set to 'dynamodb' but the required environment variable DYNAMODB_REGION is not set.");
+
+    var accessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID")?.Trim();
+    var secretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")?.Trim();
+    var hasAccessKey = !string.IsNullOrWhiteSpace(accessKey);
+    var hasSecretKey = !string.IsNullOrWhiteSpace(secretKey);
+
+    if (hasAccessKey != hasSecretKey)
+        throw new InvalidOperationException(
+            "When using explicit DynamoDB credentials, both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set.");
+}
+
 // Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -43,18 +61,38 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddCascadingAuthenticationState();
 
 // Database provider switching
-var provider = builder.Configuration["DatabaseProvider"] ?? "sqlite";
-var connStr = provider == "mysql"
-    ? builder.Configuration.GetConnectionString("MySqlConnection")
-    : builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=payslip4all.db";
+// Read PERSISTENCE_PROVIDER from configuration (supports env var, appsettings, test overrides).
+// Defaults to "sqlite".
+var provider = (builder.Configuration["PERSISTENCE_PROVIDER"]?.Trim().ToLowerInvariant())
+               ?? "sqlite";
 
-builder.Services.AddDbContext<PayslipDbContext>(options =>
+// Validate provider value
+if (provider is not ("sqlite" or "mysql" or "dynamodb"))
+    throw new InvalidOperationException(
+        $"Unknown persistence provider '{provider}'. Valid values are: sqlite, mysql, dynamodb.");
+
+if (provider == "dynamodb")
+    ValidateDynamoDbStartupConfiguration();
+
+if (provider == "dynamodb")
 {
-    if (provider == "mysql")
-        options.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
-    else
-        options.UseSqlite(connStr);
-});
+    // Register DynamoDB client (singleton), repositories, unit of work, and table provisioner
+    builder.Services.AddDynamoDbPersistence();
+}
+else
+{
+    var connStr = provider == "mysql"
+        ? builder.Configuration.GetConnectionString("MySqlConnection")
+        : builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=payslip4all.db";
+
+    builder.Services.AddDbContext<PayslipDbContext>(options =>
+    {
+        if (provider == "mysql")
+            options.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
+        else
+            options.UseSqlite(connStr);
+    });
+}
 
 // Cookie authentication
 var expireDays = builder.Configuration.GetValue<int>("Auth:Cookie:ExpireDays", 30);
@@ -74,12 +112,15 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<CookieAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<CookieAuthenticationStateProvider>());
 
-// Repositories
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
-builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
-builder.Services.AddScoped<ILoanRepository, LoanRepository>();
-builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
+// Repositories (EF Core — only for SQLite/MySQL)
+if (provider != "dynamodb")
+{
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
+    builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+    builder.Services.AddScoped<ILoanRepository, LoanRepository>();
+    builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
+}
 
 // Infrastructure services
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
@@ -91,26 +132,35 @@ builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPayslipService, PayslipGenerationService>();
-builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<PayslipDbContext>());
+
+// IUnitOfWork: registered by AddDynamoDbPersistence() for dynamodb; for sqlite/mysql, use PayslipDbContext
+if (provider != "dynamodb")
+{
+    builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<PayslipDbContext>());
+}
 
 var app = builder.Build();
 
 // Apply pending migrations on startup only when the DB is behind the codebase.
 // If all migrations are "pending" but tables already exist (inconsistent state from
 // a previous partial run), wipe and recreate so we don't crash on duplicate tables.
-using (var scope = app.Services.CreateScope())
+// DynamoDB tables are provisioned by DynamoDbTableProvisioner (IHostedService).
+if (provider != "dynamodb")
 {
-    var db = scope.ServiceProvider.GetRequiredService<PayslipDbContext>();
-    var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
-    if (pending.Count > 0)
+    using (var scope = app.Services.CreateScope())
     {
-        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-        if (applied.Count == 0 && await db.Database.CanConnectAsync())
+        var db = scope.ServiceProvider.GetRequiredService<PayslipDbContext>();
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (pending.Count > 0)
         {
-            // No migration history but DB exists — stale/inconsistent state; start clean.
-            await db.Database.EnsureDeletedAsync();
+            var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
+            if (applied.Count == 0 && await db.Database.CanConnectAsync())
+            {
+                // No migration history but DB exists — stale/inconsistent state; start clean.
+                await db.Database.EnsureDeletedAsync();
+            }
+            await db.Database.MigrateAsync();
         }
-        await db.Database.MigrateAsync();
     }
 }
 

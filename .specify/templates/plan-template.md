@@ -39,7 +39,7 @@ Verify compliance with each Payslip4All constitution principle before proceeding
 | II | Clean Architecture | Does the feature touch ≤ 4 projects (Domain/Application/Infrastructure/Web)? Does each layer only depend inward? | ☐ |
 | III | Blazor Web App | Are all new UI surfaces Razor components? Is business logic kept out of `.razor` files? | ☐ |
 | IV | Basic Authentication | Do new pages carry `[Authorize]`? Do new service methods filter by `UserId`? | ☐ |
-| V | Database Support | Are all schema changes represented as named EF Core migrations? Is raw SQL avoided? | ☐ |
+| V | Database Support | For EF Core providers (SQLite/MySQL): are all schema changes EF Core migrations? Is raw SQL avoided? For DynamoDB provider (`PERSISTENCE_PROVIDER=dynamodb`): do DynamoDB repositories implement all Application interfaces? Is ownership filtering enforced? | ☐ |
 | VI | Manual Test Gate | Is the Manual Test Gate prompt planned at the end of each implementation task, before any `git commit`, `git merge`, or `git push`? | ☐ |
 
 > **Any ☐ remaining = blocked.** Document justified exceptions in the Complexity Tracking table below.

@@ -438,6 +438,49 @@ public class LoanRepositoryTests : RepositoryTestBase
         var reloaded = await _repo.GetByIdAsync(l.Id, user.Id);
         Assert.Equal("Updated desc", reloaded!.Description);
     }
+
+    [Fact]
+    public async Task UpdateAsync_AllowsSequentialTermProgressUpdates()
+    {
+        var user = SeedUser();
+        var c = SeedCompany(user.Id);
+        var e = SeedEmployee(c.Id);
+        var loan = SeedLoan(e.Id, terms: 3);
+
+        loan.IncrementTermsCompleted();
+        await _repo.UpdateAsync(loan);
+
+        var afterFirstUpdate = await _repo.GetByIdAsync(loan.Id, user.Id);
+        Assert.NotNull(afterFirstUpdate);
+        Assert.Equal(1, afterFirstUpdate!.TermsCompleted);
+        Assert.Equal(LoanStatus.Active, afterFirstUpdate.Status);
+
+        afterFirstUpdate.IncrementTermsCompleted();
+        await _repo.UpdateAsync(afterFirstUpdate);
+
+        var afterSecondUpdate = await _repo.GetByIdAsync(loan.Id, user.Id);
+        Assert.NotNull(afterSecondUpdate);
+        Assert.Equal(2, afterSecondUpdate!.TermsCompleted);
+        Assert.Equal(LoanStatus.Active, afterSecondUpdate.Status);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenFinalTermIsCompleted_PersistsCompletedStatus()
+    {
+        var user = SeedUser();
+        var c = SeedCompany(user.Id);
+        var e = SeedEmployee(c.Id);
+        var loan = SeedLoan(e.Id, terms: 1);
+
+        loan.IncrementTermsCompleted();
+        await _repo.UpdateAsync(loan);
+
+        var reloaded = await _repo.GetByIdAsync(loan.Id, user.Id);
+
+        Assert.NotNull(reloaded);
+        Assert.Equal(1, reloaded!.TermsCompleted);
+        Assert.Equal(LoanStatus.Completed, reloaded.Status);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
