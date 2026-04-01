@@ -59,6 +59,30 @@ public class WalletPricingTests : TestContext
         pricingService.Verify(s => s.UpdatePriceAsync(It.Is<UpdatePayslipPriceCommand>(c => c.PricePerPayslip == 9m)), Times.Once);
     }
 
+    [Fact]
+    public void WalletPricing_Submit_RequiresAuthenticatedAdminId()
+    {
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("admin@test.com");
+        authContext.SetRoles("SiteAdministrator");
+
+        var pricingService = new Mock<IPayslipPricingService>();
+        pricingService.Setup(s => s.GetCurrentPriceAsync()).ReturnsAsync(new PayslipPricingSettingDto
+        {
+            PricePerPayslip = 7m,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        Services.AddSingleton(pricingService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Admin.WalletPricing>();
+        cut.WaitForAssertion(() => Assert.Contains("Update Price", cut.Markup));
+        cut.Find("input").Change("9");
+        cut.Find("form").Submit();
+
+        Assert.Contains("Unable to determine the administrator account", cut.Markup);
+        pricingService.Verify(s => s.UpdatePriceAsync(It.IsAny<UpdatePayslipPriceCommand>()), Times.Never);
+    }
+
     private void SetAuthorizedAdmin()
     {
         var authContext = this.AddTestAuthorization();

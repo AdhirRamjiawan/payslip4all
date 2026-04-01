@@ -20,19 +20,17 @@ public sealed class DynamoDbWalletRepository : IWalletRepository
 
     public async Task<Wallet?> GetByUserIdAsync(Guid userId)
     {
-        var response = await _dynamoDb.QueryAsync(new QueryRequest
+        var response = await _dynamoDb.GetItemAsync(new GetItemRequest
         {
             TableName = _tableName,
-            IndexName = "userId-index",
-            KeyConditionExpression = "userId = :userId",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            Key = new Dictionary<string, AttributeValue>
             {
-                [":userId"] = new() { S = userId.ToString() },
+                ["id"] = new() { S = userId.ToString() },
             },
-            Limit = 1,
+            ConsistentRead = true,
         });
 
-        return response.Items.Count == 0 ? null : Map(response.Items[0]);
+        return response.IsItemSet ? Map(response.Item) : null;
     }
 
     public async Task<Wallet?> GetByIdAsync(Guid id, Guid userId)
@@ -44,6 +42,7 @@ public sealed class DynamoDbWalletRepository : IWalletRepository
             {
                 ["id"] = new() { S = id.ToString() },
             },
+            ConsistentRead = true,
         });
 
         if (!response.IsItemSet)
@@ -55,13 +54,22 @@ public sealed class DynamoDbWalletRepository : IWalletRepository
 
     public async Task AddAsync(Wallet wallet)
     {
-        await _dynamoDb.PutItemAsync(new PutItemRequest
+        wallet.EnsureCanonicalId();
+
+        try
         {
-            TableName = _tableName,
-            Item = ToItem(wallet),
-            ConditionExpression = "attribute_not_exists(id)",
-        });
-        wallet.CapturePersistedState();
+            await _dynamoDb.PutItemAsync(new PutItemRequest
+            {
+                TableName = _tableName,
+                Item = ToItem(wallet),
+                ConditionExpression = "attribute_not_exists(id)",
+            });
+            wallet.CapturePersistedState();
+        }
+        catch (ConditionalCheckFailedException ex)
+        {
+            throw new InvalidOperationException("Wallet already exists for this user.", ex);
+        }
     }
 
     public async Task UpdateAsync(Wallet wallet)
@@ -72,9 +80,10 @@ public sealed class DynamoDbWalletRepository : IWalletRepository
             {
                 TableName = _tableName,
                 Item = ToItem(wallet),
-                ConditionExpression = "attribute_exists(id) AND updatedAt = :expectedUpdatedAt",
+                ConditionExpression = "attribute_exists(id) AND userId = :userId AND updatedAt = :expectedUpdatedAt",
                 ExpressionAttributeValues = new Dictionary<string, AttributeValue>
                 {
+                    [":userId"] = new() { S = wallet.UserId.ToString() },
                     [":expectedUpdatedAt"] = new() { S = wallet.GetPersistedUpdatedAt().ToString("O") },
                 },
             });

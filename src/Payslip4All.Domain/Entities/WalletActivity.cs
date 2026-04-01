@@ -31,5 +31,11 @@ public class WalletActivity
 
         if (BalanceAfterActivity < 0m)
             throw new ArgumentException("Balance after activity cannot be negative.", nameof(BalanceAfterActivity));
+
+        if (decimal.Round(Amount, 2) != Amount)
+            throw new ArgumentException("Amount must use no more than two decimal places.", nameof(Amount));
+
+        if (decimal.Round(BalanceAfterActivity, 2) != BalanceAfterActivity)
+            throw new ArgumentException("Balance after activity must use no more than two decimal places.", nameof(BalanceAfterActivity));
     }
 }

@@ -11,11 +11,20 @@ public class WalletActivityRepository : IWalletActivityRepository
     public WalletActivityRepository(PayslipDbContext db) => _db = db;
 
     public async Task<IReadOnlyList<WalletActivity>> GetByWalletIdAsync(Guid walletId)
-        => (await _db.WalletActivities
-                .Where(a => a.WalletId == walletId)
-                .ToListAsync())
+    {
+        var query = _db.WalletActivities.Where(a => a.WalletId == walletId);
+
+        if (_db.Database.IsSqlite())
+        {
+            return (await query.ToListAsync())
+                .OrderByDescending(a => a.OccurredAt)
+                .ToList();
+        }
+
+        return await query
             .OrderByDescending(a => a.OccurredAt)
-            .ToList();
+            .ToListAsync();
+    }
 
     public async Task AddAsync(WalletActivity activity)
     {

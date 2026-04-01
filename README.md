@@ -159,6 +159,19 @@ credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 5. Generate a payslip and download the PDF
 6. *(Optional)* Top up `/portal/wallet` before generating payslips and adjust `/admin/wallet-pricing` as a site administrator
 
+### Wallet rollout and manual verification
+
+Use this sequence after deploying wallet-credit changes or refreshing a local environment:
+
+0. Confirm the seeded default public payslip price is **R 15.00** unless an administrator has already changed it in the target environment.
+1. Sign out and open `/` to confirm the public wallet section shows only public pricing and wallet messaging.
+2. Sign in as a `SiteAdministrator`, open `/admin/wallet-pricing`, set a rand price such as `15.00`, and confirm the value updates immediately.
+3. Sign in as a `CompanyOwner`, open `/portal/wallet`, top up the wallet, and confirm the balance plus credit activity update.
+4. Generate a payslip with sufficient funds and confirm the charged amount, wallet debit, and wallet activity entry all match.
+5. Retry generation with insufficient funds and confirm no payslip is created and no wallet debit occurs.
+6. Overwrite an existing payslip for the same employee and period, then confirm the original payslip is only removed after the replacement and wallet charge both succeed.
+7. When `PERSISTENCE_PROVIDER=dynamodb`, repeat the wallet top-up and payslip generation checks against a live emulator or AWS-backed environment before release.
+
 ---
 
 ## Configuration
@@ -224,6 +237,10 @@ dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj
 ```
 
 When `DYNAMODB_ENDPOINT` is configured for a local emulator, you can additionally run the DynamoDB integration repository suite.
+
+```bash
+dotnet test tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj --filter "Category=Integration"
+```
 
 Coverage requirements (enforced in CI):
 - **Domain layer** — ≥ 80% line coverage

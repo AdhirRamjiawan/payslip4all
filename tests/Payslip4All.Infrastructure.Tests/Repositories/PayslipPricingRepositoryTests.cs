@@ -14,7 +14,7 @@ public class PayslipPricingRepositoryTests : RepositoryTestBase
         var result = await _repo.GetCurrentAsync();
 
         Assert.NotNull(result);
-        Assert.Equal(0m, result!.PricePerPayslip);
+        Assert.Equal(15m, result!.PricePerPayslip);
     }
 
     [Fact]

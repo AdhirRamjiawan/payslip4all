@@ -175,4 +175,46 @@ public class GeneratePayslipTests : TestContext
             Assert.Matches(new Regex(@"Wallet charged: R\s*5[\.,]00"), cut.Markup);
         });
     }
+
+    [Fact]
+    public async Task GeneratePayslip_DisablesWorkflow_WhenWalletLoadFails()
+    {
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("test@test.com");
+        authContext.SetRoles("CompanyOwner");
+        var userId = Guid.NewGuid();
+        authContext.SetClaims(new Claim(ClaimTypes.NameIdentifier, userId.ToString()));
+
+        var employeeId = Guid.NewGuid();
+        var companyId = Guid.NewGuid();
+        Services.AddSingleton(Mock.Of<IPayslipService>());
+
+        var mockWalletService = new Mock<IWalletService>();
+        mockWalletService.Setup(s => s.GetWalletAsync(userId)).ThrowsAsync(new InvalidOperationException("boom"));
+        Services.AddSingleton(mockWalletService.Object);
+
+        var mockEmployeeService = new Mock<IEmployeeService>();
+        mockEmployeeService.Setup(s => s.GetEmployeeByIdAsync(employeeId, userId))
+            .ReturnsAsync(new EmployeeDto
+            {
+                Id = employeeId,
+                FirstName = "John",
+                LastName = "Doe",
+                IdNumber = "123",
+                EmployeeNumber = "E001",
+                Occupation = "Dev",
+                MonthlyGrossSalary = 15000,
+                CompanyId = companyId
+            });
+        Services.AddSingleton(mockEmployeeService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Payslips.GeneratePayslip>(p => p
+            .Add(c => c.CompanyId, companyId)
+            .Add(c => c.EmployeeId, employeeId));
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        Assert.Contains("Wallet details are temporarily unavailable", cut.Markup);
+        Assert.DoesNotContain("button.btn.btn-primary.mt-3", cut.Markup);
+        Assert.DoesNotContain("boom", cut.Markup);
+    }
 }

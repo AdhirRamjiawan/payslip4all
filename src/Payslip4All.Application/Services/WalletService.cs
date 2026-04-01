@@ -56,11 +56,9 @@ public class WalletService : IWalletService
 
         var wallet = await _walletRepository.GetByUserIdAsync(command.UserId);
         var isNewWallet = wallet == null;
-        wallet ??= new Wallet
-        {
-            UserId = command.UserId,
-            CurrentBalance = 0m,
-        };
+        var originalBalance = wallet?.CurrentBalance ?? 0m;
+        var originalUpdatedAt = wallet?.UpdatedAt ?? DateTimeOffset.UtcNow;
+        wallet ??= Wallet.CreateForUser(command.UserId);
 
         wallet.CurrentBalance = WalletCalculator.CalculateBalanceAfterCredit(wallet.CurrentBalance, command.Amount);
         wallet.UpdatedAt = DateTimeOffset.UtcNow;
@@ -78,15 +76,28 @@ public class WalletService : IWalletService
         };
         activity.EnsureValid();
 
-        await ExecuteAtomicallyAsync(async () =>
-        {
-            if (isNewWallet)
-                await _walletRepository.AddAsync(wallet);
-            else
-                await _walletRepository.UpdateAsync(wallet);
+        await ExecuteAtomicallyAsync(
+            async () =>
+            {
+                if (isNewWallet)
+                {
+                    wallet.EnsureCanonicalId();
+                    await _walletRepository.AddAsync(wallet);
+                }
+                else
+                {
+                    await _walletRepository.UpdateAsync(wallet);
+                }
 
-            await _walletActivityRepository.AddAsync(activity);
-        });
+                await _walletActivityRepository.AddAsync(activity);
+            },
+            async () =>
+            {
+                wallet.CurrentBalance = originalBalance;
+                wallet.UpdatedAt = originalUpdatedAt;
+                wallet.EnsureValid();
+                await _walletRepository.UpdateAsync(wallet);
+            });
 
         return await GetWalletAsync(command.UserId);
     }
@@ -112,6 +123,8 @@ public class WalletService : IWalletService
         if (wallet == null || !WalletCalculator.CanDebit(wallet.CurrentBalance, amount))
             return false;
 
+        var originalBalance = wallet.CurrentBalance;
+        var originalUpdatedAt = wallet.UpdatedAt;
         wallet.CurrentBalance = WalletCalculator.CalculateBalanceAfterDebit(wallet.CurrentBalance, amount);
         wallet.UpdatedAt = DateTimeOffset.UtcNow;
         wallet.EnsureValid();
@@ -130,11 +143,19 @@ public class WalletService : IWalletService
 
         try
         {
-            await ExecuteAtomicallyAsync(async () =>
-            {
-                await _walletRepository.UpdateAsync(wallet);
-                await _walletActivityRepository.AddAsync(activity);
-            });
+            await ExecuteAtomicallyAsync(
+                async () =>
+                {
+                    await _walletRepository.UpdateAsync(wallet);
+                    await _walletActivityRepository.AddAsync(activity);
+                },
+                async () =>
+                {
+                    wallet.CurrentBalance = originalBalance;
+                    wallet.UpdatedAt = originalUpdatedAt;
+                    wallet.EnsureValid();
+                    await _walletRepository.UpdateAsync(wallet);
+                });
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("modified by another process", StringComparison.OrdinalIgnoreCase))
         {
@@ -183,13 +204,14 @@ public class WalletService : IWalletService
         };
     }
 
-    private async Task ExecuteAtomicallyAsync(Func<Task> action)
+    private async Task ExecuteAtomicallyAsync(Func<Task> action, Func<Task>? compensateAsync = null)
     {
         var transactionStarted = await TryBeginTransactionAsync();
 
         try
         {
             await action();
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
 
             if (transactionStarted)
                 await _unitOfWork.CommitTransactionAsync();
@@ -197,7 +219,20 @@ public class WalletService : IWalletService
         catch
         {
             if (transactionStarted)
+            {
                 await _unitOfWork.RollbackTransactionAsync();
+            }
+            else if (compensateAsync != null)
+            {
+                try
+                {
+                    await compensateAsync();
+                }
+                catch
+                {
+                    // Best-effort compensation for providers without transactions.
+                }
+            }
 
             throw;
         }

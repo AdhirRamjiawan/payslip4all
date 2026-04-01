@@ -245,6 +245,106 @@ public class PayslipGenerationServiceTests
     }
 
     [Fact]
+    public async Task GeneratePayslipAsync_WhenOverwriteChargeFailsWithoutTransactions_DoesNotDeleteExistingPayslip()
+    {
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existingPayslip = new Payslip
+        {
+            EmployeeId = employeeId,
+            PayPeriodMonth = 1,
+            PayPeriodYear = 2024,
+            GrossEarnings = 9000m,
+            UifDeduction = 90m,
+            TotalLoanDeductions = 0m,
+            TotalDeductions = 90m,
+            NetPay = 8910m,
+            ChargedAmount = 5m,
+        };
+        var employee = new Employee
+        {
+            FirstName = "John",
+            LastName = "Doe",
+            IdNumber = "123",
+            EmployeeNumber = "E001",
+            Occupation = "Dev",
+            MonthlyGrossSalary = 10000m,
+            CompanyId = Guid.NewGuid(),
+        };
+
+        _mockUnitOfWork.Setup(u => u.BeginTransactionAsync()).ThrowsAsync(new NotSupportedException("No transactions"));
+        _mockPayslipRepo.Setup(r => r.ExistsAsync(employeeId, 1, 2024)).ReturnsAsync(true);
+        _mockPayslipRepo.Setup(r => r.GetAllByEmployeeIdAsync(employeeId, userId))
+            .ReturnsAsync(new List<Payslip> { existingPayslip });
+        _mockEmployeeRepo.Setup(r => r.GetByIdWithLoansAsync(employeeId, userId)).ReturnsAsync(employee);
+        _mockPayslipRepo.Setup(r => r.AddAsync(It.IsAny<Payslip>())).Returns(Task.CompletedTask);
+        _mockPayslipRepo.Setup(r => r.DeleteAsync(It.Is<Payslip>(p => p.Id != existingPayslip.Id))).Returns(Task.CompletedTask);
+        _mockWalletService.Setup(s => s.TryDebitAsync(It.IsAny<Guid>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(false);
+
+        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
+        {
+            EmployeeId = employeeId,
+            UserId = userId,
+            PayPeriodMonth = 1,
+            PayPeriodYear = 2024,
+            OverwriteExisting = true,
+        });
+
+        Assert.False(result.Success);
+        Assert.True(result.InsufficientFunds);
+        _mockPayslipRepo.Verify(r => r.DeleteAsync(It.Is<Payslip>(p => p.Id == existingPayslip.Id)), Times.Never);
+    }
+
+    [Fact]
+    public async Task GeneratePayslipAsync_WhenOverwritingWithoutTransactions_DeletesExistingAfterDebitSucceeds()
+    {
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existingPayslip = new Payslip
+        {
+            EmployeeId = employeeId,
+            PayPeriodMonth = 1,
+            PayPeriodYear = 2024,
+            GrossEarnings = 10000m,
+            UifDeduction = 100m,
+            TotalLoanDeductions = 0m,
+            TotalDeductions = 100m,
+            NetPay = 9900m,
+            ChargedAmount = 5m,
+        };
+        var employee = new Employee
+        {
+            FirstName = "John", LastName = "Doe", IdNumber = "123", EmployeeNumber = "E001",
+            Occupation = "Dev", MonthlyGrossSalary = 10000, CompanyId = Guid.NewGuid()
+        };
+
+        var sequence = new MockSequence();
+        _mockUnitOfWork.Setup(u => u.BeginTransactionAsync()).ThrowsAsync(new NotSupportedException("No transactions"));
+        _mockPayslipRepo.Setup(r => r.ExistsAsync(employeeId, 1, 2024)).ReturnsAsync(true);
+        _mockPayslipRepo.Setup(r => r.GetAllByEmployeeIdAsync(employeeId, userId)).ReturnsAsync(new List<Payslip> { existingPayslip });
+        _mockEmployeeRepo.Setup(r => r.GetByIdWithLoansAsync(employeeId, userId)).ReturnsAsync(employee);
+        _mockPayslipRepo.InSequence(sequence).Setup(r => r.AddAsync(It.IsAny<Payslip>())).Returns(Task.CompletedTask);
+        _mockWalletService.InSequence(sequence)
+            .Setup(s => s.TryDebitAsync(userId, 5m, It.IsAny<string>(), "Payslip", It.IsAny<string>()))
+            .ReturnsAsync(true);
+        _mockPayslipRepo.InSequence(sequence).Setup(r => r.DeleteAsync(existingPayslip)).Returns(Task.CompletedTask);
+        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+
+        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
+        {
+            EmployeeId = employeeId,
+            UserId = userId,
+            PayPeriodMonth = 1,
+            PayPeriodYear = 2024,
+            OverwriteExisting = true,
+        });
+
+        Assert.True(result.Success);
+        _mockPayslipRepo.Verify(r => r.DeleteAsync(existingPayslip), Times.Once);
+    }
+
+    [Fact]
     public async Task GetPayslipsForEmployeeAsync_ReturnsPayslips()
     {
         var employeeId = Guid.NewGuid();

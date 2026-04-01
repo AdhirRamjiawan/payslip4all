@@ -107,6 +107,11 @@
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _errorMessage = "Unable to determine the administrator account for this update. Please sign in again.";
+                return;
+            }
 
             _pricing = await PricingService.UpdatePriceAsync(new UpdatePayslipPriceCommand
             {

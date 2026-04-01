@@ -32,4 +32,18 @@ public class WalletActivityTests
 
         Assert.Throws<ArgumentException>(() => activity.EnsureValid());
     }
+
+    [Fact]
+    public void WalletActivity_EnsureValid_RejectsMoreThanTwoDecimalPlaces()
+    {
+        var activity = new WalletActivity
+        {
+            WalletId = Guid.NewGuid(),
+            ActivityType = WalletActivityType.Credit,
+            Amount = 10.123m,
+            BalanceAfterActivity = 10.123m,
+        };
+
+        Assert.Throws<ArgumentException>(() => activity.EnsureValid());
+    }
 }

@@ -27,7 +27,9 @@ public class WalletServiceTests
         var userId = Guid.NewGuid();
         var wallet = new Wallet { UserId = userId, CurrentBalance = 10m };
         _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync(wallet);
-        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(new PayslipPricingSetting { PricePerPayslip = 5m });
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(5m, null);
+        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(pricing);
         _activityRepository.Setup(r => r.GetByWalletIdAsync(wallet.Id)).ReturnsAsync(new List<WalletActivity>());
 
         var result = await CreateService().TopUpAsync(new AddWalletCreditCommand { UserId = userId, Amount = 15m });
@@ -40,6 +42,7 @@ public class WalletServiceTests
             a.Amount == 15m &&
             a.BalanceAfterActivity == 25m)), Times.Once);
         _unitOfWork.Verify(u => u.BeginTransactionAsync(), Times.Once);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWork.Verify(u => u.CommitTransactionAsync(), Times.Once);
     }
 
@@ -54,7 +57,9 @@ public class WalletServiceTests
     public async Task GetWalletAsync_ReturnsZeroBalance_WhenWalletDoesNotExist()
     {
         var userId = Guid.NewGuid();
-        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(new PayslipPricingSetting { PricePerPayslip = 12m });
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(12m, null);
+        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(pricing);
         _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync((Wallet?)null);
 
         var result = await CreateService().GetWalletAsync(userId);
@@ -88,7 +93,9 @@ public class WalletServiceTests
         typeof(WalletActivity).GetProperty(nameof(WalletActivity.OccurredAt))!.SetValue(newer, DateTimeOffset.UtcNow);
 
         _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync(wallet);
-        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(new PayslipPricingSetting { PricePerPayslip = 5m });
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(5m, null);
+        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(pricing);
         _activityRepository.Setup(r => r.GetByWalletIdAsync(wallet.Id)).ReturnsAsync(new List<WalletActivity> { older, newer });
 
         var result = await CreateService().GetWalletAsync(userId);
@@ -119,5 +126,51 @@ public class WalletServiceTests
         Assert.True(result);
         _walletRepository.Verify(r => r.UpdateAsync(It.IsAny<Wallet>()), Times.Never);
         _activityRepository.Verify(r => r.AddAsync(It.IsAny<WalletActivity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TopUpAsync_WhenActivityPersistenceFailsWithoutTransactions_RevertsWalletBalance()
+    {
+        var userId = Guid.NewGuid();
+        var wallet = new Wallet { UserId = userId, CurrentBalance = 10m };
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(5m, null);
+        var balancesWritten = new List<decimal>();
+
+        _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync(wallet);
+        _walletRepository
+            .Setup(r => r.UpdateAsync(It.IsAny<Wallet>()))
+            .Callback<Wallet>(w => balancesWritten.Add(w.CurrentBalance))
+            .Returns(Task.CompletedTask);
+        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(pricing);
+        _unitOfWork.Setup(u => u.BeginTransactionAsync()).ThrowsAsync(new NotSupportedException("No transactions"));
+        _activityRepository.Setup(r => r.AddAsync(It.IsAny<WalletActivity>())).ThrowsAsync(new InvalidOperationException("activity write failed"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService().TopUpAsync(new AddWalletCreditCommand { UserId = userId, Amount = 15m }));
+
+        Assert.Equal(new[] { 25m, 10m }, balancesWritten);
+        _unitOfWork.Verify(u => u.RollbackTransactionAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task TopUpAsync_WhenTransactionsAreUnsupported_StillFlushesUnitOfWork()
+    {
+        var userId = Guid.NewGuid();
+        var wallet = new Wallet { UserId = userId, CurrentBalance = 10m };
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(5m, "admin");
+
+        _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync(wallet);
+        _walletRepository.Setup(r => r.UpdateAsync(wallet)).Returns(Task.CompletedTask);
+        _activityRepository.Setup(r => r.AddAsync(It.IsAny<WalletActivity>())).Returns(Task.CompletedTask);
+        _activityRepository.Setup(r => r.GetByWalletIdAsync(wallet.Id)).ReturnsAsync(Array.Empty<WalletActivity>());
+        _pricingRepository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(pricing);
+        _unitOfWork.Setup(u => u.BeginTransactionAsync()).ThrowsAsync(new NotSupportedException("No transactions"));
+
+        await CreateService().TopUpAsync(new AddWalletCreditCommand { UserId = userId, Amount = 15m });
+
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWork.Verify(u => u.CommitTransactionAsync(), Times.Never);
     }
 }

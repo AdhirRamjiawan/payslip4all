@@ -1,5 +1,6 @@
 using Payslip4All.Application.DTOs;
 using Payslip4All.Application.DTOs.Payslip;
+using Payslip4All.Application.DTOs.Wallet;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Domain.Entities;
@@ -98,6 +99,8 @@ public class PayslipGenerationService : IPayslipService
         IReadOnlyList<EmployeeLoan> activeLoans = Array.Empty<EmployeeLoan>();
         IReadOnlyDictionary<Guid, int> loanTermsSnapshot = new Dictionary<Guid, int>();
         var transactionStarted = await TryBeginTransactionAsync();
+        var walletDebited = false;
+        var existingPayslipDeleted = false;
 
         try
         {
@@ -105,7 +108,12 @@ public class PayslipGenerationService : IPayslipService
             {
                 existingPayslip = (await _payslipRepo.GetAllByEmployeeIdAsync(command.EmployeeId, command.UserId))
                     .FirstOrDefault(p => p.PayPeriodMonth == command.PayPeriodMonth && p.PayPeriodYear == command.PayPeriodYear);
-                if (existingPayslip != null) await _payslipRepo.DeleteAsync(existingPayslip);
+
+                if (existingPayslip != null && transactionStarted)
+                {
+                    await _payslipRepo.DeleteAsync(existingPayslip);
+                    existingPayslipDeleted = true;
+                }
             }
 
             activeLoans = employee.Loans.Where(l => l.IsActiveForPeriod(command.PayPeriodMonth, command.PayPeriodYear)).ToList();
@@ -163,7 +171,12 @@ public class PayslipGenerationService : IPayslipService
                     }
                     else
                     {
-                        await RevertGeneratedPayslipAsync(payslip, activeLoans, loanTermsSnapshot, existingPayslip);
+                        await RevertGeneratedPayslipAsync(
+                            payslip,
+                            activeLoans,
+                            loanTermsSnapshot,
+                            existingPayslip,
+                            existingPayslipDeleted);
                     }
 
                     return new PayslipResult
@@ -174,6 +187,14 @@ public class PayslipGenerationService : IPayslipService
                         ErrorMessage = "Payslip could not be generated because the wallet charge did not complete.",
                     };
                 }
+
+                walletDebited = true;
+            }
+
+            if (existingPayslip != null && !transactionStarted)
+            {
+                await _payslipRepo.DeleteAsync(existingPayslip);
+                existingPayslipDeleted = true;
             }
 
             await _unitOfWork.SaveChangesAsync(CancellationToken.None);
@@ -196,7 +217,24 @@ public class PayslipGenerationService : IPayslipService
             {
                 try
                 {
-                    await RevertGeneratedPayslipAsync(payslip, activeLoans, loanTermsSnapshot, existingPayslip);
+                    await RevertGeneratedPayslipAsync(
+                        payslip,
+                        activeLoans,
+                        loanTermsSnapshot,
+                        existingPayslip,
+                        existingPayslipDeleted);
+
+                    if (walletDebited && pricing.PricePerPayslip > 0m)
+                    {
+                        await _walletService.TopUpAsync(new AddWalletCreditCommand
+                        {
+                            UserId = command.UserId,
+                            Amount = pricing.PricePerPayslip,
+                            Description = $"Wallet refund for failed payslip generation for {new System.Globalization.DateTimeFormatInfo().GetMonthName(command.PayPeriodMonth)} {command.PayPeriodYear}",
+                            ReferenceType = "PayslipRefund",
+                            ReferenceId = payslip.Id.ToString(),
+                        });
+                    }
                 }
                 catch
                 {
@@ -286,7 +324,8 @@ public class PayslipGenerationService : IPayslipService
         Payslip payslip,
         IReadOnlyList<EmployeeLoan> activeLoans,
         IReadOnlyDictionary<Guid, int> loanTermsSnapshot,
-        Payslip? previousPayslip)
+        Payslip? previousPayslip,
+        bool previousPayslipDeleted)
     {
         await _payslipRepo.DeleteAsync(payslip);
 
@@ -297,7 +336,7 @@ public class PayslipGenerationService : IPayslipService
             await _loanRepo.UpdateAsync(loan);
         }
 
-        if (previousPayslip != null)
+        if (previousPayslipDeleted && previousPayslip != null)
             await _payslipRepo.AddAsync(previousPayslip);
     }
 }

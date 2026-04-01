@@ -35,17 +35,14 @@ public class PayslipPricingService : IPayslipPricingService
         if (command.PricePerPayslip < 0m)
             throw new ArgumentException("Price per payslip cannot be negative.", nameof(command.PricePerPayslip));
 
+        if (string.IsNullOrWhiteSpace(command.UpdatedByUserId))
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(command.UpdatedByUserId));
+
         var setting = await _pricingRepository.GetCurrentAsync();
         if (setting == null)
         {
-            setting = new PayslipPricingSetting
-            {
-                PricePerPayslip = command.PricePerPayslip,
-                UpdatedByUserId = command.UpdatedByUserId,
-            };
-
-            typeof(PayslipPricingSetting).GetProperty(nameof(PayslipPricingSetting.Id))!
-                .SetValue(setting, PayslipPricingSetting.DefaultId);
+            setting = new PayslipPricingSetting();
+            setting.UpdatePrice(command.PricePerPayslip, command.UpdatedByUserId);
 
             await _pricingRepository.AddAsync(setting);
         }

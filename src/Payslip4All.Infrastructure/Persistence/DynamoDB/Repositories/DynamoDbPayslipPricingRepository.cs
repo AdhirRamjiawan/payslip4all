@@ -32,17 +32,13 @@ public sealed class DynamoDbPayslipPricingRepository : IPayslipPricingRepository
         if (response.IsItemSet)
             return Map(response.Item);
 
-        var fallbackResponse = await _dynamoDb.ScanAsync(new ScanRequest
-        {
-            TableName = _tableName,
-            Limit = 1,
-        });
-
-        return fallbackResponse.Items.Count == 0 ? null : Map(fallbackResponse.Items[0]);
+        return null;
     }
 
     public async Task AddAsync(PayslipPricingSetting setting)
     {
+        SetProperty(setting, nameof(PayslipPricingSetting.Id), PayslipPricingSetting.DefaultId);
+
         await _dynamoDb.PutItemAsync(new PutItemRequest
         {
             TableName = _tableName,
@@ -52,6 +48,8 @@ public sealed class DynamoDbPayslipPricingRepository : IPayslipPricingRepository
 
     public async Task UpdateAsync(PayslipPricingSetting setting)
     {
+        SetProperty(setting, nameof(PayslipPricingSetting.Id), PayslipPricingSetting.DefaultId);
+
         await _dynamoDb.PutItemAsync(new PutItemRequest
         {
             TableName = _tableName,
@@ -78,8 +76,8 @@ public sealed class DynamoDbPayslipPricingRepository : IPayslipPricingRepository
     {
         var setting = new PayslipPricingSetting();
         SetProperty(setting, nameof(PayslipPricingSetting.Id), Guid.Parse(item["id"].S));
-        setting.PricePerPayslip = decimal.Parse(item["pricePerPayslip"].S, CultureInfo.InvariantCulture);
-        if (item.TryGetValue("updatedByUserId", out var updatedByUserId)) setting.UpdatedByUserId = updatedByUserId.S;
+        SetProperty(setting, nameof(PayslipPricingSetting.PricePerPayslip), decimal.Parse(item["pricePerPayslip"].S, CultureInfo.InvariantCulture));
+        if (item.TryGetValue("updatedByUserId", out var updatedByUserId)) SetProperty(setting, nameof(PayslipPricingSetting.UpdatedByUserId), updatedByUserId.S);
         SetProperty(setting, nameof(PayslipPricingSetting.UpdatedAt), DateTimeOffset.Parse(item["updatedAt"].S, CultureInfo.InvariantCulture));
         return setting;
     }

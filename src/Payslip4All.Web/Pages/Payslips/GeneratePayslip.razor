@@ -56,8 +56,14 @@
                 </div>
             }
         }
+        else if (_walletLoadFailed)
+        {
+            <div class="alert alert-warning">
+                Wallet details are temporarily unavailable. Payslip generation is disabled until the wallet can be loaded.
+            </div>
+        }
 
-        @if (!_showPreview)
+        @if (!_showPreview && !_walletLoadFailed && _wallet != null)
         {
             <div class="card mb-4">
                 <div class="card-body">
@@ -86,7 +92,7 @@
             </div>
         }
 
-        @if (_showPreview && _preview != null)
+        @if (_showPreview && _preview != null && !_walletLoadFailed && _wallet != null)
         {
             <div class="card mb-4">
                 <div class="card-body">
@@ -142,6 +148,7 @@
     private bool _isGenerating;
     private bool _showPreview;
     private bool _isDuplicate;
+    private bool _walletLoadFailed;
     private string? _errorMessage;
     private string? _successMessage;
     private int _selectedMonth = DateTime.Today.Month;
@@ -155,8 +162,19 @@
             var userId = await GetUserIdAsync();
             if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
-            _wallet = await WalletService.GetWalletAsync(userId.Value);
             if (_employee == null) Nav.NavigateTo($"/portal/companies/{CompanyId}");
+
+            try
+            {
+                _wallet = await WalletService.GetWalletAsync(userId.Value);
+                _walletLoadFailed = false;
+            }
+            catch
+            {
+                _wallet = null;
+                _walletLoadFailed = true;
+                _errorMessage = "Wallet details are temporarily unavailable. Payslip generation is disabled until the wallet can be loaded.";
+            }
         }
         catch
         {
@@ -170,6 +188,12 @@
 
     private async Task PreviewPayslip()
     {
+        if (_walletLoadFailed || _wallet == null)
+        {
+            _errorMessage = "Wallet details are temporarily unavailable. Payslip generation is disabled until the wallet can be loaded.";
+            return;
+        }
+
         _isPreviewing = true;
         _errorMessage = null;
         _successMessage = null;
@@ -186,9 +210,9 @@
             _preview = result.PayslipDto;
             _showPreview = true;
         }
-        catch (Exception ex)
+        catch
         {
-            _errorMessage = $"Failed to preview payslip: {ex.Message}";
+            _errorMessage = "Failed to preview payslip.";
         }
         finally
         {
@@ -198,6 +222,12 @@
 
     private async Task GeneratePayslipAsync()
     {
+        if (_walletLoadFailed || _wallet == null)
+        {
+            _errorMessage = "Wallet details are temporarily unavailable. Payslip generation is disabled until the wallet can be loaded.";
+            return;
+        }
+
         _isGenerating = true;
         _errorMessage = null;
         _successMessage = null;
@@ -218,10 +248,14 @@
                 try
                 {
                     _wallet = await WalletService.GetWalletAsync(userId.Value);
+                    _walletLoadFailed = false;
                 }
                 catch
                 {
-                    // Keep the original server error visible even if the follow-up wallet refresh fails.
+                    _wallet = null;
+                    _walletLoadFailed = true;
+                    _errorMessage = "Wallet details are temporarily unavailable. Payslip generation is disabled until the wallet can be loaded.";
+                    return;
                 }
 
                 _errorMessage = result.ErrorMessage;
@@ -232,18 +266,21 @@
             try
             {
                 _wallet = await WalletService.GetWalletAsync(userId.Value);
+                _walletLoadFailed = false;
             }
             catch
             {
+                _wallet = null;
+                _walletLoadFailed = true;
                 walletRefreshWarning = "Payslip generated successfully, but the wallet summary could not be refreshed yet.";
             }
 
             _successMessage = walletRefreshWarning ?? $"Payslip generated successfully. Wallet charged: R {result.ChargedAmount:N2}.";
             ResetPreview();
         }
-        catch (Exception ex)
+        catch
         {
-            _errorMessage = $"Failed to generate payslip: {ex.Message}";
+            _errorMessage = "Failed to generate payslip.";
         }
         finally
         {

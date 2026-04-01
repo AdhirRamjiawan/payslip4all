@@ -40,4 +40,26 @@ public class DynamoDbWalletRepositoryTests : IClassFixture<DynamoDbTestFixture>
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task AddAsync_UsesCanonicalUserBackedWalletId()
+    {
+        var userId = Guid.NewGuid();
+        var wallet = new Wallet { UserId = userId, CurrentBalance = 20m };
+
+        await _repo.AddAsync(wallet);
+
+        Assert.Equal(userId, wallet.Id);
+    }
+
+    [Fact]
+    public async Task AddAsync_WithExistingWalletForUser_ThrowsInvalidOperationException()
+    {
+        var userId = Guid.NewGuid();
+
+        await _repo.AddAsync(new Wallet { UserId = userId, CurrentBalance = 20m });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repo.AddAsync(new Wallet { UserId = userId, CurrentBalance = 25m }));
+    }
 }

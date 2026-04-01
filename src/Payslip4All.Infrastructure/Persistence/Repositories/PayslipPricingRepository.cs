@@ -11,9 +11,9 @@ public class PayslipPricingRepository : IPayslipPricingRepository
     public PayslipPricingRepository(PayslipDbContext db) => _db = db;
 
     public async Task<PayslipPricingSetting?> GetCurrentAsync()
-        => (await _db.PayslipPricingSettings.ToListAsync())
-            .OrderByDescending(p => p.UpdatedAt)
-            .FirstOrDefault();
+        => await _db.PayslipPricingSettings
+            .Where(p => p.Id == PayslipPricingSetting.DefaultId)
+            .FirstOrDefaultAsync();
 
     public async Task AddAsync(PayslipPricingSetting setting)
     {

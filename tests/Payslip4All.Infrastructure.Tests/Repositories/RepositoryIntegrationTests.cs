@@ -154,15 +154,12 @@ public abstract class RepositoryTestBase : IDisposable
     }
 
     protected PayslipPricingSetting SeedPayslipPricingSetting(
-        decimal pricePerPayslip = 0m,
+        decimal pricePerPayslip = 15m,
         Guid? id = null,
         string? updatedByUserId = null)
     {
-        var pricing = new PayslipPricingSetting
-        {
-            PricePerPayslip = pricePerPayslip,
-            UpdatedByUserId = updatedByUserId,
-        };
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(pricePerPayslip, updatedByUserId);
 
         if (id.HasValue)
         {

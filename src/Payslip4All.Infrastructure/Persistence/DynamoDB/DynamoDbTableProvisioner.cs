@@ -277,7 +277,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                 },
             },
 
-            // payslip4all_wallets — PK: id (S), GSI: userId-index on userId
+            // payslip4all_wallets — PK: id (S), where id is the canonical userId-backed wallet identifier
             new CreateTableRequest
             {
                 TableName = $"{_prefix}_wallets",
@@ -289,19 +289,6 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                 AttributeDefinitions = new List<AttributeDefinition>
                 {
                     new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
-                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
-                },
-                GlobalSecondaryIndexes = new List<GlobalSecondaryIndex>
-                {
-                    new()
-                    {
-                        IndexName = "userId-index",
-                        KeySchema = new List<KeySchemaElement>
-                        {
-                            new() { AttributeName = "userId", KeyType = KeyType.HASH },
-                        },
-                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
-                    },
                 },
             },
 

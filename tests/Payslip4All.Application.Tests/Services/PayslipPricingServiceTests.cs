@@ -19,13 +19,13 @@ public class PayslipPricingServiceTests
 
         var result = await CreateService().GetCurrentPriceAsync();
 
-        Assert.Equal(0m, result.PricePerPayslip);
+        Assert.Equal(15m, result.PricePerPayslip);
     }
 
     [Fact]
     public async Task UpdatePriceAsync_WithExistingSetting_UpdatesRepository()
     {
-        var setting = new PayslipPricingSetting { PricePerPayslip = 0m };
+        var setting = new PayslipPricingSetting();
         _repository.Setup(r => r.GetCurrentAsync()).ReturnsAsync(setting);
 
         var result = await CreateService().UpdatePriceAsync(new UpdatePayslipPriceCommand
@@ -44,5 +44,12 @@ public class PayslipPricingServiceTests
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             CreateService().UpdatePriceAsync(new UpdatePayslipPriceCommand { PricePerPayslip = -1m }));
+    }
+
+    [Fact]
+    public async Task UpdatePriceAsync_WithoutUpdatedByUserId_ThrowsArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService().UpdatePriceAsync(new UpdatePayslipPriceCommand { PricePerPayslip = 12m }));
     }
 }

@@ -83,7 +83,7 @@ namespace Payslip4All.Infrastructure.Migrations
             migrationBuilder.InsertData(
                 table: "PayslipPricingSettings",
                 columns: new[] { "Id", "PricePerPayslip", "UpdatedAt", "UpdatedByUserId" },
-                values: new object[] { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), 0.00m, new DateTimeOffset(new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null });
+                values: new object[] { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), 15.00m, new DateTimeOffset(new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null });
 
             migrationBuilder.CreateIndex(
                 name: "IX_WalletActivities_WalletId_OccurredAt",

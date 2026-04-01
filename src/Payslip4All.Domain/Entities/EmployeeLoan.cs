@@ -51,6 +51,12 @@ public class EmployeeLoan
 
     public void RestoreTermsCompleted(int termsCompleted)
     {
+        if (termsCompleted < 0)
+            throw new ArgumentOutOfRangeException(nameof(termsCompleted), "Terms completed cannot be negative.");
+
+        if (NumberOfTerms > 0 && termsCompleted > NumberOfTerms)
+            throw new ArgumentOutOfRangeException(nameof(termsCompleted), "Terms completed cannot exceed the total number of loan terms.");
+
         TermsCompleted = termsCompleted;
         Status = TermsCompleted >= NumberOfTerms
             ? LoanStatus.Completed

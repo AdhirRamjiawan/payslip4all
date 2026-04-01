@@ -31,9 +31,8 @@ public class DynamoDbPayslipPricingRepositoryTests : IClassFixture<DynamoDbTestF
     [Fact]
     public async Task UpdateAsync_PersistsNewPrice()
     {
-        var setting = new PayslipPricingSetting { PricePerPayslip = 5m };
-        typeof(PayslipPricingSetting).GetProperty(nameof(PayslipPricingSetting.Id))!
-            .SetValue(setting, PayslipPricingSetting.DefaultId);
+        var setting = new PayslipPricingSetting();
+        setting.UpdatePrice(5m, null);
 
         await _repo.AddAsync(setting);
         setting.UpdatePrice(9m, "admin");

@@ -19,6 +19,23 @@ public class Wallet
         _persistedUpdatedAt = UpdatedAt;
     }
 
+    public static Wallet CreateForUser(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("UserId is required.", nameof(userId));
+
+        var wallet = new Wallet
+        {
+            UserId = userId,
+            CurrentBalance = 0m,
+        };
+
+        wallet.Id = userId;
+        wallet.CapturePersistedState();
+
+        return wallet;
+    }
+
     public void EnsureValid()
     {
         if (UserId == Guid.Empty)
@@ -31,4 +48,12 @@ public class Wallet
     public DateTimeOffset GetPersistedUpdatedAt() => _persistedUpdatedAt;
 
     public void CapturePersistedState() => _persistedUpdatedAt = UpdatedAt;
+
+    public void EnsureCanonicalId()
+    {
+        if (UserId == Guid.Empty)
+            throw new ArgumentException("UserId is required.", nameof(UserId));
+
+        Id = UserId;
+    }
 }

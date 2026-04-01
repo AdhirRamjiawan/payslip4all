@@ -145,8 +145,8 @@
 
 - [X] T038 [P] Add quickstart-aligned UI regression coverage in `tests/Payslip4All.Web.Tests/Pages/WalletTests.cs`, `tests/Payslip4All.Web.Tests/Pages/GeneratePayslipTests.cs`, `tests/Payslip4All.Web.Tests/Pages/Admin/WalletPricingTests.cs`, and `tests/Payslip4All.Web.Tests/Integration/PublicLandingPageTests.cs`
 - [X] T039 [P] Add public-price provider-switch and startup regression coverage in `tests/Payslip4All.Web.Tests/DynamoDbProviderSwitchingTests.cs` and `tests/Payslip4All.Web.Tests/Startup/StartupDependencyTests.cs`
-- [ ] T040 [P] Update rollout and manual verification guidance for wallet pricing, top-ups, payslip charging, and the public landing page in `README.md` and `specs/007-wallet-credits/quickstart.md`
-- [ ] T041 Harden wallet, pricing, and public-homepage error handling plus user-facing copy in `src/Payslip4All.Application/Services/WalletService.cs`, `src/Payslip4All.Application/Services/PayslipPricingService.cs`, `src/Payslip4All.Web/Pages/Wallet.razor`, `src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor`, `src/Payslip4All.Web/Pages/Index.cshtml.cs`, and `src/Payslip4All.Web/Pages/Index.cshtml`
+- [X] T040 [P] Update rollout and manual verification guidance for wallet pricing, top-ups, payslip charging, and the public landing page in `README.md` and `specs/007-wallet-credits/quickstart.md`
+- [X] T041 Harden wallet, pricing, and public-homepage error handling plus user-facing copy in `src/Payslip4All.Application/Services/WalletService.cs`, `src/Payslip4All.Application/Services/PayslipPricingService.cs`, `src/Payslip4All.Web/Pages/Wallet.razor`, `src/Payslip4All.Web/Pages/Payslips/GeneratePayslip.razor`, `src/Payslip4All.Web/Pages/Index.cshtml.cs`, and `src/Payslip4All.Web/Pages/Index.cshtml`
 
 ---
 

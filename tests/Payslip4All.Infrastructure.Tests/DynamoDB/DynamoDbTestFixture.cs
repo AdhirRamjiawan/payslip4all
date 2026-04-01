@@ -263,16 +263,6 @@ public class DynamoDbTestFixture : IAsyncLifetime
                 AttributeDefinitions = new()
                 {
                     new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
-                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
-                },
-                GlobalSecondaryIndexes = new()
-                {
-                    new()
-                    {
-                        IndexName = "userId-index",
-                        KeySchema = new() { new() { AttributeName = "userId", KeyType = KeyType.HASH } },
-                        Projection = new() { ProjectionType = ProjectionType.ALL },
-                    },
                 },
             },
             new()

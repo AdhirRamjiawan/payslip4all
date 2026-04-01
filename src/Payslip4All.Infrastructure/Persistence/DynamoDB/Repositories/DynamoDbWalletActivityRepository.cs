@@ -9,6 +9,7 @@ namespace Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
 public sealed class DynamoDbWalletActivityRepository : IWalletActivityRepository
 {
+    private const int QueryPageSize = 50;
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
@@ -21,19 +22,31 @@ public sealed class DynamoDbWalletActivityRepository : IWalletActivityRepository
 
     public async Task<IReadOnlyList<WalletActivity>> GetByWalletIdAsync(Guid walletId)
     {
-        var response = await _dynamoDb.QueryAsync(new QueryRequest
-        {
-            TableName = _tableName,
-            IndexName = "walletId-index",
-            KeyConditionExpression = "walletId = :walletId",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":walletId"] = new() { S = walletId.ToString() },
-            },
-            ScanIndexForward = false,
-        });
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastEvaluatedKey = null;
 
-        return response.Items.Select(Map).ToList();
+        do
+        {
+            var response = await _dynamoDb.QueryAsync(new QueryRequest
+            {
+                TableName = _tableName,
+                IndexName = "walletId-index",
+                KeyConditionExpression = "walletId = :walletId",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":walletId"] = new() { S = walletId.ToString() },
+                },
+                Limit = QueryPageSize,
+                ScanIndexForward = false,
+                ExclusiveStartKey = lastEvaluatedKey,
+            });
+
+            items.AddRange(response.Items);
+            lastEvaluatedKey = response.LastEvaluatedKey;
+        }
+        while (lastEvaluatedKey is { Count: > 0 });
+
+        return items.Select(Map).ToList();
     }
 
     public async Task AddAsync(WalletActivity activity)

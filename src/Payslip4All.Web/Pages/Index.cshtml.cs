@@ -6,7 +6,7 @@ using Payslip4All.Application.Interfaces;
 public class IndexModel : PageModel
 {
     private const string FallbackPublicPriceSummary =
-        "Public payslip pricing is temporarily unavailable. Create an account or sign in to view the latest wallet pricing when it becomes available again.";
+        "Public payslip pricing is temporarily unavailable. Create an account or sign in to review the latest wallet pricing once it becomes available again.";
 
     private readonly IPayslipPricingService _payslipPricingService;
 
@@ -28,7 +28,7 @@ public class IndexModel : PageModel
             var pricing = await _payslipPricingService.GetCurrentPriceAsync();
             CurrentPayslipPrice = pricing.PricePerPayslip;
             IsPublicPriceAvailable = true;
-            PublicPriceSummary = $"R {pricing.PricePerPayslip:N2} per payslip";
+            PublicPriceSummary = $"Current public price: R {pricing.PricePerPayslip:N2} per payslip.";
         }
         catch
         {

@@ -273,7 +273,7 @@ namespace Payslip4All.Infrastructure.Migrations
                         new
                         {
                             Id = new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                            PricePerPayslip = 0.00m,
+                            PricePerPayslip = 15.00m,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });

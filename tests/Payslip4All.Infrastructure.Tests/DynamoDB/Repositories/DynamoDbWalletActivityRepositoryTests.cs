@@ -52,4 +52,27 @@ public class DynamoDbWalletActivityRepositoryTests : IClassFixture<DynamoDbTestF
         Assert.Equal("Newer", result[0].Description);
         Assert.Equal("Older", result[1].Description);
     }
+
+    [Fact]
+    public async Task GetByWalletIdAsync_PaginatesAcrossAllResults()
+    {
+        var walletId = Guid.NewGuid();
+        await _fixture.SeedWalletAsync(walletId, Guid.NewGuid(), 200m);
+
+        for (var i = 0; i < 75; i++)
+        {
+            await _fixture.SeedWalletActivityAsync(
+                Guid.NewGuid(),
+                walletId,
+                "Credit",
+                1m,
+                1m + i,
+                DateTimeOffset.UtcNow.AddMinutes(-i),
+                $"Activity {i}");
+        }
+
+        var result = await _repo.GetByWalletIdAsync(walletId);
+
+        Assert.Equal(75, result.Count);
+    }
 }
