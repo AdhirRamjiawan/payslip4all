@@ -3,8 +3,10 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Payslip4All.Application.DTOs.Company
+@using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
 @inject ICompanyService CompanyService
+@inject IWalletService WalletService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
 
@@ -24,6 +26,23 @@
 
         @if (_errorMessage == null)
         {
+            @if (_wallet != null)
+            {
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Wallet Summary</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Balance:</strong> R @_wallet.CurrentBalance.ToString("N2")
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Current Payslip Price:</strong> R @_wallet.CurrentPayslipPrice.ToString("N2")
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
             @if (!_companies.Any())
             {
                 <div class="text-center mt-5">
@@ -58,6 +77,7 @@
 
 @code {
     private List<CompanyDto> _companies = new();
+    private WalletDto? _wallet;
     private bool _isLoading = true;
     private string? _errorMessage;
 
@@ -70,6 +90,7 @@
             {
                 var result = await CompanyService.GetCompaniesForUserAsync(userId.Value);
                 _companies = result.ToList();
+                _wallet = await WalletService.GetWalletAsync(userId.Value);
             }
         }
         catch (Exception)

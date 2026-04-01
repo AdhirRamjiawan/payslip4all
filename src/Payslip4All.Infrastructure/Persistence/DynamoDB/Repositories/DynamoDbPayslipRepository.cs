@@ -219,6 +219,7 @@ public sealed class DynamoDbPayslipRepository : IPayslipRepository
             ["totalLoanDeductions"] = new AttributeValue { S = payslip.TotalLoanDeductions.ToString("G", System.Globalization.CultureInfo.InvariantCulture) },
             ["totalDeductions"] = new AttributeValue { S = payslip.TotalDeductions.ToString("G", System.Globalization.CultureInfo.InvariantCulture) },
             ["netPay"] = new AttributeValue { S = payslip.NetPay.ToString("G", System.Globalization.CultureInfo.InvariantCulture) },
+            ["chargedAmount"] = new AttributeValue { S = payslip.ChargedAmount.ToString("G", System.Globalization.CultureInfo.InvariantCulture) },
             ["employeeId"] = new AttributeValue { S = payslip.EmployeeId.ToString() },
             ["userId"] = new AttributeValue { S = userId },
             ["generatedAt"] = new AttributeValue { S = payslip.GeneratedAt.ToString("O") },
@@ -248,6 +249,8 @@ public sealed class DynamoDbPayslipRepository : IPayslipRepository
         payslip.TotalLoanDeductions = decimal.Parse(item["totalLoanDeductions"].S, System.Globalization.CultureInfo.InvariantCulture);
         payslip.TotalDeductions = decimal.Parse(item["totalDeductions"].S, System.Globalization.CultureInfo.InvariantCulture);
         payslip.NetPay = decimal.Parse(item["netPay"].S, System.Globalization.CultureInfo.InvariantCulture);
+        if (item.TryGetValue("chargedAmount", out var chargedAmount))
+            payslip.ChargedAmount = decimal.Parse(chargedAmount.S, System.Globalization.CultureInfo.InvariantCulture);
         payslip.EmployeeId = Guid.Parse(item["employeeId"].S);
         SetProperty(payslip, "GeneratedAt", DateTimeOffset.Parse(item["generatedAt"].S));
         return payslip;

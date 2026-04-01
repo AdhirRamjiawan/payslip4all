@@ -1,10 +1,12 @@
-using Payslip4All.Application.DTOs.Payslip;
 using Payslip4All.Application.DTOs;
+using Payslip4All.Application.DTOs.Payslip;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Domain.Entities;
 using Payslip4All.Domain.Services;
+
 namespace Payslip4All.Application.Services;
+
 public class PayslipGenerationService : IPayslipService
 {
     private readonly IPayslipRepository _payslipRepo;
@@ -12,16 +14,25 @@ public class PayslipGenerationService : IPayslipService
     private readonly ILoanRepository _loanRepo;
     private readonly IPdfGenerationService _pdfService;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IWalletService _walletService;
+    private readonly IPayslipPricingService _pricingService;
 
     public PayslipGenerationService(
-        IPayslipRepository payslipRepo, IEmployeeRepository employeeRepo,
-        ILoanRepository loanRepo, IPdfGenerationService pdfService, IUnitOfWork unitOfWork)
+        IPayslipRepository payslipRepo,
+        IEmployeeRepository employeeRepo,
+        ILoanRepository loanRepo,
+        IPdfGenerationService pdfService,
+        IUnitOfWork unitOfWork,
+        IWalletService walletService,
+        IPayslipPricingService pricingService)
     {
         _payslipRepo = payslipRepo;
         _employeeRepo = employeeRepo;
         _loanRepo = loanRepo;
         _pdfService = pdfService;
         _unitOfWork = unitOfWork;
+        _walletService = walletService;
+        _pricingService = pricingService;
     }
 
     public async Task<PayslipResult> PreviewPayslipAsync(PreviewPayslipQuery query)
@@ -51,7 +62,9 @@ public class PayslipGenerationService : IPayslipService
                 NetPay = netPay,
                 LoanDeductions = activeLoans.Select(l => new PayslipLoanDeductionDto
                 {
-                    EmployeeLoanId = l.Id, Description = l.Description, Amount = l.MonthlyDeductionAmount
+                    EmployeeLoanId = l.Id,
+                    Description = l.Description,
+                    Amount = l.MonthlyDeductionAmount
                 }).ToList()
             }
         };
@@ -63,51 +76,136 @@ public class PayslipGenerationService : IPayslipService
         if (exists && !command.OverwriteExisting)
             return new PayslipResult { Success = false, IsDuplicate = true, ErrorMessage = "Payslip already exists for this period." };
 
-        if (exists && command.OverwriteExisting)
-        {
-            var existing = (await _payslipRepo.GetAllByEmployeeIdAsync(command.EmployeeId, command.UserId))
-                .FirstOrDefault(p => p.PayPeriodMonth == command.PayPeriodMonth && p.PayPeriodYear == command.PayPeriodYear);
-            if (existing != null) await _payslipRepo.DeleteAsync(existing);
-        }
-
         var employee = await _employeeRepo.GetByIdWithLoansAsync(command.EmployeeId, command.UserId);
         if (employee == null) return new PayslipResult { Success = false, ErrorMessage = "Employee not found." };
         if (employee.MonthlyGrossSalary <= 0) return new PayslipResult { Success = false, ErrorMessage = "Employee has no salary." };
 
-        var activeLoans = employee.Loans.Where(l => l.IsActiveForPeriod(command.PayPeriodMonth, command.PayPeriodYear)).ToList();
-        var uif = PayslipCalculator.CalculateUifDeduction(employee.MonthlyGrossSalary);
-        var loanAmounts = activeLoans.Select(l => l.MonthlyDeductionAmount).ToList();
-        var totalLoanDeductions = loanAmounts.Sum();
-        var totalDeductions = PayslipCalculator.CalculateTotalDeductions(uif, loanAmounts);
-        var netPay = PayslipCalculator.CalculateNetPay(employee.MonthlyGrossSalary, uif, loanAmounts);
-
-        var payslip = new Payslip
+        var pricing = await _pricingService.GetCurrentPriceAsync();
+        var wallet = await _walletService.GetWalletAsync(command.UserId);
+        if (wallet.CurrentBalance < pricing.PricePerPayslip)
         {
-            EmployeeId = employee.Id, PayPeriodMonth = command.PayPeriodMonth,
-            PayPeriodYear = command.PayPeriodYear, GrossEarnings = employee.MonthlyGrossSalary,
-            UifDeduction = uif, TotalLoanDeductions = totalLoanDeductions,
-            TotalDeductions = totalDeductions, NetPay = netPay
-        };
-
-        foreach (var loan in activeLoans)
-        {
-            payslip.LoanDeductions.Add(new PayslipLoanDeduction
+            return new PayslipResult
             {
-                PayslipId = payslip.Id, EmployeeLoanId = loan.Id,
-                Description = loan.Description, Amount = loan.MonthlyDeductionAmount
-            });
-            loan.IncrementTermsCompleted();
+                Success = false,
+                InsufficientFunds = true,
+                ChargedAmount = pricing.PricePerPayslip,
+                ErrorMessage = "Insufficient wallet balance to generate this payslip.",
+            };
         }
 
+        Payslip? existingPayslip = null;
+        Payslip? payslip = null;
+        IReadOnlyList<EmployeeLoan> activeLoans = Array.Empty<EmployeeLoan>();
+        IReadOnlyDictionary<Guid, int> loanTermsSnapshot = new Dictionary<Guid, int>();
+        var transactionStarted = await TryBeginTransactionAsync();
 
-        await _payslipRepo.AddAsync(payslip);
+        try
+        {
+            if (exists && command.OverwriteExisting)
+            {
+                existingPayslip = (await _payslipRepo.GetAllByEmployeeIdAsync(command.EmployeeId, command.UserId))
+                    .FirstOrDefault(p => p.PayPeriodMonth == command.PayPeriodMonth && p.PayPeriodYear == command.PayPeriodYear);
+                if (existingPayslip != null) await _payslipRepo.DeleteAsync(existingPayslip);
+            }
 
-        foreach (var loan in activeLoans)
-            await _loanRepo.UpdateAsync(loan);
+            activeLoans = employee.Loans.Where(l => l.IsActiveForPeriod(command.PayPeriodMonth, command.PayPeriodYear)).ToList();
+            loanTermsSnapshot = activeLoans.ToDictionary(loan => loan.Id, loan => loan.TermsCompleted);
+            var uif = PayslipCalculator.CalculateUifDeduction(employee.MonthlyGrossSalary);
+            var loanAmounts = activeLoans.Select(l => l.MonthlyDeductionAmount).ToList();
+            var totalLoanDeductions = loanAmounts.Sum();
+            var totalDeductions = PayslipCalculator.CalculateTotalDeductions(uif, loanAmounts);
+            var netPay = PayslipCalculator.CalculateNetPay(employee.MonthlyGrossSalary, uif, loanAmounts);
 
-        await _unitOfWork.SaveChangesAsync(CancellationToken.None);
+            payslip = new Payslip
+            {
+                EmployeeId = employee.Id,
+                PayPeriodMonth = command.PayPeriodMonth,
+                PayPeriodYear = command.PayPeriodYear,
+                GrossEarnings = employee.MonthlyGrossSalary,
+                UifDeduction = uif,
+                TotalLoanDeductions = totalLoanDeductions,
+                TotalDeductions = totalDeductions,
+                NetPay = netPay,
+                ChargedAmount = pricing.PricePerPayslip,
+            };
 
-        return new PayslipResult { Success = true, PayslipDto = ToDto(payslip) };
+            foreach (var loan in activeLoans)
+            {
+                payslip.LoanDeductions.Add(new PayslipLoanDeduction
+                {
+                    PayslipId = payslip.Id,
+                    EmployeeLoanId = loan.Id,
+                    Description = loan.Description,
+                    Amount = loan.MonthlyDeductionAmount
+                });
+                loan.IncrementTermsCompleted();
+            }
+
+            await _payslipRepo.AddAsync(payslip);
+
+            foreach (var loan in activeLoans)
+                await _loanRepo.UpdateAsync(loan);
+
+            if (pricing.PricePerPayslip > 0m)
+            {
+                var debited = await _walletService.TryDebitAsync(
+                    command.UserId,
+                    pricing.PricePerPayslip,
+                    $"Payslip generated for {new System.Globalization.DateTimeFormatInfo().GetMonthName(command.PayPeriodMonth)} {command.PayPeriodYear}",
+                    "Payslip",
+                    payslip.Id.ToString());
+
+                if (!debited)
+                {
+                    if (transactionStarted)
+                    {
+                        await _unitOfWork.RollbackTransactionAsync();
+                    }
+                    else
+                    {
+                        await RevertGeneratedPayslipAsync(payslip, activeLoans, loanTermsSnapshot, existingPayslip);
+                    }
+
+                    return new PayslipResult
+                    {
+                        Success = false,
+                        ChargedAmount = pricing.PricePerPayslip,
+                        InsufficientFunds = true,
+                        ErrorMessage = "Payslip could not be generated because the wallet charge did not complete.",
+                    };
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
+
+            if (transactionStarted)
+                await _unitOfWork.CommitTransactionAsync();
+
+            return new PayslipResult
+            {
+                Success = true,
+                PayslipDto = ToDto(payslip),
+                ChargedAmount = pricing.PricePerPayslip,
+            };
+        }
+        catch
+        {
+            if (transactionStarted)
+                await _unitOfWork.RollbackTransactionAsync();
+            else if (payslip != null)
+            {
+                try
+                {
+                    await RevertGeneratedPayslipAsync(payslip, activeLoans, loanTermsSnapshot, existingPayslip);
+                }
+                catch
+                {
+                    // Best-effort compensation for immediate-write providers.
+                }
+            }
+
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<PayslipDto>> GetPayslipsForEmployeeAsync(Guid employeeId, Guid userId)
@@ -142,7 +240,9 @@ public class PayslipGenerationService : IPayslipService
             EmployeeIdNumber: employee.IdNumber,
             EmployeeStartDate: employee.StartDate,
             EmployeeUifReference: employee.UifReference,
-            PaymentDate: new DateOnly(payslip.PayPeriodYear, payslip.PayPeriodMonth,
+            PaymentDate: new DateOnly(
+                payslip.PayPeriodYear,
+                payslip.PayPeriodMonth,
                 DateTime.DaysInMonth(payslip.PayPeriodYear, payslip.PayPeriodMonth))
         );
         return _pdfService.GeneratePayslip(doc);
@@ -150,13 +250,54 @@ public class PayslipGenerationService : IPayslipService
 
     private static PayslipDto ToDto(Payslip p) => new()
     {
-        Id = p.Id, PayPeriodMonth = p.PayPeriodMonth, PayPeriodYear = p.PayPeriodYear,
-        GrossEarnings = p.GrossEarnings, UifDeduction = p.UifDeduction,
-        TotalLoanDeductions = p.TotalLoanDeductions, TotalDeductions = p.TotalDeductions,
-        NetPay = p.NetPay, EmployeeId = p.EmployeeId, GeneratedAt = p.GeneratedAt,
+        Id = p.Id,
+        PayPeriodMonth = p.PayPeriodMonth,
+        PayPeriodYear = p.PayPeriodYear,
+        GrossEarnings = p.GrossEarnings,
+        UifDeduction = p.UifDeduction,
+        TotalLoanDeductions = p.TotalLoanDeductions,
+        TotalDeductions = p.TotalDeductions,
+        NetPay = p.NetPay,
+        ChargedAmount = p.ChargedAmount,
+        EmployeeId = p.EmployeeId,
+        GeneratedAt = p.GeneratedAt,
         LoanDeductions = p.LoanDeductions.Select(d => new PayslipLoanDeductionDto
         {
-            EmployeeLoanId = d.EmployeeLoanId, Description = d.Description, Amount = d.Amount
+            EmployeeLoanId = d.EmployeeLoanId,
+            Description = d.Description,
+            Amount = d.Amount
         }).ToList()
     };
+
+    private async Task<bool> TryBeginTransactionAsync()
+    {
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync();
+            return true;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private async Task RevertGeneratedPayslipAsync(
+        Payslip payslip,
+        IReadOnlyList<EmployeeLoan> activeLoans,
+        IReadOnlyDictionary<Guid, int> loanTermsSnapshot,
+        Payslip? previousPayslip)
+    {
+        await _payslipRepo.DeleteAsync(payslip);
+
+        foreach (var loan in activeLoans)
+        {
+            if (loanTermsSnapshot.TryGetValue(loan.Id, out var termsCompleted))
+                loan.RestoreTermsCompleted(termsCompleted);
+            await _loanRepo.UpdateAsync(loan);
+        }
+
+        if (previousPayslip != null)
+            await _payslipRepo.AddAsync(previousPayslip);
+    }
 }

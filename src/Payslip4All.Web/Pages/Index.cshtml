@@ -30,6 +30,34 @@
         background: #f8f9fa;
     }
 
+    .wallet-pricing {
+        padding: 70px 0;
+        background: #fff;
+    }
+
+    .wallet-eyebrow {
+        display: inline-block;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #0071c1;
+        margin-bottom: 1rem;
+    }
+
+    .wallet-price-card {
+        background: linear-gradient(135deg, #0b3b63 0%, #0071c1 100%);
+        color: #fff;
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 12px 30px rgba(0, 113, 193, 0.18);
+    }
+
+    .wallet-price-card .text-muted,
+    .wallet-price-card .small {
+        color: rgba(255, 255, 255, 0.82) !important;
+    }
+
     .feature-card {
         background: #fff;
         border-radius: 12px;
@@ -134,6 +162,42 @@
                         Register, add a company, add an employee, and download your first payslip
                         — all in under five minutes.
                     </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Wallet Pricing -->
+<section class="wallet-pricing">
+    <div class="container">
+        <div class="row align-items-center g-4">
+            <div class="col-lg-7">
+                <span class="wallet-eyebrow">Wallet credits</span>
+                <h2 class="fw-bold mb-3">Pay for payslips with wallet credits</h2>
+                <p class="text-muted fs-5">
+                    Payslip4All uses wallet credits for payslip generation. After you register, you can add credits to your wallet and each successful payslip uses the current public price shown here.
+                </p>
+                <p class="text-muted mb-4">
+                    This public page shares only site-wide pricing and feature information. Your wallet balance, wallet activity, and company data stay private and are available only after you sign in.
+                </p>
+                <div class="d-flex flex-wrap gap-3">
+                    <a href="/Portal/Auth/Register" class="btn btn-primary btn-lg">Create your account</a>
+                    <a href="/Portal/Auth/Login" class="btn btn-outline-primary btn-lg">Sign in to top up</a>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="wallet-price-card" data-testid="public-wallet-price">
+                    <p class="small text-uppercase fw-semibold mb-2">Current public payslip price</p>
+                    @if (Model.IsPublicPriceAvailable && Model.CurrentPayslipPrice.HasValue)
+                    {
+                        <p class="display-5 fw-bold mb-2">R @Model.CurrentPayslipPrice.Value.ToString("N2")</p>
+                        <p class="mb-0">@Model.PublicPriceSummary</p>
+                    }
+                    else
+                    {
+                        <p class="mb-0">@Model.PublicPriceSummary</p>
+                    }
                 </div>
             </div>
         </div>

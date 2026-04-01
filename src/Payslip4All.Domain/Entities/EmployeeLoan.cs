@@ -45,4 +45,15 @@ public class EmployeeLoan
     public int GetPersistedTermsCompleted() => _persistedTermsCompleted;
 
     public void CapturePersistedState() => _persistedTermsCompleted = TermsCompleted;
+
+    public void RestorePersistedState()
+        => RestoreTermsCompleted(_persistedTermsCompleted);
+
+    public void RestoreTermsCompleted(int termsCompleted)
+    {
+        TermsCompleted = termsCompleted;
+        Status = TermsCompleted >= NumberOfTerms
+            ? LoanStatus.Completed
+            : LoanStatus.Active;
+    }
 }

@@ -52,6 +52,7 @@ src/frontend/
 .env
 .env.local
 .env.*.local
+.env*
 
 # IDE
 .idea/
@@ -59,6 +60,8 @@ src/frontend/
 *.swo
 *~
 .DS_Store
+Thumbs.db
+*.tmp
 
 # Rider
 .idea/

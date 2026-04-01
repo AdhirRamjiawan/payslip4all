@@ -120,6 +120,9 @@ if (provider != "dynamodb")
     builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
     builder.Services.AddScoped<ILoanRepository, LoanRepository>();
     builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
+    builder.Services.AddScoped<IWalletRepository, WalletRepository>();
+    builder.Services.AddScoped<IWalletActivityRepository, WalletActivityRepository>();
+    builder.Services.AddScoped<IPayslipPricingRepository, PayslipPricingRepository>();
 }
 
 // Infrastructure services
@@ -132,6 +135,8 @@ builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPayslipService, PayslipGenerationService>();
+builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IPayslipPricingService, PayslipPricingService>();
 
 // IUnitOfWork: registered by AddDynamoDbPersistence() for dynamodb; for sqlite/mysql, use PayslipDbContext
 if (provider != "dynamodb")

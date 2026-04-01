@@ -276,6 +276,79 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                     },
                 },
             },
+
+            // payslip4all_wallets — PK: id (S), GSI: userId-index on userId
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_wallets",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new List<GlobalSecondaryIndex>
+                {
+                    new()
+                    {
+                        IndexName = "userId-index",
+                        KeySchema = new List<KeySchemaElement>
+                        {
+                            new() { AttributeName = "userId", KeyType = KeyType.HASH },
+                        },
+                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
+
+            // payslip4all_wallet_activities — PK: id (S), GSI: walletId-index on walletId + occurredAt
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_wallet_activities",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "walletId", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "occurredAt", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new List<GlobalSecondaryIndex>
+                {
+                    new()
+                    {
+                        IndexName = "walletId-index",
+                        KeySchema = new List<KeySchemaElement>
+                        {
+                            new() { AttributeName = "walletId", KeyType = KeyType.HASH },
+                            new() { AttributeName = "occurredAt", KeyType = KeyType.RANGE },
+                        },
+                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
+
+            // payslip4all_payslip_pricing — PK: id (S)
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_payslip_pricing",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
         };
     }
 }

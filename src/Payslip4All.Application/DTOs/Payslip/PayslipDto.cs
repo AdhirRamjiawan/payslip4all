@@ -9,6 +9,7 @@ public class PayslipDto
     public decimal TotalLoanDeductions { get; set; }
     public decimal TotalDeductions { get; set; }
     public decimal NetPay { get; set; }
+    public decimal ChargedAmount { get; set; }
     public Guid EmployeeId { get; set; }
     public DateTimeOffset GeneratedAt { get; set; }
     public List<PayslipLoanDeductionDto> LoanDeductions { get; set; } = new();

@@ -1,12 +1,13 @@
 @page "/portal/companies/{companyId:guid}/employees/{employeeId:guid}/payslips/generate"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
-@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Payslip4All.Application.DTOs.Employee
 @using Payslip4All.Application.DTOs.Payslip
+@using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
 @inject IPayslipService PayslipService
 @inject IEmployeeService EmployeeService
+@inject IWalletService WalletService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
 
@@ -18,9 +19,43 @@
     <LoadingSpinner IsLoading="@_isLoading" />
     <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
 
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <div class="alert alert-success">@_successMessage</div>
+    }
+
     @if (!_isLoading && _employee != null)
     {
         <p class="text-muted">Employee: <strong>@_employee.FirstName @_employee.LastName</strong> — Monthly Salary: R @_employee.MonthlyGrossSalary.ToString("N2")</p>
+
+        @if (_wallet != null)
+        {
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Wallet Balance</h6>
+                            <p class="fs-4 mb-0">R @_wallet.CurrentBalance.ToString("N2")</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Current Price</h6>
+                            <p class="fs-4 mb-0">R @_wallet.CurrentPayslipPrice.ToString("N2")</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (IsInsufficientFunds)
+            {
+                <div class="alert alert-warning">
+                    Your wallet balance is too low to generate this payslip. Please add more credits in your wallet.
+                </div>
+            }
+        }
 
         @if (!_showPreview)
         {
@@ -74,12 +109,20 @@
                         </div>
                     }
 
+                    @if (IsInsufficientFunds)
+                    {
+                        <div class="alert alert-warning mt-3">
+                            Insufficient funds. Current balance: R @_wallet!.CurrentBalance.ToString("N2"), price: R @_wallet.CurrentPayslipPrice.ToString("N2")
+                        </div>
+                    }
+
                     <div class="d-flex gap-2 mt-3">
-                        <button class="btn btn-success" @onclick="GeneratePayslipAsync" disabled="@_isGenerating">
+                        <button class="btn btn-success" @onclick="GeneratePayslipAsync" disabled="@(_isGenerating || IsInsufficientFunds)">
                             @if (_isGenerating) { <span class="spinner-border spinner-border-sm me-2"></span> }
                             @(_isDuplicate ? "Overwrite & Generate" : "Generate PDF")
                         </button>
-                        <button class="btn btn-outline-secondary" @onclick="() => { _showPreview = false; _isDuplicate = false; _preview = null; }">Back</button>
+                        <button class="btn btn-outline-secondary" @onclick="ResetPreview">Back</button>
+                        <a class="btn btn-outline-primary" href="/portal/companies/@CompanyId/employees/@EmployeeId">Back to Employee</a>
                     </div>
                 </div>
             </div>
@@ -93,14 +136,17 @@
 
     private EmployeeDto? _employee;
     private PayslipDto? _preview;
+    private WalletDto? _wallet;
     private bool _isLoading = true;
     private bool _isPreviewing;
     private bool _isGenerating;
     private bool _showPreview;
     private bool _isDuplicate;
     private string? _errorMessage;
+    private string? _successMessage;
     private int _selectedMonth = DateTime.Today.Month;
     private int _selectedYear = DateTime.Today.Year;
+    private bool IsInsufficientFunds => _wallet != null && _wallet.CurrentBalance < _wallet.CurrentPayslipPrice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,16 +155,24 @@
             var userId = await GetUserIdAsync();
             if (!userId.HasValue) { Nav.NavigateTo("/Portal/Auth/Login"); return; }
             _employee = await EmployeeService.GetEmployeeByIdAsync(EmployeeId, userId.Value);
+            _wallet = await WalletService.GetWalletAsync(userId.Value);
             if (_employee == null) Nav.NavigateTo($"/portal/companies/{CompanyId}");
         }
-        catch { _errorMessage = "Failed to load employee."; }
-        finally { _isLoading = false; }
+        catch
+        {
+            _errorMessage = "Failed to load employee.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     private async Task PreviewPayslip()
     {
         _isPreviewing = true;
         _errorMessage = null;
+        _successMessage = null;
         try
         {
             var userId = await GetUserIdAsync();
@@ -132,14 +186,21 @@
             _preview = result.PayslipDto;
             _showPreview = true;
         }
-        catch (Exception ex) { _errorMessage = $"Failed to preview payslip: {ex.Message}"; }
-        finally { _isPreviewing = false; }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to preview payslip: {ex.Message}";
+        }
+        finally
+        {
+            _isPreviewing = false;
+        }
     }
 
     private async Task GeneratePayslipAsync()
     {
         _isGenerating = true;
         _errorMessage = null;
+        _successMessage = null;
         try
         {
             var userId = await GetUserIdAsync();
@@ -151,11 +212,50 @@
                 OverwriteExisting = _isDuplicate
             });
             if (result.IsDuplicate) { _isDuplicate = true; return; }
-            if (!result.Success) { _errorMessage = result.ErrorMessage; return; }
-            Nav.NavigateTo($"/portal/companies/{CompanyId}/employees/{EmployeeId}");
+
+            if (result.InsufficientFunds || !result.Success)
+            {
+                try
+                {
+                    _wallet = await WalletService.GetWalletAsync(userId.Value);
+                }
+                catch
+                {
+                    // Keep the original server error visible even if the follow-up wallet refresh fails.
+                }
+
+                _errorMessage = result.ErrorMessage;
+                return;
+            }
+
+            string? walletRefreshWarning = null;
+            try
+            {
+                _wallet = await WalletService.GetWalletAsync(userId.Value);
+            }
+            catch
+            {
+                walletRefreshWarning = "Payslip generated successfully, but the wallet summary could not be refreshed yet.";
+            }
+
+            _successMessage = walletRefreshWarning ?? $"Payslip generated successfully. Wallet charged: R {result.ChargedAmount:N2}.";
+            ResetPreview();
         }
-        catch (Exception ex) { _errorMessage = $"Failed to generate payslip: {ex.Message}"; }
-        finally { _isGenerating = false; }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to generate payslip: {ex.Message}";
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private void ResetPreview()
+    {
+        _showPreview = false;
+        _isDuplicate = false;
+        _preview = null;
     }
 
     private async Task<Guid?> GetUserIdAsync()

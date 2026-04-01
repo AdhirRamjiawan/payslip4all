@@ -1,6 +1,7 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Runtime;
+using System.Globalization;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Tests.DynamoDB;
@@ -27,6 +28,9 @@ public class DynamoDbTestFixture : IAsyncLifetime
     public string EmployeeLoansTable => $"{Prefix}_employee_loans";
     public string PayslipsTable => $"{Prefix}_payslips";
     public string PayslipLoanDeductionsTable => $"{Prefix}_payslip_loan_deductions";
+    public string WalletsTable => $"{Prefix}_wallets";
+    public string WalletActivitiesTable => $"{Prefix}_wallet_activities";
+    public string PayslipPricingTable => $"{Prefix}_payslip_pricing";
 
     public async Task InitializeAsync()
     {
@@ -86,6 +90,7 @@ public class DynamoDbTestFixture : IAsyncLifetime
         {
             UsersTable, CompaniesTable, EmployeesTable,
             EmployeeLoansTable, PayslipsTable, PayslipLoanDeductionsTable,
+            WalletsTable, WalletActivitiesTable, PayslipPricingTable,
         };
 
         foreach (var name in tableNames)
@@ -250,5 +255,143 @@ public class DynamoDbTestFixture : IAsyncLifetime
                     },
                 },
             },
+            new()
+            {
+                TableName = WalletsTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new()
+                {
+                    new()
+                    {
+                        IndexName = "userId-index",
+                        KeySchema = new() { new() { AttributeName = "userId", KeyType = KeyType.HASH } },
+                        Projection = new() { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
+            new()
+            {
+                TableName = WalletActivitiesTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "walletId", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "occurredAt", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new()
+                {
+                    new()
+                    {
+                        IndexName = "walletId-index",
+                        KeySchema = new()
+                        {
+                            new() { AttributeName = "walletId", KeyType = KeyType.HASH },
+                            new() { AttributeName = "occurredAt", KeyType = KeyType.RANGE },
+                        },
+                        Projection = new() { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
+            new()
+            {
+                TableName = PayslipPricingTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
         };
+
+    public async Task SeedWalletAsync(
+        Guid walletId,
+        Guid userId,
+        decimal currentBalance = 0m,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? updatedAt = null)
+    {
+        var created = createdAt ?? DateTimeOffset.UtcNow;
+        var updated = updatedAt ?? created;
+
+        await Client.PutItemAsync(new PutItemRequest
+        {
+            TableName = WalletsTable,
+            Item = new Dictionary<string, AttributeValue>
+            {
+                ["id"] = new() { S = walletId.ToString() },
+                ["userId"] = new() { S = userId.ToString() },
+                ["currentBalance"] = new() { S = currentBalance.ToString("G", CultureInfo.InvariantCulture) },
+                ["createdAt"] = new() { S = created.ToString("O") },
+                ["updatedAt"] = new() { S = updated.ToString("O") },
+            },
+        });
+    }
+
+    public async Task SeedWalletActivityAsync(
+        Guid activityId,
+        Guid walletId,
+        string activityType,
+        decimal amount,
+        decimal balanceAfterActivity,
+        DateTimeOffset? occurredAt = null,
+        string? description = null,
+        string? referenceType = null,
+        string? referenceId = null)
+    {
+        var occurred = occurredAt ?? DateTimeOffset.UtcNow;
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["id"] = new() { S = activityId.ToString() },
+            ["walletId"] = new() { S = walletId.ToString() },
+            ["activityType"] = new() { S = activityType },
+            ["amount"] = new() { S = amount.ToString("G", CultureInfo.InvariantCulture) },
+            ["balanceAfterActivity"] = new() { S = balanceAfterActivity.ToString("G", CultureInfo.InvariantCulture) },
+            ["occurredAt"] = new() { S = occurred.ToString("O") },
+        };
+
+        if (!string.IsNullOrWhiteSpace(description))
+            item["description"] = new() { S = description };
+        if (!string.IsNullOrWhiteSpace(referenceType))
+            item["referenceType"] = new() { S = referenceType };
+        if (!string.IsNullOrWhiteSpace(referenceId))
+            item["referenceId"] = new() { S = referenceId };
+
+        await Client.PutItemAsync(new PutItemRequest
+        {
+            TableName = WalletActivitiesTable,
+            Item = item,
+        });
+    }
+
+    public async Task SeedPayslipPricingAsync(
+        Guid pricingId,
+        decimal pricePerPayslip = 0m,
+        string? updatedByUserId = null,
+        DateTimeOffset? updatedAt = null)
+    {
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["id"] = new() { S = pricingId.ToString() },
+            ["pricePerPayslip"] = new() { S = pricePerPayslip.ToString("G", CultureInfo.InvariantCulture) },
+            ["updatedAt"] = new() { S = (updatedAt ?? DateTimeOffset.UtcNow).ToString("O") },
+        };
+
+        if (!string.IsNullOrWhiteSpace(updatedByUserId))
+            item["updatedByUserId"] = new() { S = updatedByUserId };
+
+        await Client.PutItemAsync(new PutItemRequest
+        {
+            TableName = PayslipPricingTable,
+            Item = item,
+        });
+    }
 }

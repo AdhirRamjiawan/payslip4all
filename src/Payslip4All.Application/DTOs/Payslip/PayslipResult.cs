@@ -5,4 +5,6 @@ public class PayslipResult
     public PayslipDto? PayslipDto { get; set; }
     public string? ErrorMessage { get; set; }
     public bool IsDuplicate { get; set; }
+    public decimal ChargedAmount { get; set; }
+    public bool InsufficientFunds { get; set; }
 }

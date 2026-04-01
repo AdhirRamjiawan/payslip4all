@@ -20,11 +20,13 @@ public class LoanRepository : ILoanRepository
     {
         await _db.EmployeeLoans.AddAsync(loan);
         await _db.SaveChangesAsync();
+        loan.CapturePersistedState();
     }
     public async Task UpdateAsync(EmployeeLoan loan)
     {
         _db.EmployeeLoans.Update(loan);
         await _db.SaveChangesAsync();
+        loan.CapturePersistedState();
     }
     public async Task DeleteAsync(EmployeeLoan loan)
     {

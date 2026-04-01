@@ -1,0 +1,138 @@
+@page "/admin/wallet-pricing"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SiteAdministrator")]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Pricing
+@using Payslip4All.Application.Interfaces
+@inject IPayslipPricingService PricingService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Wallet Pricing - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Wallet Pricing</h2>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <div class="alert alert-success">@_successMessage</div>
+    }
+
+    @if (!_isLoading && _pricing != null)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Current Price</h5>
+                <p class="display-6">R @_pricing.PricePerPayslip.ToString("N2")</p>
+                <p class="text-muted mb-0">
+                    Last updated:
+                    @if (_pricing.UpdatedAt != default)
+                    {
+                        <span>@_pricing.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                    }
+                    else
+                    {
+                        <span>Not yet updated</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_pricing.UpdatedByUserId))
+                    {
+                        <span> by @_pricing.UpdatedByUserId</span>
+                    }
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Update Price</h5>
+                <EditForm Model="_form" OnValidSubmit="HandleSubmitAsync">
+                    <DataAnnotationsValidator />
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-6">
+                            <label class="form-label">New Price (R)</label>
+                            <InputNumber class="form-control" @bind-Value="_form.PricePerPayslip" />
+                            <ValidationMessage For="@(() => _form.PricePerPayslip)" />
+                        </div>
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                                @if (_isSubmitting) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                Save Price
+                            </button>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private PayslipPricingSettingDto? _pricing;
+    private FormModel _form = new();
+    private bool _isLoading = true;
+    private bool _isSubmitting;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPricingAsync();
+    }
+
+    private async Task LoadPricingAsync()
+    {
+        try
+        {
+            _pricing = await PricingService.GetCurrentPriceAsync();
+            _form.PricePerPayslip = _pricing.PricePerPayslip;
+        }
+        catch
+        {
+            _errorMessage = "Failed to load pricing.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+        _isSubmitting = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            _pricing = await PricingService.UpdatePriceAsync(new UpdatePayslipPriceCommand
+            {
+                PricePerPayslip = _form.PricePerPayslip,
+                UpdatedByUserId = userId
+            });
+
+            _successMessage = $"Payslip price updated to R {_pricing.PricePerPayslip:N2}.";
+        }
+        catch (ArgumentException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch
+        {
+            _errorMessage = "Failed to update pricing.";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    public class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "Price must be zero or greater.")]
+        public decimal PricePerPayslip { get; set; }
+    }
+}
