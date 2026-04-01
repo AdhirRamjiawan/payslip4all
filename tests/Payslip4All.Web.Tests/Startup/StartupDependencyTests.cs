@@ -115,6 +115,38 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public void IWalletService_IsRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetService<IWalletService>();
+        Assert.NotNull(svc);
+    }
+
+    [Fact]
+    public void IPayslipPricingService_IsRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetService<IPayslipPricingService>();
+        Assert.NotNull(svc);
+    }
+
+    [Fact]
+    public void IWalletRepository_IsRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IWalletRepository>();
+        Assert.NotNull(repo);
+    }
+
+    [Fact]
+    public void IPayslipPricingRepository_IsRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetService<IPayslipPricingRepository>();
+        Assert.NotNull(repo);
+    }
+
+    [Fact]
     public void LegacyDatabaseProviderSetting_DoesNotOverrideSqliteDefault()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"p4a_legacy_{Guid.NewGuid():N}.db");

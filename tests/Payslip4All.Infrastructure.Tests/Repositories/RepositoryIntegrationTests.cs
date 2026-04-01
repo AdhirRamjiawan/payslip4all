@@ -113,6 +113,64 @@ public abstract class RepositoryTestBase : IDisposable
         Db.SaveChanges();
         return p;
     }
+
+    protected Wallet SeedWallet(Guid userId, decimal currentBalance = 0m)
+    {
+        var wallet = new Wallet
+        {
+            UserId = userId,
+            CurrentBalance = currentBalance,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+
+        Db.Wallets.Add(wallet);
+        Db.SaveChanges();
+        return wallet;
+    }
+
+    protected WalletActivity SeedWalletActivity(
+        Guid walletId,
+        WalletActivityType activityType = WalletActivityType.Credit,
+        decimal amount = 100m,
+        decimal balanceAfterActivity = 100m,
+        string? description = "Seed activity",
+        string? referenceType = null,
+        string? referenceId = null)
+    {
+        var activity = new WalletActivity
+        {
+            WalletId = walletId,
+            ActivityType = activityType,
+            Amount = amount,
+            BalanceAfterActivity = balanceAfterActivity,
+            Description = description,
+            ReferenceType = referenceType,
+            ReferenceId = referenceId,
+        };
+
+        Db.WalletActivities.Add(activity);
+        Db.SaveChanges();
+        return activity;
+    }
+
+    protected PayslipPricingSetting SeedPayslipPricingSetting(
+        decimal pricePerPayslip = 15m,
+        Guid? id = null,
+        string? updatedByUserId = null)
+    {
+        var pricing = new PayslipPricingSetting();
+        pricing.UpdatePrice(pricePerPayslip, updatedByUserId);
+
+        if (id.HasValue)
+        {
+            var prop = typeof(PayslipPricingSetting).GetProperty(nameof(PayslipPricingSetting.Id))!;
+            prop.SetValue(pricing, id.Value);
+        }
+
+        Db.PayslipPricingSettings.Add(pricing);
+        Db.SaveChanges();
+        return pricing;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

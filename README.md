@@ -31,6 +31,9 @@ A web application for generating and managing employee payslips, built for South
   - Net pay
 - **PDF download** — professionally formatted payslips via QuestPDF
 - **Payslip history** — view all past payslips in reverse chronological order
+- **Wallet credits** — each company owner has a wallet balance that is charged per successful payslip generation
+- **Wallet activity history** — auditable credit and debit entries with resulting balances
+- **Admin pricing** — site administrators can change the per-payslip wallet charge from the web UI
 - **Data isolation** — employers only ever see their own companies, employees, and payslips
 
 ---
@@ -154,6 +157,20 @@ credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 3. Add an employee to the company
 4. *(Optional)* Add a loan to the employee
 5. Generate a payslip and download the PDF
+6. *(Optional)* Top up `/portal/wallet` before generating payslips and adjust `/admin/wallet-pricing` as a site administrator
+
+### Wallet rollout and manual verification
+
+Use this sequence after deploying wallet-credit changes or refreshing a local environment:
+
+0. Confirm the seeded default public payslip price is **R 15.00** unless an administrator has already changed it in the target environment.
+1. Sign out and open `/` to confirm the public wallet section shows only public pricing and wallet messaging.
+2. Sign in as a `SiteAdministrator`, open `/admin/wallet-pricing`, set a rand price such as `15.00`, and confirm the value updates immediately.
+3. Sign in as a `CompanyOwner`, open `/portal/wallet`, top up the wallet, and confirm the balance plus credit activity update.
+4. Generate a payslip with sufficient funds and confirm the charged amount, wallet debit, and wallet activity entry all match.
+5. Retry generation with insufficient funds and confirm no payslip is created and no wallet debit occurs.
+6. Overwrite an existing payslip for the same employee and period, then confirm the original payslip is only removed after the replacement and wallet charge both succeed.
+7. When `PERSISTENCE_PROVIDER=dynamodb`, repeat the wallet top-up and payslip generation checks against a live emulator or AWS-backed environment before release.
 
 ---
 
@@ -166,7 +183,7 @@ credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 | `ConnectionStrings:MySqlConnection` | `""` | MySQL connection string |
 | `DYNAMODB_REGION` | — | Required when `PERSISTENCE_PROVIDER=dynamodb` |
 | `DYNAMODB_ENDPOINT` | — | Optional endpoint override for DynamoDB Local or other emulators |
-| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the six required DynamoDB tables |
+| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the nine required DynamoDB tables |
 | `AWS_ACCESS_KEY_ID` | — | Optional explicit DynamoDB credential; must be paired with `AWS_SECRET_ACCESS_KEY` |
 | `AWS_SECRET_ACCESS_KEY` | — | Optional explicit DynamoDB credential; must be paired with `AWS_ACCESS_KEY_ID` |
 | `Auth:Cookie:ExpireDays` | `30` | Session lifetime in days |
@@ -186,6 +203,9 @@ When `PERSISTENCE_PROVIDER=dynamodb`:
    - `{prefix}_employee_loans`
    - `{prefix}_payslips`
    - `{prefix}_payslip_loan_deductions`
+   - `{prefix}_wallets`
+   - `{prefix}_wallet_activities`
+   - `{prefix}_payslip_pricing`
 3. Explicit AWS credentials win when both are set.
 4. If only one explicit credential variable is set, startup fails fast.
 5. If `DYNAMODB_ENDPOINT` is set and explicit credentials are absent, the app uses dummy credentials for local emulators.
@@ -200,11 +220,11 @@ When `PERSISTENCE_PROVIDER=dynamodb`:
 ## Running Tests
 
 ```bash
-# Run all tests
-dotnet test
+# Run all non-DynamoDB-local tests
+dotnet test --filter "Category!=Integration"
 
 # Run with code coverage
-dotnet test --collect:"XPlat Code Coverage"
+dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage"
 ```
 
 The test suite covers all four layers (128 tests total across Domain, Application, Infrastructure, and Web).
@@ -214,6 +234,12 @@ For DynamoDB-specific work, prefer non-integration validation unless a local emu
 ```bash
 dotnet test tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj --filter "Category!=Integration"
 dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj
+```
+
+When `DYNAMODB_ENDPOINT` is configured for a local emulator, you can additionally run the DynamoDB integration repository suite.
+
+```bash
+dotnet test tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj --filter "Category=Integration"
 ```
 
 Coverage requirements (enforced in CI):

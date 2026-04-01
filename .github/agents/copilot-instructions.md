@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-29
+Auto-generated from all feature plans. Last updated: 2026-04-01
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -21,6 +21,8 @@ Auto-generated from all feature plans. Last updated: 2026-03-29
 - DynamoDB (multi-table design; 6 tables); SQLite and MySQL paths unchanged (006-dynamodb-persistence)
 - C# 12 / .NET 8 (LTS) + `AWSSDK.DynamoDBv2`, Entity Framework Core 8 (retained for SQLite/MySQL), Serilog, xUnit, Moq, `Microsoft.AspNetCore.Mvc.Testing` (006-dynamodb-persistence)
 - SQLite (default), MySQL, or AWS DynamoDB selected by `PERSISTENCE_PROVIDER`; DynamoDB uses six auto-provisioned tables with optional `DYNAMODB_TABLE_PREFIX` (006-dynamodb-persistence)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog (007-wallet-credits)
+- SQLite/MySQL via EF Core migrations by default, DynamoDB via `PERSISTENCE_PROVIDER=dynamodb` exception path (007-wallet-credits)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -41,9 +43,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
+- 007-wallet-credits: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog
+- 007-wallet-credits: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog
 - 006-dynamodb-persistence: Added C# 12 / .NET 8 (LTS) + `AWSSDK.DynamoDBv2`, Entity Framework Core 8 (retained for SQLite/MySQL), Serilog, xUnit, Moq, `Microsoft.AspNetCore.Mvc.Testing`
-- 006-dynamodb-persistence: Added C# / .NET 8 (LTS) + `AWSSDK.DynamoDBv2` (approved in constitution amendment v1.3.0);
-- 005-file-logging-published-fix: Added C# 12 / .NET 8 + Serilog.AspNetCore 10.x (already installed)
 
 
 <!-- MANUAL ADDITIONS START -->

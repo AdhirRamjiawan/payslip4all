@@ -131,6 +131,37 @@ public class CrossEmployerHttpTests : IClassFixture<SecurityTestWebApplicationFa
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
         Assert.NotEqual("application/pdf", contentType);
     }
+
+    [Fact]
+    public async Task WalletPage_UnauthenticatedUser_Returns401Or302()
+    {
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/portal/wallet");
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Redirect ||
+            response.StatusCode == HttpStatusCode.Unauthorized,
+            $"Expected 302 or 401 for unauthenticated request, got {response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task WalletPage_AuthenticatedUser_Returns200()
+    {
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.Add("Cookie",
+            SecurityTestWebApplicationFactory.BuildAuthCookie());
+
+        var response = await client.GetAsync("/portal/wallet");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
 }
 
 /// <summary>

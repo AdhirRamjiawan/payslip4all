@@ -24,6 +24,9 @@ public static class DynamoDbServiceExtensions
         services.AddScoped<IEmployeeRepository, DynamoDbEmployeeRepository>();
         services.AddScoped<ILoanRepository, DynamoDbLoanRepository>();
         services.AddScoped<IPayslipRepository, DynamoDbPayslipRepository>();
+        services.AddScoped<IWalletRepository, DynamoDbWalletRepository>();
+        services.AddScoped<IWalletActivityRepository, DynamoDbWalletActivityRepository>();
+        services.AddScoped<IPayslipPricingRepository, DynamoDbPayslipPricingRepository>();
 
         services.AddScoped<IUnitOfWork, DynamoDbUnitOfWork>();
 

@@ -1,0 +1,194 @@
+@page "/portal/wallet"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Wallet
+@using Payslip4All.Application.Interfaces
+@inject IWalletService WalletService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Wallet - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Wallet</h2>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <div class="alert alert-success">@_successMessage</div>
+    }
+
+    @if (!_isLoading && _wallet != null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Current Balance</h5>
+                        <p class="display-6 mb-0">R @_wallet.CurrentBalance.ToString("N2")</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Current Payslip Price</h5>
+                        <p class="display-6 mb-0">R @_wallet.CurrentPayslipPrice.ToString("N2")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Add Wallet Credits</h5>
+                <EditForm Model="_form" OnValidSubmit="HandleTopUpAsync">
+                    <DataAnnotationsValidator />
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-6">
+                            <label class="form-label">Amount (R)</label>
+                            <InputNumber class="form-control" @bind-Value="_form.Amount" />
+                            <ValidationMessage For="@(() => _form.Amount)" />
+                        </div>
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                                @if (_isSubmitting) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                Top Up Wallet
+                            </button>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Recent Activity</h5>
+
+                @if (_wallet.Activities.Count == 0)
+                {
+                    <p class="text-muted mb-0">No wallet activity yet.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var activity in _wallet.Activities)
+                                {
+                                    <tr>
+                                        <td>@activity.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</td>
+                                        <td>@activity.ActivityType</td>
+                                        <td>@(string.IsNullOrWhiteSpace(activity.Description) ? "-" : activity.Description)</td>
+                                        <td>R @activity.Amount.ToString("N2")</td>
+                                        <td>R @activity.BalanceAfterActivity.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private WalletDto? _wallet;
+    private FormModel _form = new();
+    private bool _isLoading = true;
+    private bool _isSubmitting;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWalletAsync();
+    }
+
+    private async Task HandleTopUpAsync()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+        _isSubmitting = true;
+
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue)
+            {
+                Nav.NavigateTo("/Portal/Auth/Login");
+                return;
+            }
+
+            _wallet = await WalletService.TopUpAsync(new AddWalletCreditCommand
+            {
+                UserId = userId.Value,
+                Amount = _form.Amount,
+                Description = "Wallet top-up"
+            });
+
+            _successMessage = $"Wallet topped up successfully by R {_form.Amount:N2}.";
+            _form = new FormModel();
+        }
+        catch (ArgumentException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch
+        {
+            _errorMessage = "Wallet top-up could not be completed right now. Please try again.";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private async Task LoadWalletAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue)
+            {
+                Nav.NavigateTo("/Portal/Auth/Login");
+                return;
+            }
+
+            _wallet = await WalletService.GetWalletAsync(userId.Value);
+        }
+        catch
+        {
+            _errorMessage = "Wallet details are temporarily unavailable. Please refresh the page or try again shortly.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+
+    public class FormModel
+    {
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
+        public decimal Amount { get; set; }
+    }
+}

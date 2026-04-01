@@ -14,6 +14,9 @@ public class PayslipDbContext : DbContext, IUnitOfWork
     public DbSet<EmployeeLoan> EmployeeLoans => Set<EmployeeLoan>();
     public DbSet<Payslip> Payslips => Set<Payslip>();
     public DbSet<PayslipLoanDeduction> PayslipLoanDeductions => Set<PayslipLoanDeduction>();
+    public DbSet<Wallet> Wallets => Set<Wallet>();
+    public DbSet<WalletActivity> WalletActivities => Set<WalletActivity>();
+    public DbSet<PayslipPricingSetting> PayslipPricingSettings => Set<PayslipPricingSetting>();
     
     private IDbContextTransaction? _currentTransaction;
     
@@ -115,6 +118,7 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(p => p.TotalLoanDeductions).HasPrecision(18, 2).IsRequired();
             e.Property(p => p.TotalDeductions).HasPrecision(18, 2).IsRequired();
             e.Property(p => p.NetPay).HasPrecision(18, 2).IsRequired();
+            e.Property(p => p.ChargedAmount).HasPrecision(18, 2).IsRequired().HasDefaultValue(0m);
             e.HasIndex(p => p.EmployeeId);
             e.HasIndex(p => new { p.EmployeeId, p.PayPeriodMonth, p.PayPeriodYear })
              .IsUnique()
@@ -135,6 +139,51 @@ public class PayslipDbContext : DbContext, IUnitOfWork
              .HasForeignKey(d => d.EmployeeLoanId)
              .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(d => d.PayslipId);
+        });
+
+        modelBuilder.Entity<Wallet>(e =>
+        {
+            e.HasKey(w => w.Id);
+            e.Property(w => w.CurrentBalance).HasPrecision(18, 2).IsRequired().HasDefaultValue(0m);
+            e.Property(w => w.CreatedAt).IsRequired();
+            e.Property(w => w.UpdatedAt).IsRequired().IsConcurrencyToken();
+            e.HasIndex(w => w.UserId).IsUnique();
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(w => w.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(w => w.Activities)
+                .WithOne(a => a.Wallet)
+                .HasForeignKey(a => a.WalletId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WalletActivity>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.ActivityType).HasConversion<int>().IsRequired();
+            e.Property(a => a.Amount).HasPrecision(18, 2).IsRequired();
+            e.Property(a => a.ReferenceType).HasMaxLength(100);
+            e.Property(a => a.ReferenceId).HasMaxLength(100);
+            e.Property(a => a.Description).HasMaxLength(300);
+            e.Property(a => a.BalanceAfterActivity).HasPrecision(18, 2).IsRequired();
+            e.Property(a => a.OccurredAt).IsRequired();
+            e.HasIndex(a => new { a.WalletId, a.OccurredAt });
+        });
+
+        modelBuilder.Entity<PayslipPricingSetting>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.Property(p => p.PricePerPayslip).HasPrecision(18, 2).IsRequired();
+            e.Property(p => p.UpdatedByUserId).HasMaxLength(100);
+            e.Property(p => p.UpdatedAt).IsRequired();
+            e.HasData(new
+            {
+                Id = PayslipPricingSetting.DefaultId,
+                PricePerPayslip = PayslipPricingSetting.DefaultPricePerPayslip,
+                UpdatedByUserId = (string?)null,
+                UpdatedAt = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            });
         });
     }
 }

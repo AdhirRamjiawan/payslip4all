@@ -69,6 +69,7 @@ public class DynamoDbProviderSwitchingTests
         var repo = scope.ServiceProvider.GetService<IUserRepository>();
         Assert.NotNull(repo);
         Assert.IsNotType<DynamoDbUserRepository>(repo);
+        Assert.IsNotType<DynamoDbWalletRepository>(scope.ServiceProvider.GetRequiredService<IWalletRepository>());
     }
 
     [Fact]
@@ -105,6 +106,8 @@ public class DynamoDbProviderSwitchingTests
             var repo = scope.ServiceProvider.GetService<IUserRepository>();
             Assert.NotNull(repo);
             Assert.IsType<DynamoDbUserRepository>(repo);
+            Assert.IsType<DynamoDbWalletRepository>(scope.ServiceProvider.GetRequiredService<IWalletRepository>());
+            Assert.IsType<DynamoDbPayslipPricingRepository>(scope.ServiceProvider.GetRequiredService<IPayslipPricingRepository>());
 
             var client = scope.ServiceProvider.GetService<IAmazonDynamoDB>();
             Assert.NotNull(client);

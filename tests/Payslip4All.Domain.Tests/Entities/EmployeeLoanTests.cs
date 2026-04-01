@@ -61,4 +61,20 @@ public class EmployeeLoanTests
         var loan = CreateActiveLoan(3);
         Assert.False(loan.IsActiveForPeriod(12, 2023)); // Before 2024-01
     }
+
+    [Fact]
+    public void RestoreTermsCompleted_WhenValueExceedsTermCount_ThrowsArgumentOutOfRangeException()
+    {
+        var loan = CreateActiveLoan(3);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => loan.RestoreTermsCompleted(4));
+    }
+
+    [Fact]
+    public void RestoreTermsCompleted_WhenValueIsNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var loan = CreateActiveLoan(3);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => loan.RestoreTermsCompleted(-1));
+    }
 }
