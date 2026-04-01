@@ -92,6 +92,37 @@ public class WalletTests : TestContext
         });
     }
 
+    [Fact]
+    public void Wallet_DisplaysActivityTimestampsInUtc()
+    {
+        var userId = SetAuthorizedOwner();
+        var walletService = new Mock<IWalletService>();
+        walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
+        {
+            UserId = userId,
+            CurrentBalance = 20m,
+            CurrentPayslipPrice = 5m,
+            Activities = new List<WalletActivityDto>
+            {
+                new()
+                {
+                    ActivityType = WalletActivityType.Credit,
+                    Amount = 20m,
+                    BalanceAfterActivity = 20m,
+                    Description = "Top up",
+                    OccurredAt = new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.FromHours(2))
+                }
+            }
+        });
+        Services.AddSingleton(walletService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("2026-04-01 10:00 UTC", cut.Markup);
+        });
+    }
+
     private Guid SetAuthorizedOwner()
     {
         var userId = Guid.NewGuid();

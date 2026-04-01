@@ -177,6 +177,70 @@ public class GeneratePayslipTests : TestContext
     }
 
     [Fact]
+    public async Task GeneratePayslip_KeepsGenerateButtonEnabled_WhenCachedWalletShowsInsufficientFunds()
+    {
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("test@test.com");
+        authContext.SetRoles("CompanyOwner");
+        var userId = Guid.NewGuid();
+        authContext.SetClaims(new Claim(ClaimTypes.NameIdentifier, userId.ToString()));
+
+        var employeeId = Guid.NewGuid();
+        var companyId = Guid.NewGuid();
+        var mockPayslipService = new Mock<IPayslipService>();
+        mockPayslipService.Setup(s => s.PreviewPayslipAsync(It.IsAny<PreviewPayslipQuery>()))
+            .ReturnsAsync(new PayslipResult
+            {
+                Success = true,
+                PayslipDto = new PayslipDto
+                {
+                    EmployeeId = employeeId,
+                    GrossEarnings = 15000m,
+                    UifDeduction = 150m,
+                    TotalDeductions = 150m,
+                    NetPay = 14850m
+                }
+            });
+        Services.AddSingleton(mockPayslipService.Object);
+
+        var mockWalletService = new Mock<IWalletService>();
+        mockWalletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
+        {
+            UserId = userId,
+            CurrentBalance = 2m,
+            CurrentPayslipPrice = 5m
+        });
+        Services.AddSingleton(mockWalletService.Object);
+
+        var mockEmployeeService = new Mock<IEmployeeService>();
+        mockEmployeeService.Setup(s => s.GetEmployeeByIdAsync(employeeId, userId))
+            .ReturnsAsync(new EmployeeDto
+            {
+                Id = employeeId,
+                FirstName = "John",
+                LastName = "Doe",
+                IdNumber = "123",
+                EmployeeNumber = "E001",
+                Occupation = "Dev",
+                MonthlyGrossSalary = 15000,
+                CompanyId = companyId
+            });
+        Services.AddSingleton(mockEmployeeService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Payslips.GeneratePayslip>(p => p
+            .Add(c => c.CompanyId, companyId)
+            .Add(c => c.EmployeeId, employeeId));
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        await cut.InvokeAsync(() => cut.Find("button.btn.btn-primary.mt-3").Click());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Insufficient funds", cut.Markup);
+            Assert.False(cut.Find("button.btn.btn-success").HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
     public async Task GeneratePayslip_DisablesWorkflow_WhenWalletLoadFails()
     {
         var authContext = this.AddTestAuthorization();

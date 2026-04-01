@@ -12,16 +12,17 @@ public class WalletActivityRepository : IWalletActivityRepository
 
     public async Task<IReadOnlyList<WalletActivity>> GetByWalletIdAsync(Guid walletId)
     {
-        var query = _db.WalletActivities.Where(a => a.WalletId == walletId);
-
         if (_db.Database.IsSqlite())
         {
-            return (await query.ToListAsync())
-                .OrderByDescending(a => a.OccurredAt)
-                .ToList();
+            return await _db.WalletActivities
+                .FromSqlRaw("SELECT * FROM \"WalletActivities\" WHERE \"WalletId\" = {0} ORDER BY \"OccurredAt\" DESC", walletId)
+                .AsNoTracking()
+                .ToListAsync();
         }
 
-        return await query
+        return await _db.WalletActivities
+            .AsNoTracking()
+            .Where(a => a.WalletId == walletId)
             .OrderByDescending(a => a.OccurredAt)
             .ToListAsync();
     }

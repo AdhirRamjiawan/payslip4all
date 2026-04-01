@@ -123,7 +123,7 @@
                     }
 
                     <div class="d-flex gap-2 mt-3">
-                        <button class="btn btn-success" @onclick="GeneratePayslipAsync" disabled="@(_isGenerating || IsInsufficientFunds)">
+                        <button class="btn btn-success" @onclick="GeneratePayslipAsync" disabled="@_isGenerating">
                             @if (_isGenerating) { <span class="spinner-border spinner-border-sm me-2"></span> }
                             @(_isDuplicate ? "Overwrite & Generate" : "Generate PDF")
                         </button>

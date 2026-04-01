@@ -88,7 +88,7 @@
                                 @foreach (var activity in _wallet.Activities)
                                 {
                                     <tr>
-                                        <td>@activity.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td>@activity.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</td>
                                         <td>@activity.ActivityType</td>
                                         <td>@(string.IsNullOrWhiteSpace(activity.Description) ? "-" : activity.Description)</td>
                                         <td>R @activity.Amount.ToString("N2")</td>

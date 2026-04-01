@@ -345,6 +345,42 @@ public class PayslipGenerationServiceTests
     }
 
     [Fact]
+    public async Task GeneratePayslipAsync_WhenTransactionsAreUnavailableDueToInvalidOperation_FallsBackToCompensationPath()
+    {
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employee = new Employee
+        {
+            FirstName = "John",
+            LastName = "Doe",
+            IdNumber = "123",
+            EmployeeNumber = "E001",
+            Occupation = "Dev",
+            MonthlyGrossSalary = 10000m,
+            CompanyId = Guid.NewGuid(),
+        };
+
+        _mockUnitOfWork.Setup(u => u.BeginTransactionAsync()).ThrowsAsync(new InvalidOperationException("No transactions"));
+        _mockPayslipRepo.Setup(r => r.ExistsAsync(employeeId, 1, 2024)).ReturnsAsync(false);
+        _mockEmployeeRepo.Setup(r => r.GetByIdWithLoansAsync(employeeId, userId)).ReturnsAsync(employee);
+        _mockPayslipRepo.Setup(r => r.AddAsync(It.IsAny<Payslip>())).Returns(Task.CompletedTask);
+        _mockUnitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+
+        var result = await _service.GeneratePayslipAsync(new GeneratePayslipCommand
+        {
+            EmployeeId = employeeId,
+            UserId = userId,
+            PayPeriodMonth = 1,
+            PayPeriodYear = 2024,
+        });
+
+        Assert.True(result.Success);
+        _mockUnitOfWork.Verify(u => u.CommitTransactionAsync(), Times.Never);
+        _mockUnitOfWork.Verify(u => u.RollbackTransactionAsync(), Times.Never);
+        _mockWalletService.Verify(s => s.TryDebitAsync(userId, 5m, It.IsAny<string>(), "Payslip", It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
     public async Task GetPayslipsForEmployeeAsync_ReturnsPayslips()
     {
         var employeeId = Guid.NewGuid();

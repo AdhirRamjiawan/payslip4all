@@ -318,6 +318,10 @@ public class PayslipGenerationService : IPayslipService
         {
             return false;
         }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private async Task RevertGeneratedPayslipAsync(
