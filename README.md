@@ -33,6 +33,7 @@ A web application for generating and managing employee payslips, built for South
 - **Payslip history** — view all past payslips in reverse chronological order
 - **Wallet credits** — each company owner has a wallet balance that is charged per successful payslip generation
 - **Wallet activity history** — auditable credit and debit entries with resulting balances
+- **Generic hosted payment returns** — provider returns land on `/portal/wallet/top-ups/return`, are normalized into explicit statuses (`Pending`, `Completed`, `Cancelled`, `Expired`, `Abandoned`, `Unverified`), and only matched trustworthy completions credit the wallet
 - **Admin pricing** — site administrators can change the per-payslip wallet charge from the web UI
 - **Data isolation** — employers only ever see their own companies, employees, and payslips
 
@@ -167,8 +168,8 @@ Use this sequence after deploying wallet-credit changes or refreshing a local en
 1. Sign out and open `/` to confirm the public wallet section shows only public pricing and wallet messaging.
 2. Sign in as a `SiteAdministrator`, open `/admin/wallet-pricing`, set a rand price such as `15.00`, and confirm the value updates immediately.
 3. Sign in as a `CompanyOwner`, open `/portal/wallet`, start a hosted card top-up, and confirm the browser redirects to `/hosted-payments/fake` without Payslip4All collecting any card details.
-4. Use the simulator success path, return to `/portal/wallet/top-ups/{attemptId}/return`, and confirm the wallet balance changes exactly once by the confirmed charged amount while wallet activity links back to the top-up attempt.
-5. Repeat the hosted flow with the simulator's pending, failed, cancelled, and expired outcomes and confirm the wallet balance remains unchanged while the result page and wallet history show the correct owner-scoped status.
+4. Use the simulator success path so the provider returns through `/portal/wallet/top-ups/return`, then confirm Payslip4All redirects the owner to `/portal/wallet/top-ups/{attemptId}/return` and credits the wallet exactly once by the confirmed charged amount.
+5. Repeat the hosted flow with the simulator's pending, cancelled, and expired outcomes, plus an unmatched/generic return, and confirm the wallet balance remains unchanged while wallet history shows the correct owner-scoped status or generic not-confirmed page.
 6. Generate a payslip with sufficient funds and confirm the charged amount, wallet debit, and wallet activity entry all match.
 7. Retry generation with insufficient funds and confirm no payslip is created and no wallet debit occurs.
 8. Overwrite an existing payslip for the same employee and period, then confirm the original payslip is only removed after the replacement and wallet charge both succeed.
@@ -185,7 +186,7 @@ Use this sequence after deploying wallet-credit changes or refreshing a local en
 | `ConnectionStrings:MySqlConnection` | `""` | MySQL connection string |
 | `DYNAMODB_REGION` | — | Required when `PERSISTENCE_PROVIDER=dynamodb` |
 | `DYNAMODB_ENDPOINT` | — | Optional endpoint override for DynamoDB Local or other emulators |
-| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the ten required DynamoDB tables |
+| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the thirteen required DynamoDB tables |
 | `AWS_ACCESS_KEY_ID` | — | Optional explicit DynamoDB credential; must be paired with `AWS_SECRET_ACCESS_KEY` |
 | `AWS_SECRET_ACCESS_KEY` | — | Optional explicit DynamoDB credential; must be paired with `AWS_ACCESS_KEY_ID` |
 | `Auth:Cookie:ExpireDays` | `30` | Session lifetime in days |
@@ -208,6 +209,9 @@ When `PERSISTENCE_PROVIDER=dynamodb`:
     - `{prefix}_wallets`
     - `{prefix}_wallet_activities`
     - `{prefix}_wallet_topup_attempts`
+    - `{prefix}_payment_return_evidences`
+    - `{prefix}_outcome_normalization_decisions`
+    - `{prefix}_unmatched_payment_return_records`
     - `{prefix}_payslip_pricing`
 3. Explicit AWS credentials win when both are set.
 4. If only one explicit credential variable is set, startup fails fast.

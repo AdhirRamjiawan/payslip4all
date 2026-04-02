@@ -1,9 +1,9 @@
 @page "/portal/wallet/top-ups/{AttemptId:guid}/return"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.WebUtilities
 @using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
+@using Payslip4All.Domain.Enums
 @inject IWalletTopUpService WalletTopUpService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
@@ -20,7 +20,7 @@
     {
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">@_result.Status</h5>
+                <h5 class="card-title"><span class="badge @GetBadgeClass(_result.Status)">@_result.Status</span></h5>
                 <p class="mb-3">@_result.DisplayMessage</p>
 
                 <dl class="row mb-3">
@@ -62,16 +62,9 @@
                 return;
             }
 
-            var uri = Nav.ToAbsoluteUri(Nav.Uri);
-            var payload = QueryHelpers.ParseQuery(uri.Query)
-                .ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.OrdinalIgnoreCase);
-
-            _result = await WalletTopUpService.FinalizeHostedReturnAsync(new FinalizeWalletTopUpReturnCommand
-            {
-                UserId = userId.Value,
-                WalletTopUpAttemptId = AttemptId,
-                ReturnPayload = payload
-            });
+            _result = await WalletTopUpService.GetAttemptResultAsync(AttemptId, userId.Value);
+            if (_result == null)
+                _errorMessage = "Top-up attempt could not be found.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
@@ -93,4 +86,15 @@
         var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(str, out var id) ? id : null;
     }
+
+    private static string GetBadgeClass(WalletTopUpAttemptStatus status)
+        => status switch
+        {
+            WalletTopUpAttemptStatus.Completed => "bg-success",
+            WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
+            WalletTopUpAttemptStatus.Expired => "bg-dark",
+            WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
+            WalletTopUpAttemptStatus.Unverified => "bg-info text-dark",
+            _ => "bg-primary"
+        };
 }

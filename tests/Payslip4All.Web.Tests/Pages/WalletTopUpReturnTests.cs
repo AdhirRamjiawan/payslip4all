@@ -19,7 +19,7 @@ public class WalletTopUpReturnTests : TestContext
         var attemptId = Guid.NewGuid();
         var walletTopUpService = new Mock<IWalletTopUpService>();
         walletTopUpService
-            .Setup(s => s.FinalizeHostedReturnAsync(It.IsAny<FinalizeWalletTopUpReturnCommand>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetAttemptResultAsync(attemptId, userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FinalizedWalletTopUpResultDto
             {
                 WalletTopUpAttemptId = attemptId,
@@ -33,7 +33,7 @@ public class WalletTopUpReturnTests : TestContext
 
         Services.AddSingleton(walletTopUpService.Object);
         var nav = Services.GetRequiredService<NavigationManager>();
-        nav.NavigateTo($"http://localhost/portal/wallet/top-ups/{attemptId}/return?outcome=succeeded");
+        nav.NavigateTo($"http://localhost/portal/wallet/top-ups/{attemptId}/return");
 
         var cut = RenderComponent<Payslip4All.Web.Pages.WalletTopUpReturn>(parameters => parameters
             .Add(p => p.AttemptId, attemptId));
@@ -47,14 +47,15 @@ public class WalletTopUpReturnTests : TestContext
 
     [Theory]
     [InlineData(WalletTopUpAttemptStatus.Pending, "Payment is still pending.")]
-    [InlineData(WalletTopUpAttemptStatus.Failed, "Payment failed.")]
-    public void ReturnPage_ShowsPendingAndFailureStates(WalletTopUpAttemptStatus status, string message)
+    [InlineData(WalletTopUpAttemptStatus.Unverified, "Manual review required.")]
+    [InlineData(WalletTopUpAttemptStatus.Abandoned, "abandoned")]
+    public void ReturnPage_ShowsExplicitStates(WalletTopUpAttemptStatus status, string message)
     {
-        SetAuthorizedOwner();
+        var userId = SetAuthorizedOwner();
         var attemptId = Guid.NewGuid();
         var walletTopUpService = new Mock<IWalletTopUpService>();
         walletTopUpService
-            .Setup(s => s.FinalizeHostedReturnAsync(It.IsAny<FinalizeWalletTopUpReturnCommand>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetAttemptResultAsync(attemptId, userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FinalizedWalletTopUpResultDto
             {
                 WalletTopUpAttemptId = attemptId,
@@ -72,18 +73,18 @@ public class WalletTopUpReturnTests : TestContext
         var cut = RenderComponent<Payslip4All.Web.Pages.WalletTopUpReturn>(parameters => parameters
             .Add(p => p.AttemptId, attemptId));
 
-        cut.WaitForAssertion(() => Assert.Contains(message, cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains(message, cut.Markup, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
     public void ReturnPage_ShowsSanitizedAccessDeniedMessage()
     {
-        SetAuthorizedOwner();
+        var userId = SetAuthorizedOwner();
         var attemptId = Guid.NewGuid();
         var walletTopUpService = new Mock<IWalletTopUpService>();
         walletTopUpService
-            .Setup(s => s.FinalizeHostedReturnAsync(It.IsAny<FinalizeWalletTopUpReturnCommand>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Top-up attempt could not be found."));
+            .Setup(s => s.GetAttemptResultAsync(attemptId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FinalizedWalletTopUpResultDto?)null);
 
         Services.AddSingleton(walletTopUpService.Object);
         var cut = RenderComponent<Payslip4All.Web.Pages.WalletTopUpReturn>(parameters => parameters

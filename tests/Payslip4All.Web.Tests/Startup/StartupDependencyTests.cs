@@ -156,6 +156,18 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public void WalletTopUpAuditServices_AreRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetService<ITimeProvider>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpOutcomeNormalizer>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpAbandonmentService>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IPaymentReturnEvidenceRepository>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IOutcomeNormalizationDecisionRepository>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IUnmatchedPaymentReturnRecordRepository>());
+    }
+
+    [Fact]
     public void HostedPaymentServices_AreRegistered_AndResolvable()
     {
         using var scope = _factory.Services.CreateScope();

@@ -22,7 +22,8 @@
                 <button class="btn btn-success" @onclick='() => CompleteAsync("succeeded", RequestedAmount)'>Success</button>
                 <button class="btn btn-outline-success" @onclick='() => CompleteAsync("succeeded", AlternateAmount)'>Success with different amount</button>
                 <button class="btn btn-warning" @onclick='() => CompleteAsync("pending", null)'>Pending</button>
-                <button class="btn btn-danger" @onclick='() => CompleteAsync("failed", null)'>Failed</button>
+                <button class="btn btn-info" @onclick='() => CompleteAsync("succeeded", null)'>Low-confidence final claim</button>
+                <button class="btn btn-outline-secondary" @onclick='() => CompleteAsync("succeeded", RequestedAmount, omitToken: true)'>Unmatched return</button>
                 <button class="btn btn-secondary" @onclick='() => CompleteAsync("cancelled", null)'>Cancelled</button>
                 <button class="btn btn-dark" @onclick='() => CompleteAsync("expired", null)'>Expired</button>
                 <button class="btn btn-link" @onclick="CancelAsync">Cancel and return</button>
@@ -52,12 +53,12 @@
 
     private decimal AlternateAmount => RequestedAmount > 5m ? RequestedAmount - 5m : RequestedAmount + 5m;
 
-    private Task CompleteAsync(string outcome, decimal? amount)
+    private Task CompleteAsync(string outcome, decimal? amount, bool omitToken = false)
     {
         var query = new Dictionary<string, string?>
         {
             ["session"] = Session,
-            ["token"] = Token,
+            ["token"] = omitToken ? null : Token,
             ["outcome"] = outcome,
             ["paymentReference"] = $"payment-{Guid.NewGuid():N}"
         };

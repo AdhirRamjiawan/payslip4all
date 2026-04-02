@@ -1,0 +1,72 @@
+@page "/portal/wallet/top-ups/return"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.Interfaces
+@inject IWalletTopUpService WalletTopUpService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Wallet Top-Up Return - Payslip4All</PageTitle>
+
+<LoadingSpinner IsLoading="@_isLoading" />
+<ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+@if (!_isLoading && !string.IsNullOrWhiteSpace(_message))
+{
+    <div class="container mt-4">
+        <div class="alert alert-info">@_message</div>
+    </div>
+}
+
+@code {
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue)
+            {
+                Nav.NavigateTo("/Portal/Auth/Login");
+                return;
+            }
+
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var payload = QueryHelpers.ParseQuery(uri.Query)
+                .ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+
+            var result = await WalletTopUpService.ProcessGenericReturnAsync(userId.Value, payload);
+            _message = result.DisplayMessage;
+
+            if (result.IsMatched && result.MatchedAttemptId.HasValue)
+            {
+                Nav.NavigateTo($"/portal/wallet/top-ups/{result.MatchedAttemptId.Value}/return", forceLoad: true);
+                return;
+            }
+
+            var target = result.UnmatchedRecordId.HasValue
+                ? $"/portal/wallet/top-ups/return/not-confirmed?ref={result.UnmatchedRecordId.Value:D}"
+                : "/portal/wallet/top-ups/return/not-confirmed";
+            Nav.NavigateTo(target, forceLoad: true);
+        }
+        catch
+        {
+            _errorMessage = "The payment return could not be processed right now.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+}

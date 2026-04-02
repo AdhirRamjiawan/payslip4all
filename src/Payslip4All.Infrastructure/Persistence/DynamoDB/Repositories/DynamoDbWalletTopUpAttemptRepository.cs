@@ -97,6 +97,40 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         return items.Select(Map).ToList();
     }
 
+    public async Task<WalletTopUpAttempt?> GetByCorrelationTokenAsync(string token, CancellationToken cancellationToken = default)
+    {
+        var response = await _dynamoDb.ScanAsync(new ScanRequest
+        {
+            TableName = _tableName,
+            FilterExpression = "returnCorrelationToken = :token",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":token"] = new() { S = token }
+            },
+            Limit = 1
+        }, cancellationToken);
+
+        return response.Items.Count == 0 ? null : Map(response.Items[0]);
+    }
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetPendingOrUnverifiedExpiredAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    {
+        var response = await _dynamoDb.ScanAsync(new ScanRequest
+        {
+            TableName = _tableName,
+            FilterExpression = "abandonAfterUtc <= :cutoff AND (#status = :pending OR #status = :unverified)",
+            ExpressionAttributeNames = new Dictionary<string, string> { ["#status"] = "status" },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":cutoff"] = new() { S = cutoff.ToString("O") },
+                [":pending"] = new() { N = ((int)WalletTopUpAttemptStatus.Pending).ToString(CultureInfo.InvariantCulture) },
+                [":unverified"] = new() { N = ((int)WalletTopUpAttemptStatus.Unverified).ToString(CultureInfo.InvariantCulture) }
+            }
+        }, cancellationToken);
+
+        return response.Items.Select(Map).OrderBy(a => a.AbandonAfterUtc).ToList();
+    }
+
     public async Task<WalletTopUpSettlementResult> SettleSuccessfulAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default)
     {
         for (var retry = 0; retry < 3; retry++)
@@ -122,6 +156,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             var wallet = await LoadWalletAsync(attempt.UserId, cancellationToken);
             var isNewWallet = wallet == null;
             wallet ??= Wallet.CreateForUser(attempt.UserId);
+            var expectedUpdatedAt = wallet.UpdatedAt;
             wallet.CurrentBalance = WalletCalculator.CalculateBalanceAfterCredit(wallet.CurrentBalance, attempt.ConfirmedChargedAmount.Value);
             wallet.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -154,8 +189,9 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
                                 ConditionExpression = "attribute_exists(id) AND userId = :userId AND attribute_not_exists(creditedWalletActivityId)",
                                 UpdateExpression =
                                     "SET #status = :status, confirmedChargedAmount = :confirmedAmount, providerPaymentReference = :paymentReference, " +
-                                    "creditedWalletActivityId = :creditedWalletActivityId, lastValidatedAt = :lastValidatedAt, completedAt = :completedAt, updatedAt = :updatedAt " +
-                                    "REMOVE failureCode, failureMessage",
+                                    "creditedWalletActivityId = :creditedWalletActivityId, lastValidatedAt = :lastValidatedAt, lastEvaluatedAt = :lastEvaluatedAt, completedAt = :completedAt, " +
+                                    "authoritativeOutcomeAcceptedAt = :acceptedAt, updatedAt = :updatedAt, authoritativeEvidenceId = :authoritativeEvidenceId, lastEvidenceReceivedAt = :lastEvidenceReceivedAt " +
+                                    "REMOVE failureCode, failureMessage, outcomeReasonCode, outcomeMessage",
                                 ExpressionAttributeNames = new Dictionary<string, string>
                                 {
                                     ["#status"] = "status"
@@ -168,8 +204,12 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
                                     [":paymentReference"] = new() { S = attempt.ProviderPaymentReference ?? string.Empty },
                                     [":creditedWalletActivityId"] = new() { S = activity.Id.ToString() },
                                     [":lastValidatedAt"] = new() { S = (attempt.LastValidatedAt ?? DateTimeOffset.UtcNow).ToString("O") },
-                                    [":completedAt"] = new() { S = (attempt.CompletedAt ?? DateTimeOffset.UtcNow).ToString("O") },
-                                    [":updatedAt"] = new() { S = DateTimeOffset.UtcNow.ToString("O") }
+                                    [":lastEvaluatedAt"] = new() { S = (attempt.LastEvaluatedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow).ToString("O") },
+                                    [":completedAt"] = new() { S = (attempt.AuthoritativeOutcomeAcceptedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow).ToString("O") },
+                                    [":acceptedAt"] = new() { S = (attempt.AuthoritativeOutcomeAcceptedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow).ToString("O") },
+                                    [":updatedAt"] = new() { S = DateTimeOffset.UtcNow.ToString("O") },
+                                    [":authoritativeEvidenceId"] = new() { S = attempt.AuthoritativeEvidenceId?.ToString() ?? string.Empty },
+                                    [":lastEvidenceReceivedAt"] = new() { S = (attempt.LastEvidenceReceivedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow).ToString("O") }
                                 }
                             }
                         },
@@ -187,7 +227,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
                                     : new Dictionary<string, AttributeValue>
                                     {
                                         [":walletUserId"] = new() { S = wallet.UserId.ToString() },
-                                        [":expectedUpdatedAt"] = new() { S = wallet.GetPersistedUpdatedAt().ToString("O") }
+                                        [":expectedUpdatedAt"] = new() { S = expectedUpdatedAt.ToString("O") }
                                     }
                             }
                         },
@@ -213,7 +253,6 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             }
             catch (TransactionCanceledException)
             {
-                // Replay and optimistic concurrency paths are resolved by reloading and retrying.
             }
         }
 
@@ -261,7 +300,8 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             ["status"] = new() { N = ((int)attempt.Status).ToString(CultureInfo.InvariantCulture) },
             ["providerKey"] = new() { S = attempt.ProviderKey },
             ["createdAt"] = new() { S = attempt.CreatedAt.ToString("O") },
-            ["updatedAt"] = new() { S = attempt.UpdatedAt.ToString("O") }
+            ["updatedAt"] = new() { S = attempt.UpdatedAt.ToString("O") },
+            ["abandonAfterUtc"] = new() { S = attempt.AbandonAfterUtc.ToString("O") }
         };
 
         SetOptional(item, "confirmedChargedAmount", attempt.ConfirmedChargedAmount?.ToString("G", CultureInfo.InvariantCulture));
@@ -270,10 +310,16 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         SetOptional(item, "returnCorrelationToken", attempt.ReturnCorrelationToken);
         SetOptional(item, "failureCode", attempt.FailureCode);
         SetOptional(item, "failureMessage", attempt.FailureMessage);
+        SetOptional(item, "outcomeReasonCode", attempt.OutcomeReasonCode);
+        SetOptional(item, "outcomeMessage", attempt.OutcomeMessage);
         SetOptional(item, "creditedWalletActivityId", attempt.CreditedWalletActivityId?.ToString());
+        SetOptional(item, "authoritativeEvidenceId", attempt.AuthoritativeEvidenceId?.ToString());
         SetOptional(item, "redirectedAt", attempt.RedirectedAt?.ToString("O"));
         SetOptional(item, "lastValidatedAt", attempt.LastValidatedAt?.ToString("O"));
+        SetOptional(item, "lastEvaluatedAt", attempt.LastEvaluatedAt?.ToString("O"));
+        SetOptional(item, "lastEvidenceReceivedAt", attempt.LastEvidenceReceivedAt?.ToString("O"));
         SetOptional(item, "completedAt", attempt.CompletedAt?.ToString("O"));
+        SetOptional(item, "authoritativeOutcomeAcceptedAt", attempt.AuthoritativeOutcomeAcceptedAt?.ToString("O"));
         SetOptional(item, "hostedPageDeadline", attempt.HostedPageDeadline?.ToString("O"));
         return item;
     }
@@ -289,6 +335,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         attempt.ProviderKey = item["providerKey"].S;
         SetProperty(attempt, nameof(WalletTopUpAttempt.CreatedAt), DateTimeOffset.Parse(item["createdAt"].S, CultureInfo.InvariantCulture));
         attempt.UpdatedAt = DateTimeOffset.Parse(item["updatedAt"].S, CultureInfo.InvariantCulture);
+        attempt.AbandonAfterUtc = DateTimeOffset.Parse(item["abandonAfterUtc"].S, CultureInfo.InvariantCulture);
 
         if (item.TryGetValue("confirmedChargedAmount", out var confirmedAmount))
             attempt.ConfirmedChargedAmount = decimal.Parse(confirmedAmount.S, CultureInfo.InvariantCulture);
@@ -302,14 +349,26 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             attempt.FailureCode = failureCode.S;
         if (item.TryGetValue("failureMessage", out var failureMessage))
             attempt.FailureMessage = failureMessage.S;
+        if (item.TryGetValue("outcomeReasonCode", out var outcomeReasonCode))
+            attempt.OutcomeReasonCode = outcomeReasonCode.S;
+        if (item.TryGetValue("outcomeMessage", out var outcomeMessage))
+            attempt.OutcomeMessage = outcomeMessage.S;
         if (item.TryGetValue("creditedWalletActivityId", out var creditedWalletActivityId))
             attempt.CreditedWalletActivityId = Guid.Parse(creditedWalletActivityId.S);
+        if (item.TryGetValue("authoritativeEvidenceId", out var authoritativeEvidenceId) && !string.IsNullOrWhiteSpace(authoritativeEvidenceId.S))
+            attempt.AuthoritativeEvidenceId = Guid.Parse(authoritativeEvidenceId.S);
         if (item.TryGetValue("redirectedAt", out var redirectedAt))
             attempt.RedirectedAt = DateTimeOffset.Parse(redirectedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("lastValidatedAt", out var lastValidatedAt))
             attempt.LastValidatedAt = DateTimeOffset.Parse(lastValidatedAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("lastEvaluatedAt", out var lastEvaluatedAt))
+            attempt.LastEvaluatedAt = DateTimeOffset.Parse(lastEvaluatedAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("lastEvidenceReceivedAt", out var lastEvidenceReceivedAt))
+            attempt.LastEvidenceReceivedAt = DateTimeOffset.Parse(lastEvidenceReceivedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("completedAt", out var completedAt))
             attempt.CompletedAt = DateTimeOffset.Parse(completedAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("authoritativeOutcomeAcceptedAt", out var acceptedAt))
+            attempt.AuthoritativeOutcomeAcceptedAt = DateTimeOffset.Parse(acceptedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("hostedPageDeadline", out var expiresAt))
             attempt.HostedPageDeadline = DateTimeOffset.Parse(expiresAt.S, CultureInfo.InvariantCulture);
 
@@ -342,7 +401,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
 
     private static Dictionary<string, AttributeValue> ToWalletActivityItem(WalletActivity activity)
     {
-        var item = new Dictionary<string, AttributeValue>
+        return new Dictionary<string, AttributeValue>
         {
             ["id"] = new() { S = activity.Id.ToString() },
             ["walletId"] = new() { S = activity.WalletId.ToString() },
@@ -354,8 +413,6 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             ["referenceType"] = new() { S = activity.ReferenceType ?? WalletActivity.WalletTopUpReferenceType },
             ["referenceId"] = new() { S = activity.ReferenceId ?? string.Empty }
         };
-
-        return item;
     }
 
     private static void SetOptional(Dictionary<string, AttributeValue> item, string key, string? value)

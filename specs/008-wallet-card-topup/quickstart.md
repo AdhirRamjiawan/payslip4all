@@ -32,7 +32,7 @@
 
 1. Start a new top-up attempt from `/portal/wallet`.
 2. Complete the hosted flow using the simulator’s trustworthy **Completed** outcome.
-3. Return through the generic hosted-return route.
+3. Return through `/portal/wallet/top-ups/return`.
 4. Confirm:
    - the flow resolves to the matched-attempt result route,
    - the attempt is `Completed`,
@@ -116,7 +116,7 @@
 
 ## Scenario 10: Unmatched returns stay generic and privacy-safe (SC-005)
 
-1. Send a return with missing, invalid, conflicting, or multi-match correlation data to `/portal/wallet/top-ups/return`.
+1. Send a return with missing, invalid, conflicting, or multi-match correlation data to `/portal/wallet/top-ups/return` and confirm the user is redirected to `/portal/wallet/top-ups/return/not-confirmed`.
 2. Confirm:
    - the system creates an Unmatched Payment Return Record,
    - the user lands on the generic not-confirmed result flow,

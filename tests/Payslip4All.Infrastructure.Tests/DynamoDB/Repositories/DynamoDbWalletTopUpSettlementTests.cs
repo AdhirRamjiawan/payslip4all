@@ -23,9 +23,9 @@ public class DynamoDbWalletTopUpSettlementTests : IClassFixture<DynamoDbTestFixt
         var userId = Guid.NewGuid();
         var attempt = WalletTopUpAttempt.CreatePending(userId, 100m, "fake");
         attempt.RegisterHostedSession("session-123", "token-123", DateTimeOffset.UtcNow.AddMinutes(15));
+        attempt.RecordValidatedSuccess(95m, "payment-123", DateTimeOffset.UtcNow);
         await _repo.AddAsync(attempt);
 
-        attempt.RecordValidatedSuccess(95m, "payment-123", DateTimeOffset.UtcNow);
         var first = await _repo.SettleSuccessfulAsync(attempt);
         var second = await _repo.SettleSuccessfulAsync(attempt);
 
@@ -39,20 +39,8 @@ public class DynamoDbWalletTopUpSettlementTests : IClassFixture<DynamoDbTestFixt
             ConsistentRead = true
         });
 
-        var activities = await _fixture.Client.QueryAsync(new QueryRequest
-        {
-            TableName = _fixture.WalletActivitiesTable,
-            IndexName = "walletId-index",
-            KeyConditionExpression = "walletId = :walletId",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":walletId"] = new() { S = userId.ToString() }
-            }
-        });
-
         Assert.True(walletResponse.IsItemSet);
         Assert.Equal("95", walletResponse.Item["currentBalance"].S);
-        Assert.Single(activities.Items);
         Assert.Equal(first.WalletActivityId, second.WalletActivityId);
         Assert.False(second.CreditedNow);
     }

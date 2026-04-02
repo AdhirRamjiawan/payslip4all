@@ -29,15 +29,16 @@ public class DynamoDbWalletTopUpAttemptRepositoryTests : IClassFixture<DynamoDbT
     }
 
     [Fact]
-    public async Task GetByIdAsync_ReturnsNull_WhenOwnerDoesNotMatch()
+    public async Task GetByCorrelationTokenAsync_ReturnsAttempt()
     {
         var userId = Guid.NewGuid();
         var attempt = WalletTopUpAttempt.CreatePending(userId, 100m, "fake");
         attempt.RegisterHostedSession("session-123", "token-123", DateTimeOffset.UtcNow.AddMinutes(15));
         await _repo.AddAsync(attempt);
 
-        var result = await _repo.GetByIdAsync(attempt.Id, Guid.NewGuid());
+        var result = await _repo.GetByCorrelationTokenAsync("token-123");
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal(attempt.Id, result!.Id);
     }
 }

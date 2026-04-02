@@ -3,6 +3,8 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
+@using Payslip4All.Domain.Entities
+@using Payslip4All.Domain.Enums
 @inject IWalletService WalletService
 @inject IWalletTopUpService WalletTopUpService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -83,6 +85,7 @@
                                     <th>Status</th>
                                     <th>Requested</th>
                                     <th>Confirmed</th>
+                                    <th>Abandon after</th>
                                     <th>Result</th>
                                 </tr>
                             </thead>
@@ -91,9 +94,10 @@
                                 {
                                     <tr>
                                         <td>@attempt.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</td>
-                                        <td>@attempt.Status</td>
+                                        <td><span class="badge @GetBadgeClass(attempt.Status)">@attempt.Status</span></td>
                                         <td>@attempt.RequestedAmount.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)</td>
                                         <td>@(attempt.ConfirmedChargedAmount.HasValue ? $"R {attempt.ConfirmedChargedAmount.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}" : "-")</td>
+                                        <td>@(attempt.Status == WalletTopUpAttemptStatus.Pending ? attempt.AbandonAfterUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'") : "-")</td>
                                         <td><a href="@($"/portal/wallet/top-ups/{attempt.Id}/return")">View</a></td>
                                     </tr>
                                 }
@@ -178,7 +182,7 @@
             {
                 UserId = userId.Value,
                 RequestedAmount = _form.Amount,
-                ReturnUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet/top-ups/{{attemptId}}/return",
+                ReturnUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet/top-ups/return",
                 CancelUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet"
             });
 
@@ -232,6 +236,17 @@
         var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(str, out var id) ? id : null;
     }
+
+    private static string GetBadgeClass(WalletTopUpAttemptStatus status)
+        => status switch
+        {
+            WalletTopUpAttemptStatus.Completed => "bg-success",
+            WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
+            WalletTopUpAttemptStatus.Expired => "bg-dark",
+            WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
+            WalletTopUpAttemptStatus.Unverified => "bg-info text-dark",
+            _ => "bg-primary"
+        };
 
     public class FormModel
     {

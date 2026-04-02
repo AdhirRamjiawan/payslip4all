@@ -17,6 +17,10 @@ public interface IHostedPaymentProvider
         WalletTopUpAttempt attempt,
         IReadOnlyDictionary<string, string> payload,
         CancellationToken cancellationToken = default);
+
+    Task<HostedPaymentReturnEvidenceDto> ParseReturnEvidenceAsync(
+        IReadOnlyDictionary<string, string> payload,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record HostedPaymentSessionResult(

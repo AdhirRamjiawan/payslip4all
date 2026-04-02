@@ -8,6 +8,8 @@ public interface IWalletTopUpAttemptRepository
     Task UpdateAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default);
     Task<WalletTopUpAttempt?> GetByIdAsync(Guid attemptId, Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WalletTopUpAttempt>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<WalletTopUpAttempt?> GetByCorrelationTokenAsync(string token, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WalletTopUpAttempt>> GetPendingOrUnverifiedExpiredAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default);
     Task<WalletTopUpSettlementResult> SettleSuccessfulAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default);
 }
 

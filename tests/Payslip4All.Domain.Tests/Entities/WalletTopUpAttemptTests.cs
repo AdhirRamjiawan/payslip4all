@@ -19,6 +19,7 @@ public class WalletTopUpAttemptTests
         Assert.Equal(WalletTopUpAttemptStatus.Pending, attempt.Status);
         Assert.Null(attempt.ConfirmedChargedAmount);
         Assert.Null(attempt.CreditedWalletActivityId);
+        Assert.Equal(attempt.CreatedAt.AddHours(1), attempt.AbandonAfterUtc);
     }
 
     [Fact]
@@ -45,6 +46,48 @@ public class WalletTopUpAttemptTests
         Assert.Equal(activityId, attempt.CreditedWalletActivityId);
         Assert.Equal(validatedAt, attempt.LastValidatedAt);
         Assert.Equal(validatedAt, attempt.CompletedAt);
+        Assert.Equal(validatedAt, attempt.AuthoritativeOutcomeAcceptedAt);
+    }
+
+    [Fact]
+    public void MarkUnverified_SetsExplicitStatusAndOutcomeFields()
+    {
+        var attempt = WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "fake");
+        var now = DateTimeOffset.UtcNow;
+
+        attempt.MarkUnverified("correlation_mismatch", "Could not verify return.", now);
+
+        Assert.Equal(WalletTopUpAttemptStatus.Unverified, attempt.Status);
+        Assert.Equal("correlation_mismatch", attempt.OutcomeReasonCode);
+        Assert.Equal("Could not verify return.", attempt.OutcomeMessage);
+        Assert.Equal(now, attempt.LastEvaluatedAt);
+    }
+
+    [Fact]
+    public void MarkAbandoned_SetsExplicitStatus()
+    {
+        var attempt = WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "fake");
+        var now = DateTimeOffset.UtcNow;
+
+        attempt.MarkAbandoned(now);
+
+        Assert.Equal(WalletTopUpAttemptStatus.Abandoned, attempt.Status);
+        Assert.Equal("abandoned", attempt.OutcomeReasonCode);
+    }
+
+    [Fact]
+    public void AcceptTrustworthyEvidence_SetsAuthoritativeFinalOutcome()
+    {
+        var attempt = WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "fake");
+        var now = DateTimeOffset.UtcNow;
+        var evidenceId = Guid.NewGuid();
+
+        attempt.AcceptTrustworthyEvidence(evidenceId, PaymentReturnClaimedOutcome.Cancelled, null, "payment-123", now, null);
+
+        Assert.Equal(WalletTopUpAttemptStatus.Cancelled, attempt.Status);
+        Assert.Equal(evidenceId, attempt.AuthoritativeEvidenceId);
+        Assert.Equal(now, attempt.AuthoritativeOutcomeAcceptedAt);
+        Assert.Equal("payment-123", attempt.ProviderPaymentReference);
     }
 
     [Fact]
@@ -57,7 +100,7 @@ public class WalletTopUpAttemptTests
         attempt.MarkCancelled("cancelled", "Payment was cancelled.", now);
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            attempt.MarkFailed("failed", "Payment failed.", now.AddMinutes(1)));
+            attempt.MarkExpired("expired", "Payment expired.", now.AddMinutes(1)));
 
         Assert.Contains("final state", ex.Message, StringComparison.OrdinalIgnoreCase);
     }

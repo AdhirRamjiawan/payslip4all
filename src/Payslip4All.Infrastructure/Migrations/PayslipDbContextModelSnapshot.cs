@@ -160,6 +160,149 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.ToTable("EmployeeLoans");
                 });
 
+            modelBuilder.Entity("Payslip4All.Domain.Entities.OutcomeNormalizationDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppliedPrecedence")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthoritativeOutcomeAfter")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthoritativeOutcomeBefore")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ConflictWithAcceptedFinalOutcome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionSummary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedOutcome")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PaymentReturnEvidenceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("SupersededAbandonment")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("UnmatchedPaymentReturnRecordId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("WalletActivityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WalletEffect")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptId");
+
+                    b.ToTable("OutcomeNormalizationDecisions");
+                });
+
+            modelBuilder.Entity("Payslip4All.Domain.Entities.PaymentReturnEvidence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ClaimedOutcome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("ConfirmedChargedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CorrelationDisposition")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("EvidenceOccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsAtOrAfterAbandonmentThreshold")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("MatchedAttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderPaymentReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderSessionReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReturnCorrelationToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SafePayloadSnapshot")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceChannel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TrustLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("ValidatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ValidationMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchedAttemptId");
+
+                    b.ToTable("PaymentReturnEvidences");
+                });
+
             modelBuilder.Entity("Payslip4All.Domain.Entities.Payslip", b =>
                 {
                     b.Property<Guid>("Id")
@@ -275,6 +418,50 @@ namespace Payslip4All.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Payslip4All.Domain.Entities.UnmatchedPaymentReturnRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationDisposition")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayMessage")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GenericResultCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PrimaryEvidenceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SafePayloadSnapshot")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("UnmatchedPaymentReturnRecords");
+                });
+
             modelBuilder.Entity("Payslip4All.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -380,6 +567,15 @@ namespace Payslip4All.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset>("AbandonAfterUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AuthoritativeEvidenceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("AuthoritativeOutcomeAcceptedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("TEXT");
 
@@ -409,7 +605,21 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("HostedPageDeadline")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("LastEvaluatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastEvidenceReceivedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastValidatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OutcomeMessage")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OutcomeReasonCode")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderKey")
@@ -448,6 +658,8 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProviderSessionReference");
+
+                    b.HasIndex("ReturnCorrelationToken");
 
                     b.HasIndex("UserId", "CreatedAt");
 

@@ -112,6 +112,10 @@ public class DynamoDbProviderSwitchingTests
             Assert.IsType<DynamoDbWalletRepository>(scope.ServiceProvider.GetRequiredService<IWalletRepository>());
             Assert.IsType<DynamoDbPayslipPricingRepository>(scope.ServiceProvider.GetRequiredService<IPayslipPricingRepository>());
             Assert.IsType<DynamoDbWalletTopUpAttemptRepository>(scope.ServiceProvider.GetRequiredService<IWalletTopUpAttemptRepository>());
+            Assert.IsType<DynamoDbPaymentReturnEvidenceRepository>(scope.ServiceProvider.GetRequiredService<IPaymentReturnEvidenceRepository>());
+            Assert.IsType<DynamoDbOutcomeNormalizationDecisionRepository>(scope.ServiceProvider.GetRequiredService<IOutcomeNormalizationDecisionRepository>());
+            Assert.IsType<DynamoDbUnmatchedPaymentReturnRecordRepository>(scope.ServiceProvider.GetRequiredService<IUnmatchedPaymentReturnRecordRepository>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<ITimeProvider>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<IHostedPaymentProvider>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<HostedPaymentProviderFactory>());
 

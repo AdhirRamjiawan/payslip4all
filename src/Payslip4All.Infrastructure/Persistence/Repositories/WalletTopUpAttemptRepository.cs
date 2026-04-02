@@ -39,8 +39,25 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
             .Where(a => a.UserId == userId)
             .ToListAsync(cancellationToken);
 
-        // Order in memory for SQLite compatibility (DateTimeOffset ordering not supported in all DBs).
         return results.OrderByDescending(a => a.CreatedAt).ToList();
+    }
+
+    public async Task<WalletTopUpAttempt?> GetByCorrelationTokenAsync(string token, CancellationToken cancellationToken = default)
+        => await _db.WalletTopUpAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.ReturnCorrelationToken == token, cancellationToken);
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetPendingOrUnverifiedExpiredAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    {
+        var attempts = await _db.WalletTopUpAttempts
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return attempts
+            .Where(a => (a.Status == WalletTopUpAttemptStatus.Pending || a.Status == WalletTopUpAttemptStatus.Unverified)
+                        && a.AbandonAfterUtc <= cutoff)
+            .OrderBy(a => a.AbandonAfterUtc)
+            .ToList();
     }
 
     public async Task<WalletTopUpSettlementResult> SettleSuccessfulAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default)
@@ -97,8 +114,16 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
             persistedAttempt.MarkCompleted(
                 attempt.ConfirmedChargedAmount.Value,
                 attempt.ProviderPaymentReference,
-                attempt.LastValidatedAt ?? DateTimeOffset.UtcNow,
+                attempt.AuthoritativeOutcomeAcceptedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow,
                 activity.Id);
+            persistedAttempt.AuthoritativeEvidenceId = attempt.AuthoritativeEvidenceId;
+            persistedAttempt.LastEvidenceReceivedAt = attempt.LastEvidenceReceivedAt;
+            persistedAttempt.LastEvaluatedAt = attempt.LastEvaluatedAt ?? attempt.LastValidatedAt;
+            persistedAttempt.AuthoritativeOutcomeAcceptedAt = attempt.AuthoritativeOutcomeAcceptedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow;
+            persistedAttempt.OutcomeReasonCode = null;
+            persistedAttempt.OutcomeMessage = null;
+            persistedAttempt.FailureCode = null;
+            persistedAttempt.FailureMessage = null;
 
             await _db.SaveChangesAsync(cancellationToken);
 

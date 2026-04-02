@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Payslip4All.Domain.Entities;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 
 namespace Payslip4All.Infrastructure.Tests.Repositories;
@@ -17,11 +16,11 @@ public class WalletTopUpSettlementTests : RepositoryTestBase
     public async Task SettleSuccessfulAsync_CreditsConfirmedAmountExactlyOnce()
     {
         var user = SeedUser("settlement@test.com");
-        var attempt = WalletTopUpAttempt.CreatePending(user.Id, 100m, "fake");
+        var attempt = Domain.Entities.WalletTopUpAttempt.CreatePending(user.Id, 100m, "fake");
         attempt.RegisterHostedSession("session-123", "token-123", DateTimeOffset.UtcNow.AddMinutes(15));
+        attempt.RecordValidatedSuccess(95m, "payment-123", DateTimeOffset.UtcNow);
         await _repo.AddAsync(attempt);
 
-        attempt.RecordValidatedSuccess(95m, "payment-123", DateTimeOffset.UtcNow);
         var first = await _repo.SettleSuccessfulAsync(attempt);
         var second = await _repo.SettleSuccessfulAsync(attempt);
 

@@ -337,6 +337,50 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                 },
             },
 
+            // payslip4all_payment_return_evidences — PK: id (S)
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_payment_return_evidences",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
+
+            // payslip4all_outcome_normalization_decisions — PK: id (S)
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_outcome_normalization_decisions",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
+
+            // payslip4all_unmatched_payment_return_records — PK: id (S)
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_unmatched_payment_return_records",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
             // payslip4all_wallet_topup_attempts — PK: id (S), GSI: userId-createdAt-index on userId + createdAt
             new CreateTableRequest
             {

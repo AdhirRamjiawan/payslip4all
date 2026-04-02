@@ -14,4 +14,7 @@ public class FinalizedWalletTopUpResultDto
     public string DisplayMessage { get; set; } = string.Empty;
     public string? FailureCode { get; set; }
     public string? FailureMessage { get; set; }
+    public string? OutcomeReasonCode { get; set; }
+    public string? OutcomeMessage { get; set; }
+    public DateTimeOffset? AuthoritativeOutcomeAcceptedAt { get; set; }
 }

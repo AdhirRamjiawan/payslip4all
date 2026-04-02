@@ -13,6 +13,9 @@ public class WalletTopUpAttemptDto
     public DateTimeOffset? RedirectedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? HostedPageDeadline { get; set; }
+    public DateTimeOffset AbandonAfterUtc { get; set; }
+    public DateTimeOffset? AuthoritativeOutcomeAcceptedAt { get; set; }
     public Guid? CreditedWalletActivityId { get; set; }
     public string? FailureMessage { get; set; }
+    public string? OutcomeMessage { get; set; }
 }

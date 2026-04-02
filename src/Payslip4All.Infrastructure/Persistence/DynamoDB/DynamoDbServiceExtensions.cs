@@ -29,6 +29,9 @@ public static class DynamoDbServiceExtensions
         services.AddScoped<IWalletActivityRepository, DynamoDbWalletActivityRepository>();
         services.AddScoped<IPayslipPricingRepository, DynamoDbPayslipPricingRepository>();
         services.AddScoped<IWalletTopUpAttemptRepository, DynamoDbWalletTopUpAttemptRepository>();
+        services.AddScoped<IPaymentReturnEvidenceRepository, DynamoDbPaymentReturnEvidenceRepository>();
+        services.AddScoped<IOutcomeNormalizationDecisionRepository, DynamoDbOutcomeNormalizationDecisionRepository>();
+        services.AddScoped<IUnmatchedPaymentReturnRecordRepository, DynamoDbUnmatchedPaymentReturnRecordRepository>();
 
         services.AddScoped<IUnitOfWork, DynamoDbUnitOfWork>();
 
