@@ -1,0 +1,77 @@
+@page "/hosted-payments/fake"
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Nav
+
+<PageTitle>Hosted Payment Simulator - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title">Hosted Payment Simulator</h2>
+            <p class="text-muted">This simulator mimics an external hosted payment page. Payslip4All never collects or stores card details.</p>
+
+            <dl class="row">
+                <dt class="col-sm-4">Attempt</dt>
+                <dd class="col-sm-8">@AttemptId</dd>
+                <dt class="col-sm-4">Requested amount</dt>
+                <dd class="col-sm-8">R @RequestedAmount.ToString("N2")</dd>
+            </dl>
+
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-success" @onclick='() => CompleteAsync("succeeded", RequestedAmount)'>Success</button>
+                <button class="btn btn-outline-success" @onclick='() => CompleteAsync("succeeded", AlternateAmount)'>Success with different amount</button>
+                <button class="btn btn-warning" @onclick='() => CompleteAsync("pending", null)'>Pending</button>
+                <button class="btn btn-danger" @onclick='() => CompleteAsync("failed", null)'>Failed</button>
+                <button class="btn btn-secondary" @onclick='() => CompleteAsync("cancelled", null)'>Cancelled</button>
+                <button class="btn btn-dark" @onclick='() => CompleteAsync("expired", null)'>Expired</button>
+                <button class="btn btn-link" @onclick="CancelAsync">Cancel and return</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid AttemptId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "amount")]
+    public decimal RequestedAmount { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Session { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Token { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? CancelUrl { get; set; }
+
+    private decimal AlternateAmount => RequestedAmount > 5m ? RequestedAmount - 5m : RequestedAmount + 5m;
+
+    private Task CompleteAsync(string outcome, decimal? amount)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["session"] = Session,
+            ["token"] = Token,
+            ["outcome"] = outcome,
+            ["paymentReference"] = $"payment-{Guid.NewGuid():N}"
+        };
+
+        if (amount.HasValue)
+            query["amount"] = amount.Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+        Nav.NavigateTo(QueryHelpers.AddQueryString(ReturnUrl ?? "/portal/wallet", query!), forceLoad: true);
+        return Task.CompletedTask;
+    }
+
+    private Task CancelAsync()
+    {
+        Nav.NavigateTo(CancelUrl ?? "/portal/wallet", forceLoad: true);
+        return Task.CompletedTask;
+    }
+}

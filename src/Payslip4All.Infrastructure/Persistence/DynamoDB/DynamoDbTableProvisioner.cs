@@ -336,6 +336,36 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                     new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
                 },
             },
+
+            // payslip4all_wallet_topup_attempts — PK: id (S), GSI: userId-createdAt-index on userId + createdAt
+            new CreateTableRequest
+            {
+                TableName = $"{_prefix}_wallet_topup_attempts",
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new List<KeySchemaElement>
+                {
+                    new() { AttributeName = "id", KeyType = KeyType.HASH },
+                },
+                AttributeDefinitions = new List<AttributeDefinition>
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "createdAt", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new List<GlobalSecondaryIndex>
+                {
+                    new()
+                    {
+                        IndexName = "userId-createdAt-index",
+                        KeySchema = new List<KeySchemaElement>
+                        {
+                            new() { AttributeName = "userId", KeyType = KeyType.HASH },
+                            new() { AttributeName = "createdAt", KeyType = KeyType.RANGE },
+                        },
+                        Projection = new Projection { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
         };
     }
 }

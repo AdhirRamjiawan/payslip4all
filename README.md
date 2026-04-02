@@ -166,11 +166,13 @@ Use this sequence after deploying wallet-credit changes or refreshing a local en
 0. Confirm the seeded default public payslip price is **R 15.00** unless an administrator has already changed it in the target environment.
 1. Sign out and open `/` to confirm the public wallet section shows only public pricing and wallet messaging.
 2. Sign in as a `SiteAdministrator`, open `/admin/wallet-pricing`, set a rand price such as `15.00`, and confirm the value updates immediately.
-3. Sign in as a `CompanyOwner`, open `/portal/wallet`, top up the wallet, and confirm the balance plus credit activity update.
-4. Generate a payslip with sufficient funds and confirm the charged amount, wallet debit, and wallet activity entry all match.
-5. Retry generation with insufficient funds and confirm no payslip is created and no wallet debit occurs.
-6. Overwrite an existing payslip for the same employee and period, then confirm the original payslip is only removed after the replacement and wallet charge both succeed.
-7. When `PERSISTENCE_PROVIDER=dynamodb`, repeat the wallet top-up and payslip generation checks against a live emulator or AWS-backed environment before release.
+3. Sign in as a `CompanyOwner`, open `/portal/wallet`, start a hosted card top-up, and confirm the browser redirects to `/hosted-payments/fake` without Payslip4All collecting any card details.
+4. Use the simulator success path, return to `/portal/wallet/top-ups/{attemptId}/return`, and confirm the wallet balance changes exactly once by the confirmed charged amount while wallet activity links back to the top-up attempt.
+5. Repeat the hosted flow with the simulator's pending, failed, cancelled, and expired outcomes and confirm the wallet balance remains unchanged while the result page and wallet history show the correct owner-scoped status.
+6. Generate a payslip with sufficient funds and confirm the charged amount, wallet debit, and wallet activity entry all match.
+7. Retry generation with insufficient funds and confirm no payslip is created and no wallet debit occurs.
+8. Overwrite an existing payslip for the same employee and period, then confirm the original payslip is only removed after the replacement and wallet charge both succeed.
+9. When `PERSISTENCE_PROVIDER=dynamodb`, repeat the hosted wallet top-up and payslip generation checks against a live emulator or AWS-backed environment before release.
 
 ---
 
@@ -183,7 +185,7 @@ Use this sequence after deploying wallet-credit changes or refreshing a local en
 | `ConnectionStrings:MySqlConnection` | `""` | MySQL connection string |
 | `DYNAMODB_REGION` | — | Required when `PERSISTENCE_PROVIDER=dynamodb` |
 | `DYNAMODB_ENDPOINT` | — | Optional endpoint override for DynamoDB Local or other emulators |
-| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the nine required DynamoDB tables |
+| `DYNAMODB_TABLE_PREFIX` | `"payslip4all"` | Optional prefix for the ten required DynamoDB tables |
 | `AWS_ACCESS_KEY_ID` | — | Optional explicit DynamoDB credential; must be paired with `AWS_SECRET_ACCESS_KEY` |
 | `AWS_SECRET_ACCESS_KEY` | — | Optional explicit DynamoDB credential; must be paired with `AWS_ACCESS_KEY_ID` |
 | `Auth:Cookie:ExpireDays` | `30` | Session lifetime in days |
@@ -197,15 +199,16 @@ When `PERSISTENCE_PROVIDER=dynamodb`:
 
 1. The application bypasses `PayslipDbContext` registration and EF Core migration startup.
 2. Startup provisions these tables automatically if they are missing:
-   - `{prefix}_users`
-   - `{prefix}_companies`
-   - `{prefix}_employees`
-   - `{prefix}_employee_loans`
-   - `{prefix}_payslips`
-   - `{prefix}_payslip_loan_deductions`
-   - `{prefix}_wallets`
-   - `{prefix}_wallet_activities`
-   - `{prefix}_payslip_pricing`
+    - `{prefix}_users`
+    - `{prefix}_companies`
+    - `{prefix}_employees`
+    - `{prefix}_employee_loans`
+    - `{prefix}_payslips`
+    - `{prefix}_payslip_loan_deductions`
+    - `{prefix}_wallets`
+    - `{prefix}_wallet_activities`
+    - `{prefix}_wallet_topup_attempts`
+    - `{prefix}_payslip_pricing`
 3. Explicit AWS credentials win when both are set.
 4. If only one explicit credential variable is set, startup fails fast.
 5. If `DYNAMODB_ENDPOINT` is set and explicit credentials are absent, the app uses dummy credentials for local emulators.

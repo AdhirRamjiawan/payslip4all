@@ -74,4 +74,56 @@ public class EmployeeDetailTests : TestContext
 
         Assert.Contains("spinner-border", cut.Markup);
     }
+
+    [Fact]
+    public async Task EmployeeDetail_ShowsError_WhenDeleteFails()
+    {
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("test@test.com");
+        authContext.SetRoles("CompanyOwner");
+        var userId = Guid.NewGuid();
+        authContext.SetClaims(new Claim(ClaimTypes.NameIdentifier, userId.ToString()));
+
+        var companyId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var mockEmployeeService = new Mock<IEmployeeService>();
+        mockEmployeeService.Setup(s => s.GetEmployeeByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(new EmployeeDto
+            {
+                Id = employeeId,
+                FirstName = "Jane",
+                LastName = "Smith",
+                IdNumber = "123",
+                EmployeeNumber = "E001",
+                Occupation = "Developer",
+                MonthlyGrossSalary = 25000,
+                CompanyId = companyId
+            });
+        mockEmployeeService.Setup(s => s.DeleteEmployeeAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("delete failed"));
+        Services.AddSingleton(mockEmployeeService.Object);
+
+        var mockLoanService = new Mock<ILoanService>();
+        mockLoanService.Setup(s => s.GetLoansForEmployeeAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(new List<LoanDto>());
+        Services.AddSingleton(mockLoanService.Object);
+
+        var mockPayslipService = new Mock<IPayslipService>();
+        mockPayslipService.Setup(s => s.GetPayslipsForEmployeeAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(new List<Payslip4All.Application.DTOs.Payslip.PayslipDto>());
+        Services.AddSingleton(mockPayslipService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Employees.EmployeeDetail>(
+            p => p.Add(c => c.CompanyId, companyId)
+                  .Add(c => c.EmployeeId, employeeId));
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        Assert.Contains("Jane", cut.Markup);
+
+        cut.Find("button.btn-outline-danger").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Delete Employee", cut.Markup));
+        cut.Find("button.btn-danger").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Failed to delete employee.", cut.Markup));
+    }
 }

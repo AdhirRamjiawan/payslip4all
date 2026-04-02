@@ -16,6 +16,7 @@ public class PayslipDbContext : DbContext, IUnitOfWork
     public DbSet<PayslipLoanDeduction> PayslipLoanDeductions => Set<PayslipLoanDeduction>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<WalletActivity> WalletActivities => Set<WalletActivity>();
+    public DbSet<WalletTopUpAttempt> WalletTopUpAttempts => Set<WalletTopUpAttempt>();
     public DbSet<PayslipPricingSetting> PayslipPricingSettings => Set<PayslipPricingSetting>();
     
     private IDbContextTransaction? _currentTransaction;
@@ -169,6 +170,29 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(a => a.BalanceAfterActivity).HasPrecision(18, 2).IsRequired();
             e.Property(a => a.OccurredAt).IsRequired();
             e.HasIndex(a => new { a.WalletId, a.OccurredAt });
+        });
+
+        modelBuilder.Entity<WalletTopUpAttempt>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.RequestedAmount).HasPrecision(18, 2).IsRequired();
+            e.Property(a => a.ConfirmedChargedAmount).HasPrecision(18, 2);
+            e.Property(a => a.CurrencyCode).HasMaxLength(3).IsRequired();
+            e.Property(a => a.Status).HasConversion<int>().IsRequired();
+            e.Property(a => a.ProviderKey).HasMaxLength(100).IsRequired();
+            e.Property(a => a.ProviderSessionReference).HasMaxLength(200);
+            e.Property(a => a.ProviderPaymentReference).HasMaxLength(200);
+            e.Property(a => a.ReturnCorrelationToken).HasMaxLength(200);
+            e.Property(a => a.FailureCode).HasMaxLength(100);
+            e.Property(a => a.FailureMessage).HasMaxLength(300);
+            e.Property(a => a.CreatedAt).IsRequired();
+            e.Property(a => a.UpdatedAt).IsRequired();
+            e.HasIndex(a => new { a.UserId, a.CreatedAt });
+            e.HasIndex(a => a.ProviderSessionReference);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PayslipPricingSetting>(e =>

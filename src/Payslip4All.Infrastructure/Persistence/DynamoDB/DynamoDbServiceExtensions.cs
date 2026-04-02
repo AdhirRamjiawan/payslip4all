@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
 namespace Payslip4All.Infrastructure.Persistence.DynamoDB;
@@ -27,6 +28,7 @@ public static class DynamoDbServiceExtensions
         services.AddScoped<IWalletRepository, DynamoDbWalletRepository>();
         services.AddScoped<IWalletActivityRepository, DynamoDbWalletActivityRepository>();
         services.AddScoped<IPayslipPricingRepository, DynamoDbPayslipPricingRepository>();
+        services.AddScoped<IWalletTopUpAttemptRepository, DynamoDbWalletTopUpAttemptRepository>();
 
         services.AddScoped<IUnitOfWork, DynamoDbUnitOfWork>();
 

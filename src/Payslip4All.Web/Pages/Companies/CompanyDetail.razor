@@ -110,11 +110,21 @@
 
     private async Task HandleDelete()
     {
-        var userId = await GetUserIdAsync();
-        if (!userId.HasValue) return;
-        var deleted = await CompanyService.DeleteCompanyAsync(CompanyId, userId.Value);
-        if (deleted) Nav.NavigateTo("/portal");
-        else _errorMessage = "Cannot delete company with employees.";
+        try
+        {
+            _errorMessage = null;
+
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) return;
+
+            var deleted = await CompanyService.DeleteCompanyAsync(CompanyId, userId.Value);
+            if (deleted) Nav.NavigateTo("/portal");
+            else _errorMessage = "Cannot delete company with employees.";
+        }
+        catch
+        {
+            _errorMessage = "Failed to delete company.";
+        }
     }
 
     private async Task<Guid?> GetUserIdAsync()

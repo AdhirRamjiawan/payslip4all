@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-01
+Auto-generated from all feature plans. Last updated: 2026-04-02
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -23,6 +23,15 @@ Auto-generated from all feature plans. Last updated: 2026-04-01
 - SQLite (default), MySQL, or AWS DynamoDB selected by `PERSISTENCE_PROVIDER`; DynamoDB uses six auto-provisioned tables with optional `DYNAMODB_TABLE_PREFIX` (006-dynamodb-persistence)
 - C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog (007-wallet-credits)
 - SQLite/MySQL via EF Core migrations by default, DynamoDB via `PERSISTENCE_PROVIDER=dynamodb` exception path (007-wallet-credits)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, Serilog, QuestPDF (008-wallet-card-topup)
+- SQLite/MySQL through EF Core migrations by default, DynamoDB through the existing `PERSISTENCE_PROVIDER=dynamodb` exception path, with new wallet top-up attempt persistence added to both paths (008-wallet-card-topup)
+- C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, xUnit, Moq, bUnit, Serilog, `Microsoft.AspNetCore.Mvc.Testing` (008-wallet-card-topup)
+- SQLite/MySQL through EF Core migrations by default; DynamoDB through the approved `PERSISTENCE_PROVIDER=dynamodb` exception path, with wallet top-up attempt and unmatched-return persistence added to both paths (008-wallet-card-topup)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, cookie authentication, Serilog, xUnit, Moq, bUni (008-wallet-card-topup)
+- SQLite/MySQL via EF Core for relational providers; AWS DynamoDB via repository implementations when `PERSISTENCE_PROVIDER=dynamodb` (008-wallet-card-topup)
+- SQLite/MySQL through EF Core migrations; DynamoDB through parallel Infrastructure repositories selected by `PERSISTENCE_PROVIDER=dynamodb` (008-wallet-card-topup)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUni (008-wallet-card-topup)
+- SQLite for local EF Core development, MySQL / SQL Server via EF Core configuration, DynamoDB via approved provider path (008-wallet-card-topup)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -43,9 +52,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
-- 007-wallet-credits: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog
-- 007-wallet-credits: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, QuestPDF, Serilog
-- 006-dynamodb-persistence: Added C# 12 / .NET 8 (LTS) + `AWSSDK.DynamoDBv2`, Entity Framework Core 8 (retained for SQLite/MySQL), Serilog, xUnit, Moq, `Microsoft.AspNetCore.Mvc.Testing`
+- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUni
+- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, Serilog
+- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, cookie authentication, Serilog, xUnit, Moq, bUni
 
 
 <!-- MANUAL ADDITIONS START -->
