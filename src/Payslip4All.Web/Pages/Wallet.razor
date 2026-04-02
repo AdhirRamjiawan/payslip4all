@@ -3,7 +3,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
+@using Payslip4All.Domain.Entities
+@using Payslip4All.Domain.Enums
 @inject IWalletService WalletService
+@inject IWalletTopUpService WalletTopUpService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
 
@@ -44,6 +47,7 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">Add Wallet Credits</h5>
+                <p class="text-muted">Card details are collected on an external hosted payment page. Payslip4All never stores or displays card details.</p>
                 <EditForm Model="_form" OnValidSubmit="HandleTopUpAsync">
                     <DataAnnotationsValidator />
                     <div class="row g-3 align-items-end">
@@ -60,6 +64,47 @@
                         </div>
                     </div>
                 </EditForm>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Top-up History</h5>
+
+                @if (_topUpAttempts.Count == 0)
+                {
+                    <p class="text-muted mb-0">No hosted card top-ups yet.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Requested</th>
+                                    <th>Confirmed</th>
+                                    <th>Abandon after</th>
+                                    <th>Result</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var attempt in _topUpAttempts)
+                                {
+                                    <tr>
+                                        <td>@attempt.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</td>
+                                        <td><span class="badge @GetBadgeClass(attempt.Status)">@attempt.Status</span></td>
+                                        <td>@attempt.RequestedAmount.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)</td>
+                                        <td>@(attempt.ConfirmedChargedAmount.HasValue ? $"R {attempt.ConfirmedChargedAmount.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}" : "-")</td>
+                                        <td>@(attempt.Status == WalletTopUpAttemptStatus.Pending ? attempt.AbandonAfterUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'") : "-")</td>
+                                        <td><a href="@($"/portal/wallet/top-ups/{attempt.Id}/return")">View</a></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
         </div>
 
@@ -106,6 +151,7 @@
 
 @code {
     private WalletDto? _wallet;
+    private IReadOnlyList<WalletTopUpAttemptDto> _topUpAttempts = Array.Empty<WalletTopUpAttemptDto>();
     private FormModel _form = new();
     private bool _isLoading = true;
     private bool _isSubmitting;
@@ -132,23 +178,27 @@
                 return;
             }
 
-            _wallet = await WalletService.TopUpAsync(new AddWalletCreditCommand
+            var startResult = await WalletTopUpService.StartHostedTopUpAsync(new StartWalletTopUpCommand
             {
                 UserId = userId.Value,
-                Amount = _form.Amount,
-                Description = "Wallet top-up"
+                RequestedAmount = _form.Amount,
+                ReturnUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet/top-ups/return",
+                CancelUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet"
             });
 
-            _successMessage = $"Wallet topped up successfully by R {_form.Amount:N2}.";
-            _form = new FormModel();
+            Nav.NavigateTo(startResult.RedirectUrl, forceLoad: true);
         }
         catch (ArgumentException ex)
         {
             _errorMessage = ex.Message;
         }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
         catch
         {
-            _errorMessage = "Wallet top-up could not be completed right now. Please try again.";
+            _errorMessage = "The hosted card top-up could not be started right now. Please try again.";
         }
         finally
         {
@@ -168,6 +218,7 @@
             }
 
             _wallet = await WalletService.GetWalletAsync(userId.Value);
+            _topUpAttempts = await WalletTopUpService.GetHistoryAsync(userId.Value);
         }
         catch
         {
@@ -185,6 +236,17 @@
         var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(str, out var id) ? id : null;
     }
+
+    private static string GetBadgeClass(WalletTopUpAttemptStatus status)
+        => status switch
+        {
+            WalletTopUpAttemptStatus.Completed => "bg-success",
+            WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
+            WalletTopUpAttemptStatus.Expired => "bg-dark",
+            WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
+            WalletTopUpAttemptStatus.Unverified => "bg-info text-dark",
+            _ => "bg-primary"
+        };
 
     public class FormModel
     {

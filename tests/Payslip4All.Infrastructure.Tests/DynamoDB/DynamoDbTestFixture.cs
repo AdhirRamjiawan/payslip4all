@@ -30,6 +30,10 @@ public class DynamoDbTestFixture : IAsyncLifetime
     public string PayslipLoanDeductionsTable => $"{Prefix}_payslip_loan_deductions";
     public string WalletsTable => $"{Prefix}_wallets";
     public string WalletActivitiesTable => $"{Prefix}_wallet_activities";
+    public string WalletTopUpAttemptsTable => $"{Prefix}_wallet_topup_attempts";
+    public string PaymentReturnEvidencesTable => $"{Prefix}_payment_return_evidences";
+    public string OutcomeNormalizationDecisionsTable => $"{Prefix}_outcome_normalization_decisions";
+    public string UnmatchedPaymentReturnRecordsTable => $"{Prefix}_unmatched_payment_return_records";
     public string PayslipPricingTable => $"{Prefix}_payslip_pricing";
 
     public async Task InitializeAsync()
@@ -90,7 +94,7 @@ public class DynamoDbTestFixture : IAsyncLifetime
         {
             UsersTable, CompaniesTable, EmployeesTable,
             EmployeeLoansTable, PayslipsTable, PayslipLoanDeductionsTable,
-            WalletsTable, WalletActivitiesTable, PayslipPricingTable,
+            WalletsTable, WalletActivitiesTable, WalletTopUpAttemptsTable, PaymentReturnEvidencesTable, OutcomeNormalizationDecisionsTable, UnmatchedPaymentReturnRecordsTable, PayslipPricingTable,
         };
 
         foreach (var name in tableNames)
@@ -288,6 +292,61 @@ public class DynamoDbTestFixture : IAsyncLifetime
                         },
                         Projection = new() { ProjectionType = ProjectionType.ALL },
                     },
+                },
+            },
+            new()
+            {
+                TableName = WalletTopUpAttemptsTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "userId", AttributeType = ScalarAttributeType.S },
+                    new() { AttributeName = "createdAt", AttributeType = ScalarAttributeType.S },
+                },
+                GlobalSecondaryIndexes = new()
+                {
+                    new()
+                    {
+                        IndexName = "userId-createdAt-index",
+                        KeySchema = new()
+                        {
+                            new() { AttributeName = "userId", KeyType = KeyType.HASH },
+                            new() { AttributeName = "createdAt", KeyType = KeyType.RANGE },
+                        },
+                        Projection = new() { ProjectionType = ProjectionType.ALL },
+                    },
+                },
+            },
+            new()
+            {
+                TableName = PaymentReturnEvidencesTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
+            new()
+            {
+                TableName = OutcomeNormalizationDecisionsTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
+                },
+            },
+            new()
+            {
+                TableName = UnmatchedPaymentReturnRecordsTable,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema = new() { new() { AttributeName = "id", KeyType = KeyType.HASH } },
+                AttributeDefinitions = new()
+                {
+                    new() { AttributeName = "id", AttributeType = ScalarAttributeType.S },
                 },
             },
             new()

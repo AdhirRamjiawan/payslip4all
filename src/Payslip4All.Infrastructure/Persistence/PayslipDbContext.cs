@@ -16,6 +16,10 @@ public class PayslipDbContext : DbContext, IUnitOfWork
     public DbSet<PayslipLoanDeduction> PayslipLoanDeductions => Set<PayslipLoanDeduction>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<WalletActivity> WalletActivities => Set<WalletActivity>();
+    public DbSet<WalletTopUpAttempt> WalletTopUpAttempts => Set<WalletTopUpAttempt>();
+    public DbSet<PaymentReturnEvidence> PaymentReturnEvidences => Set<PaymentReturnEvidence>();
+    public DbSet<OutcomeNormalizationDecision> OutcomeNormalizationDecisions => Set<OutcomeNormalizationDecision>();
+    public DbSet<UnmatchedPaymentReturnRecord> UnmatchedPaymentReturnRecords => Set<UnmatchedPaymentReturnRecord>();
     public DbSet<PayslipPricingSetting> PayslipPricingSettings => Set<PayslipPricingSetting>();
     
     private IDbContextTransaction? _currentTransaction;
@@ -169,6 +173,74 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(a => a.BalanceAfterActivity).HasPrecision(18, 2).IsRequired();
             e.Property(a => a.OccurredAt).IsRequired();
             e.HasIndex(a => new { a.WalletId, a.OccurredAt });
+        });
+
+        modelBuilder.Entity<WalletTopUpAttempt>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.RequestedAmount).HasPrecision(18, 2).IsRequired();
+            e.Property(a => a.ConfirmedChargedAmount).HasPrecision(18, 2);
+            e.Property(a => a.CurrencyCode).HasMaxLength(3).IsRequired();
+            e.Property(a => a.Status).HasConversion<int>().IsRequired();
+            e.Property(a => a.ProviderKey).HasMaxLength(100).IsRequired();
+            e.Property(a => a.ProviderSessionReference).HasMaxLength(200);
+            e.Property(a => a.ProviderPaymentReference).HasMaxLength(200);
+            e.Property(a => a.ReturnCorrelationToken).HasMaxLength(200);
+            e.Property(a => a.FailureCode).HasMaxLength(100);
+            e.Property(a => a.FailureMessage).HasMaxLength(300);
+            e.Property(a => a.OutcomeReasonCode).HasMaxLength(100);
+            e.Property(a => a.OutcomeMessage).HasMaxLength(300);
+            e.Property(a => a.CreatedAt).IsRequired();
+            e.Property(a => a.UpdatedAt).IsRequired();
+            e.Property(a => a.AbandonAfterUtc).IsRequired();
+            e.HasIndex(a => new { a.UserId, a.CreatedAt });
+            e.HasIndex(a => a.ProviderSessionReference);
+            e.HasIndex(a => a.ReturnCorrelationToken);
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PaymentReturnEvidence>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ProviderKey).HasMaxLength(100).IsRequired();
+            e.Property(x => x.SourceChannel).HasMaxLength(50).IsRequired();
+            e.Property(x => x.ProviderSessionReference).HasMaxLength(200);
+            e.Property(x => x.ProviderPaymentReference).HasMaxLength(200);
+            e.Property(x => x.ReturnCorrelationToken).HasMaxLength(200);
+            e.Property(x => x.CorrelationDisposition).HasConversion<int>().IsRequired();
+            e.Property(x => x.ClaimedOutcome).HasConversion<int?>();
+            e.Property(x => x.TrustLevel).HasConversion<int>().IsRequired();
+            e.Property(x => x.ConfirmedChargedAmount).HasPrecision(18, 2);
+            e.Property(x => x.SafePayloadSnapshot).HasMaxLength(2000);
+            e.Property(x => x.ValidationMessage).HasMaxLength(500);
+            e.HasIndex(x => x.MatchedAttemptId);
+        });
+
+        modelBuilder.Entity<OutcomeNormalizationDecision>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.DecisionType).HasMaxLength(100).IsRequired();
+            e.Property(x => x.AppliedPrecedence).HasMaxLength(100).IsRequired();
+            e.Property(x => x.NormalizedOutcome).HasMaxLength(100).IsRequired();
+            e.Property(x => x.AuthoritativeOutcomeBefore).HasMaxLength(100);
+            e.Property(x => x.AuthoritativeOutcomeAfter).HasMaxLength(100);
+            e.Property(x => x.DecisionReasonCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.DecisionSummary).HasMaxLength(500).IsRequired();
+            e.Property(x => x.WalletEffect).HasMaxLength(100).IsRequired();
+            e.HasIndex(x => x.AttemptId);
+        });
+
+        modelBuilder.Entity<UnmatchedPaymentReturnRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ProviderKey).HasMaxLength(100).IsRequired();
+            e.Property(x => x.CorrelationDisposition).HasMaxLength(100).IsRequired();
+            e.Property(x => x.GenericResultCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.DisplayMessage).HasMaxLength(500).IsRequired();
+            e.Property(x => x.SafePayloadSnapshot).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<PayslipPricingSetting>(e =>

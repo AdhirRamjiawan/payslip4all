@@ -27,6 +27,7 @@ bld/
 *.nupkg
 *.snupkg
 .nuget/
+packages/
 
 # Node
 node_modules/
@@ -70,6 +71,7 @@ Thumbs.db
 # Misc
 dist/
 coverage/
+*.log
 
 TestResults/
 

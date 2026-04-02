@@ -190,6 +190,13 @@ public class WalletService : IWalletService
 
     private static WalletActivityDto MapActivity(WalletActivity activity)
     {
+        var description = activity.Description;
+        if (string.IsNullOrWhiteSpace(description) &&
+            string.Equals(activity.ReferenceType, WalletActivity.WalletTopUpReferenceType, StringComparison.Ordinal))
+        {
+            description = WalletActivity.HostedCardTopUpDescription;
+        }
+
         return new WalletActivityDto
         {
             Id = activity.Id,
@@ -198,7 +205,7 @@ public class WalletService : IWalletService
             Amount = activity.Amount,
             ReferenceType = activity.ReferenceType,
             ReferenceId = activity.ReferenceId,
-            Description = activity.Description,
+            Description = description,
             BalanceAfterActivity = activity.BalanceAfterActivity,
             OccurredAt = activity.OccurredAt,
         };

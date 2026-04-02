@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
 using Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
@@ -131,6 +132,14 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
     }
 
     [Fact]
+    public void IWalletTopUpService_IsRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetService<IWalletTopUpService>();
+        Assert.NotNull(svc);
+    }
+
+    [Fact]
     public void IWalletRepository_IsRegistered_AndResolvable()
     {
         using var scope = _factory.Services.CreateScope();
@@ -144,6 +153,27 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
         using var scope = _factory.Services.CreateScope();
         var repo = scope.ServiceProvider.GetService<IPayslipPricingRepository>();
         Assert.NotNull(repo);
+    }
+
+    [Fact]
+    public void WalletTopUpAuditServices_AreRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetService<ITimeProvider>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpOutcomeNormalizer>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpAbandonmentService>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IPaymentReturnEvidenceRepository>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IOutcomeNormalizationDecisionRepository>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IUnmatchedPaymentReturnRecordRepository>());
+    }
+
+    [Fact]
+    public void HostedPaymentServices_AreRegistered_AndResolvable()
+    {
+        using var scope = _factory.Services.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetService<IHostedPaymentProvider>());
+        Assert.NotNull(scope.ServiceProvider.GetService<HostedPaymentProviderFactory>());
+        Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpAttemptRepository>());
     }
 
     [Fact]

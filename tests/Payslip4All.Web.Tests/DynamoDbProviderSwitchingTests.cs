@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
@@ -70,6 +71,8 @@ public class DynamoDbProviderSwitchingTests
         Assert.NotNull(repo);
         Assert.IsNotType<DynamoDbUserRepository>(repo);
         Assert.IsNotType<DynamoDbWalletRepository>(scope.ServiceProvider.GetRequiredService<IWalletRepository>());
+        Assert.IsNotType<DynamoDbWalletTopUpAttemptRepository>(scope.ServiceProvider.GetRequiredService<IWalletTopUpAttemptRepository>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IHostedPaymentProvider>());
     }
 
     [Fact]
@@ -108,6 +111,13 @@ public class DynamoDbProviderSwitchingTests
             Assert.IsType<DynamoDbUserRepository>(repo);
             Assert.IsType<DynamoDbWalletRepository>(scope.ServiceProvider.GetRequiredService<IWalletRepository>());
             Assert.IsType<DynamoDbPayslipPricingRepository>(scope.ServiceProvider.GetRequiredService<IPayslipPricingRepository>());
+            Assert.IsType<DynamoDbWalletTopUpAttemptRepository>(scope.ServiceProvider.GetRequiredService<IWalletTopUpAttemptRepository>());
+            Assert.IsType<DynamoDbPaymentReturnEvidenceRepository>(scope.ServiceProvider.GetRequiredService<IPaymentReturnEvidenceRepository>());
+            Assert.IsType<DynamoDbOutcomeNormalizationDecisionRepository>(scope.ServiceProvider.GetRequiredService<IOutcomeNormalizationDecisionRepository>());
+            Assert.IsType<DynamoDbUnmatchedPaymentReturnRecordRepository>(scope.ServiceProvider.GetRequiredService<IUnmatchedPaymentReturnRecordRepository>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<ITimeProvider>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<IHostedPaymentProvider>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<HostedPaymentProviderFactory>());
 
             var client = scope.ServiceProvider.GetService<IAmazonDynamoDB>();
             Assert.NotNull(client);

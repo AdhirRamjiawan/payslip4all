@@ -6,11 +6,13 @@ using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Application.Services;
 using Payslip4All.Infrastructure.Auth;
+using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
 using Payslip4All.Web.Auth;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
+using Payslip4All.Infrastructure.Time;
 using Payslip4All.Web.Extensions;
 using QuestPDF.Infrastructure;
 using Serilog;
@@ -123,9 +125,14 @@ if (provider != "dynamodb")
     builder.Services.AddScoped<IWalletRepository, WalletRepository>();
     builder.Services.AddScoped<IWalletActivityRepository, WalletActivityRepository>();
     builder.Services.AddScoped<IPayslipPricingRepository, PayslipPricingRepository>();
+    builder.Services.AddScoped<IWalletTopUpAttemptRepository, WalletTopUpAttemptRepository>();
+    builder.Services.AddScoped<IPaymentReturnEvidenceRepository, PaymentReturnEvidenceRepository>();
+    builder.Services.AddScoped<IOutcomeNormalizationDecisionRepository, OutcomeNormalizationDecisionRepository>();
+    builder.Services.AddScoped<IUnmatchedPaymentReturnRecordRepository, UnmatchedPaymentReturnRecordRepository>();
 }
 
 // Infrastructure services
+builder.Services.AddSingleton<ITimeProvider, SystemTimeProvider>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IPdfGenerationService, PdfGenerationService>();
 
@@ -137,6 +144,17 @@ builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPayslipService, PayslipGenerationService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<IPayslipPricingService, PayslipPricingService>();
+builder.Services.AddScoped<IWalletTopUpOutcomeNormalizer, WalletTopUpOutcomeNormalizer>();
+builder.Services.AddScoped<IWalletTopUpAbandonmentService, WalletTopUpAbandonmentService>();
+builder.Services.AddScoped<IWalletTopUpService, WalletTopUpService>();
+
+// Hosted payment providers — fake/simulator for development; supplement in future gateway features.
+var fakePaymentOptions = new FakeHostedPaymentOptions();
+builder.Configuration.GetSection(FakeHostedPaymentOptions.SectionKey).Bind(fakePaymentOptions);
+builder.Services.AddSingleton(fakePaymentOptions);
+builder.Services.AddSingleton<IHostedPaymentProvider, FakeHostedPaymentProvider>();
+builder.Services.AddSingleton<HostedPaymentProviderFactory>();
+builder.Services.AddSingleton<IHostedPaymentProviderFactory>(sp => sp.GetRequiredService<HostedPaymentProviderFactory>());
 
 // IUnitOfWork: registered by AddDynamoDbPersistence() for dynamodb; for sqlite/mysql, use PayslipDbContext
 if (provider != "dynamodb")

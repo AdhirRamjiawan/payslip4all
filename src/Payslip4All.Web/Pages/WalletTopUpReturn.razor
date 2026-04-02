@@ -1,0 +1,100 @@
+@page "/portal/wallet/top-ups/{AttemptId:guid}/return"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Wallet
+@using Payslip4All.Application.Interfaces
+@using Payslip4All.Domain.Enums
+@inject IWalletTopUpService WalletTopUpService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<PageTitle>Wallet Top-Up Result - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Wallet Top-Up Result</h2>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && _result != null)
+    {
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title"><span class="badge @GetBadgeClass(_result.Status)">@_result.Status</span></h5>
+                <p class="mb-3">@_result.DisplayMessage</p>
+
+                <dl class="row mb-3">
+                    <dt class="col-sm-4">Requested amount</dt>
+                    <dd class="col-sm-8">R @_result.RequestedAmount.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)</dd>
+
+                    @if (_result.ConfirmedChargedAmount.HasValue)
+                    {
+                        <dt class="col-sm-4">Confirmed charged amount</dt>
+                        <dd class="col-sm-8">R @_result.ConfirmedChargedAmount.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)</dd>
+                    }
+
+                    <dt class="col-sm-4">Wallet balance</dt>
+                    <dd class="col-sm-8">R @_result.WalletBalance.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)</dd>
+                </dl>
+
+                <a class="btn btn-primary" href="/portal/wallet">Back to Wallet</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid AttemptId { get; set; }
+
+    private FinalizedWalletTopUpResultDto? _result;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue)
+            {
+                Nav.NavigateTo("/Portal/Auth/Login");
+                return;
+            }
+
+            _result = await WalletTopUpService.GetAttemptResultAsync(AttemptId, userId.Value);
+            if (_result == null)
+                _errorMessage = "Top-up attempt could not be found.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch
+        {
+            _errorMessage = "The wallet top-up result could not be loaded right now.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<Guid?> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var str = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(str, out var id) ? id : null;
+    }
+
+    private static string GetBadgeClass(WalletTopUpAttemptStatus status)
+        => status switch
+        {
+            WalletTopUpAttemptStatus.Completed => "bg-success",
+            WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
+            WalletTopUpAttemptStatus.Expired => "bg-dark",
+            WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
+            WalletTopUpAttemptStatus.Unverified => "bg-info text-dark",
+            _ => "bg-primary"
+        };
+}

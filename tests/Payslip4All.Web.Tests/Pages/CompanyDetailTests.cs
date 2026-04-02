@@ -60,4 +60,39 @@ public class CompanyDetailTests : TestContext
 
         Assert.Contains("spinner-border", cut.Markup);
     }
+
+    [Fact]
+    public async Task CompanyDetail_ShowsError_WhenDeleteFails()
+    {
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("test@test.com");
+        authContext.SetRoles("CompanyOwner");
+        var userId = Guid.NewGuid();
+        authContext.SetClaims(new Claim(ClaimTypes.NameIdentifier, userId.ToString()));
+
+        var companyId = Guid.NewGuid();
+        var mockCompanyService = new Mock<ICompanyService>();
+        mockCompanyService.Setup(s => s.GetCompanyByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(new CompanyDto { Id = companyId, Name = "Test Company", UserId = userId });
+        mockCompanyService.Setup(s => s.DeleteCompanyAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("delete failed"));
+        Services.AddSingleton(mockCompanyService.Object);
+
+        var mockEmployeeService = new Mock<IEmployeeService>();
+        mockEmployeeService.Setup(s => s.GetEmployeesForCompanyAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(new List<EmployeeDto>());
+        Services.AddSingleton(mockEmployeeService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Companies.CompanyDetail>(
+            p => p.Add(c => c.CompanyId, companyId));
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        Assert.Contains("Test Company", cut.Markup);
+
+        cut.Find("button.btn-outline-danger").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Delete Company", cut.Markup));
+        cut.Find("button.btn-danger").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Failed to delete company.", cut.Markup));
+    }
 }

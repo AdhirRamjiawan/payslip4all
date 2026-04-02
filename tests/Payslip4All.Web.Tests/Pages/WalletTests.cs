@@ -16,13 +16,16 @@ public class WalletTests : TestContext
     {
         var userId = SetAuthorizedOwner();
         var walletService = new Mock<IWalletService>();
+        var walletTopUpService = new Mock<IWalletTopUpService>();
         walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
         {
             UserId = userId,
             CurrentBalance = 150m,
             CurrentPayslipPrice = 5m
         });
+        walletTopUpService.Setup(s => s.GetHistoryAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<WalletTopUpAttemptDto>());
         Services.AddSingleton(walletService.Object);
+        Services.AddSingleton(walletTopUpService.Object);
 
         var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
         cut.WaitForAssertion(() =>
@@ -33,93 +36,79 @@ public class WalletTests : TestContext
     }
 
     [Fact]
-    public void Wallet_SubmittingTopUp_ShowsUpdatedBalance()
+    public void Wallet_SubmittingTopUp_RedirectsToHostedPage_UsingGenericReturnRoute()
     {
         var userId = SetAuthorizedOwner();
         var walletService = new Mock<IWalletService>();
+        var walletTopUpService = new Mock<IWalletTopUpService>();
         walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
         {
             UserId = userId,
             CurrentBalance = 10m,
             CurrentPayslipPrice = 5m
         });
-        walletService.Setup(s => s.TopUpAsync(It.IsAny<AddWalletCreditCommand>())).ReturnsAsync(new WalletDto
+        walletTopUpService.Setup(s => s.GetHistoryAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<WalletTopUpAttemptDto>());
+        walletTopUpService.Setup(s => s.StartHostedTopUpAsync(It.IsAny<StartWalletTopUpCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(new StartWalletTopUpResultDto
         {
-            UserId = userId,
-            CurrentBalance = 35m,
-            CurrentPayslipPrice = 5m
+            WalletTopUpAttemptId = Guid.NewGuid(),
+            RedirectUrl = "http://localhost/hosted-payments/fake",
+            Status = WalletTopUpAttemptStatus.Pending
         });
         Services.AddSingleton(walletService.Object);
+        Services.AddSingleton(walletTopUpService.Object);
 
         var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
         cut.WaitForAssertion(() => Assert.Contains("Add Wallet Credits", cut.Markup));
         cut.Find("input").Change("25");
         cut.Find("form").Submit();
 
-        Assert.Contains("Wallet topped up successfully", cut.Markup);
-        walletService.Verify(s => s.TopUpAsync(It.Is<AddWalletCreditCommand>(c => c.Amount == 25m && c.UserId == userId)), Times.Once);
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.Equal("http://localhost/hosted-payments/fake", nav.Uri);
+        walletTopUpService.Verify(s => s.StartHostedTopUpAsync(It.Is<StartWalletTopUpCommand>(c =>
+            c.RequestedAmount == 25m && c.UserId == userId && c.ReturnUrl.EndsWith("/portal/wallet/top-ups/return")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public void Wallet_ShowsActivityList()
+    public void Wallet_DoesNotRenderCardFields_AndShowsExplicitStatuses()
     {
         var userId = SetAuthorizedOwner();
         var walletService = new Mock<IWalletService>();
+        var walletTopUpService = new Mock<IWalletTopUpService>();
         walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
         {
             UserId = userId,
             CurrentBalance = 20m,
-            CurrentPayslipPrice = 5m,
-            Activities = new List<WalletActivityDto>
+            CurrentPayslipPrice = 5m
+        });
+        walletTopUpService.Setup(s => s.GetHistoryAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+        {
+            new WalletTopUpAttemptDto
             {
-                new()
-                {
-                    ActivityType = WalletActivityType.Credit,
-                    Amount = 20m,
-                    BalanceAfterActivity = 20m,
-                    Description = "Top up",
-                    OccurredAt = DateTimeOffset.UtcNow
-                }
+                Id = Guid.NewGuid(),
+                Status = WalletTopUpAttemptStatus.Abandoned,
+                RequestedAmount = 100m,
+                CreatedAt = DateTimeOffset.UtcNow,
+                AbandonAfterUtc = DateTimeOffset.UtcNow.AddHours(1)
+            },
+            new WalletTopUpAttemptDto
+            {
+                Id = Guid.NewGuid(),
+                Status = WalletTopUpAttemptStatus.Unverified,
+                RequestedAmount = 50m,
+                CreatedAt = DateTimeOffset.UtcNow,
+                AbandonAfterUtc = DateTimeOffset.UtcNow.AddHours(1)
             }
         });
         Services.AddSingleton(walletService.Object);
+        Services.AddSingleton(walletTopUpService.Object);
 
         var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Top up", cut.Markup);
-            Assert.Contains("Credit", cut.Markup);
-        });
-    }
-
-    [Fact]
-    public void Wallet_DisplaysActivityTimestampsInUtc()
-    {
-        var userId = SetAuthorizedOwner();
-        var walletService = new Mock<IWalletService>();
-        walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
-        {
-            UserId = userId,
-            CurrentBalance = 20m,
-            CurrentPayslipPrice = 5m,
-            Activities = new List<WalletActivityDto>
-            {
-                new()
-                {
-                    ActivityType = WalletActivityType.Credit,
-                    Amount = 20m,
-                    BalanceAfterActivity = 20m,
-                    Description = "Top up",
-                    OccurredAt = new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.FromHours(2))
-                }
-            }
-        });
-        Services.AddSingleton(walletService.Object);
-
-        var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains("2026-04-01 10:00 UTC", cut.Markup);
+            Assert.Contains("Abandoned", cut.Markup);
+            Assert.Contains("Unverified", cut.Markup);
+            Assert.DoesNotContain("card number", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("cvv", cut.Markup, StringComparison.OrdinalIgnoreCase);
         });
     }
 

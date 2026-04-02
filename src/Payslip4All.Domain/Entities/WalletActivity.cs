@@ -4,6 +4,9 @@ namespace Payslip4All.Domain.Entities;
 
 public class WalletActivity
 {
+    public const string WalletTopUpReferenceType = "WalletTopUpAttempt";
+    public const string HostedCardTopUpDescription = "Hosted card wallet top-up";
+
     public Guid Id { get; private set; }
     public Guid WalletId { get; set; }
     public WalletActivityType ActivityType { get; set; }

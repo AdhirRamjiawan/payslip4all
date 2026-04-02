@@ -149,11 +149,21 @@
 
     private async Task HandleDelete()
     {
-        var userId = await GetUserIdAsync();
-        if (!userId.HasValue) return;
-        var deleted = await EmployeeService.DeleteEmployeeAsync(EmployeeId, userId.Value);
-        if (deleted) Nav.NavigateTo($"/portal/companies/{CompanyId}");
-        else _errorMessage = "Cannot delete employee with payslips.";
+        try
+        {
+            _errorMessage = null;
+
+            var userId = await GetUserIdAsync();
+            if (!userId.HasValue) return;
+
+            var deleted = await EmployeeService.DeleteEmployeeAsync(EmployeeId, userId.Value);
+            if (deleted) Nav.NavigateTo($"/portal/companies/{CompanyId}");
+            else _errorMessage = "Cannot delete employee with payslips.";
+        }
+        catch
+        {
+            _errorMessage = "Failed to delete employee.";
+        }
     }
 
     private async Task<Guid?> GetUserIdAsync()
