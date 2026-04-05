@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Infrastructure.HostedServices;
 using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence.DynamoDB.Repositories;
 
@@ -35,7 +36,9 @@ public static class DynamoDbServiceExtensions
 
         services.AddScoped<IUnitOfWork, DynamoDbUnitOfWork>();
 
-        services.AddHostedService<DynamoDbTableProvisioner>();
+        services.AddSingleton<DynamoDbTableProvisioner>();
+        services.AddSingleton<DynamoDbPaymentBootstrapHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<DynamoDbPaymentBootstrapHostedService>());
 
         return services;
     }

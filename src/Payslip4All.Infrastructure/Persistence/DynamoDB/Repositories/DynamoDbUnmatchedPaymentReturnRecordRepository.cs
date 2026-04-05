@@ -38,6 +38,31 @@ public sealed class DynamoDbUnmatchedPaymentReturnRecordRepository : IUnmatchedP
         return response.IsItemSet ? Map(response.Item) : null;
     }
 
+    public async Task<IReadOnlyList<UnmatchedPaymentReturnRecord>> GetForAdminReviewAsync(Guid? id, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, CancellationToken cancellationToken = default)
+    {
+        if (id.HasValue)
+        {
+            var record = await GetByIdAsync(id.Value, cancellationToken);
+            if (record == null)
+                return Array.Empty<UnmatchedPaymentReturnRecord>();
+
+            return MatchesFilters(record, fromUtc, toUtc)
+                ? new[] { record }
+                : Array.Empty<UnmatchedPaymentReturnRecord>();
+        }
+
+        var response = await _dynamoDb.ScanAsync(new ScanRequest
+        {
+            TableName = _tableName
+        }, cancellationToken);
+
+        return response.Items
+            .Select(Map)
+            .Where(r => MatchesFilters(r, fromUtc, toUtc))
+            .OrderByDescending(r => r.ReceivedAt)
+            .ToList();
+    }
+
     private static Dictionary<string, AttributeValue> ToItem(UnmatchedPaymentReturnRecord record)
     {
         var item = new Dictionary<string, AttributeValue>
@@ -75,4 +100,8 @@ public sealed class DynamoDbUnmatchedPaymentReturnRecordRepository : IUnmatchedP
         typeof(UnmatchedPaymentReturnRecord).GetProperty(nameof(UnmatchedPaymentReturnRecord.CreatedAt))!.SetValue(record, DateTimeOffset.Parse(item["createdAt"].S, CultureInfo.InvariantCulture));
         return record;
     }
+
+    private static bool MatchesFilters(UnmatchedPaymentReturnRecord record, DateTimeOffset? fromUtc, DateTimeOffset? toUtc)
+        => (!fromUtc.HasValue || record.ReceivedAt >= fromUtc.Value)
+            && (!toUtc.HasValue || record.ReceivedAt <= toUtc.Value);
 }

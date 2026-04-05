@@ -63,6 +63,9 @@ public sealed class DynamoDbPaymentReturnEvidenceRepository : IPaymentReturnEvid
             ["sourceChannel"] = new() { S = evidence.SourceChannel },
             ["correlationDisposition"] = new() { N = ((int)evidence.CorrelationDisposition).ToString(CultureInfo.InvariantCulture) },
             ["trustLevel"] = new() { N = ((int)evidence.TrustLevel).ToString(CultureInfo.InvariantCulture) },
+            ["signatureVerified"] = new() { BOOL = evidence.SignatureVerified },
+            ["sourceVerified"] = new() { BOOL = evidence.SourceVerified },
+            ["serverConfirmed"] = new() { BOOL = evidence.ServerConfirmed },
             ["receivedAt"] = new() { S = evidence.ReceivedAt.ToString("O") },
             ["validatedAt"] = new() { S = evidence.ValidatedAt.ToString("O") },
             ["isAtOrAfterAbandonmentThreshold"] = new() { BOOL = evidence.IsAtOrAfterAbandonmentThreshold }
@@ -70,10 +73,15 @@ public sealed class DynamoDbPaymentReturnEvidenceRepository : IPaymentReturnEvid
 
         SetOptional(item, "providerSessionReference", evidence.ProviderSessionReference);
         SetOptional(item, "providerPaymentReference", evidence.ProviderPaymentReference);
+        SetOptional(item, "merchantPaymentReference", evidence.MerchantPaymentReference);
         SetOptional(item, "returnCorrelationToken", evidence.ReturnCorrelationToken);
+        SetOptional(item, "ownerUserId", evidence.OwnerUserId?.ToString());
+        SetOptional(item, "paymentMethodCode", evidence.PaymentMethodCode);
+        SetOptional(item, "environmentMode", evidence.EnvironmentMode);
         SetOptional(item, "matchedAttemptId", evidence.MatchedAttemptId?.ToString());
         SetOptional(item, "claimedOutcome", evidence.ClaimedOutcome.HasValue ? ((int)evidence.ClaimedOutcome.Value).ToString(CultureInfo.InvariantCulture) : null, true);
         SetOptional(item, "confirmedChargedAmount", evidence.ConfirmedChargedAmount?.ToString("G", CultureInfo.InvariantCulture));
+        SetOptional(item, "confirmedCurrencyCode", evidence.ConfirmedCurrencyCode);
         SetOptional(item, "evidenceOccurredAt", evidence.EvidenceOccurredAt?.ToString("O"));
         SetOptional(item, "safePayloadSnapshot", evidence.SafePayloadSnapshot);
         SetOptional(item, "validationMessage", evidence.ValidationMessage);
@@ -88,6 +96,9 @@ public sealed class DynamoDbPaymentReturnEvidenceRepository : IPaymentReturnEvid
             SourceChannel = item["sourceChannel"].S,
             CorrelationDisposition = (PaymentReturnCorrelationDisposition)int.Parse(item["correlationDisposition"].N, CultureInfo.InvariantCulture),
             TrustLevel = (PaymentReturnTrustLevel)int.Parse(item["trustLevel"].N, CultureInfo.InvariantCulture),
+            SignatureVerified = item["signatureVerified"].BOOL,
+            SourceVerified = item["sourceVerified"].BOOL,
+            ServerConfirmed = item["serverConfirmed"].BOOL,
             ValidatedAt = DateTimeOffset.Parse(item["validatedAt"].S, CultureInfo.InvariantCulture),
             IsAtOrAfterAbandonmentThreshold = item["isAtOrAfterAbandonmentThreshold"].BOOL
         };
@@ -96,10 +107,15 @@ public sealed class DynamoDbPaymentReturnEvidenceRepository : IPaymentReturnEvid
         typeof(PaymentReturnEvidence).GetProperty(nameof(PaymentReturnEvidence.ReceivedAt))!.SetValue(evidence, DateTimeOffset.Parse(item["receivedAt"].S, CultureInfo.InvariantCulture));
         if (item.TryGetValue("providerSessionReference", out var providerSessionReference)) evidence.ProviderSessionReference = providerSessionReference.S;
         if (item.TryGetValue("providerPaymentReference", out var providerPaymentReference)) evidence.ProviderPaymentReference = providerPaymentReference.S;
+        if (item.TryGetValue("merchantPaymentReference", out var merchantPaymentReference)) evidence.MerchantPaymentReference = merchantPaymentReference.S;
         if (item.TryGetValue("returnCorrelationToken", out var token)) evidence.ReturnCorrelationToken = token.S;
+        if (item.TryGetValue("ownerUserId", out var ownerUserId) && !string.IsNullOrWhiteSpace(ownerUserId.S)) evidence.OwnerUserId = Guid.Parse(ownerUserId.S);
+        if (item.TryGetValue("paymentMethodCode", out var paymentMethodCode)) evidence.PaymentMethodCode = paymentMethodCode.S;
+        if (item.TryGetValue("environmentMode", out var environmentMode)) evidence.EnvironmentMode = environmentMode.S;
         if (item.TryGetValue("matchedAttemptId", out var matchedAttemptId)) evidence.MatchedAttemptId = Guid.Parse(matchedAttemptId.S);
         if (item.TryGetValue("claimedOutcome", out var claimedOutcome)) evidence.ClaimedOutcome = (PaymentReturnClaimedOutcome)int.Parse(claimedOutcome.N, CultureInfo.InvariantCulture);
         if (item.TryGetValue("confirmedChargedAmount", out var amount)) evidence.ConfirmedChargedAmount = decimal.Parse(amount.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("confirmedCurrencyCode", out var confirmedCurrencyCode)) evidence.ConfirmedCurrencyCode = confirmedCurrencyCode.S;
         if (item.TryGetValue("evidenceOccurredAt", out var evidenceOccurredAt)) evidence.EvidenceOccurredAt = DateTimeOffset.Parse(evidenceOccurredAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("safePayloadSnapshot", out var payload)) evidence.SafePayloadSnapshot = payload.S;
         if (item.TryGetValue("validationMessage", out var validationMessage)) evidence.ValidationMessage = validationMessage.S;

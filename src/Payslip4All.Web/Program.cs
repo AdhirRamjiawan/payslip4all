@@ -13,7 +13,9 @@ using Payslip4All.Web.Auth;
 using Payslip4All.Infrastructure.Persistence.Repositories;
 using Payslip4All.Infrastructure.Services;
 using Payslip4All.Infrastructure.Time;
+using Payslip4All.Infrastructure.HostedServices;
 using Payslip4All.Web.Extensions;
+using Payslip4All.Web.Endpoints;
 using QuestPDF.Infrastructure;
 using Serilog;
 
@@ -132,6 +134,7 @@ if (provider != "dynamodb")
 }
 
 // Infrastructure services
+builder.Services.AddHttpClient(nameof(PayFastHostedPaymentProvider));
 builder.Services.AddSingleton<ITimeProvider, SystemTimeProvider>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IPdfGenerationService, PdfGenerationService>();
@@ -148,13 +151,19 @@ builder.Services.AddScoped<IWalletTopUpOutcomeNormalizer, WalletTopUpOutcomeNorm
 builder.Services.AddScoped<IWalletTopUpAbandonmentService, WalletTopUpAbandonmentService>();
 builder.Services.AddScoped<IWalletTopUpService, WalletTopUpService>();
 
-// Hosted payment providers — fake/simulator for development; supplement in future gateway features.
+// Hosted payment providers
 var fakePaymentOptions = new FakeHostedPaymentOptions();
 builder.Configuration.GetSection(FakeHostedPaymentOptions.SectionKey).Bind(fakePaymentOptions);
 builder.Services.AddSingleton(fakePaymentOptions);
+var payFastOptions = new PayFastHostedPaymentOptions();
+builder.Configuration.GetSection(PayFastHostedPaymentOptions.SectionKey).Bind(payFastOptions);
+builder.Services.AddSingleton(payFastOptions);
+builder.Services.AddSingleton<PayFastSignatureVerifier>();
+builder.Services.AddSingleton<IHostedPaymentProvider, PayFastHostedPaymentProvider>();
 builder.Services.AddSingleton<IHostedPaymentProvider, FakeHostedPaymentProvider>();
 builder.Services.AddSingleton<HostedPaymentProviderFactory>();
 builder.Services.AddSingleton<IHostedPaymentProviderFactory>(sp => sp.GetRequiredService<HostedPaymentProviderFactory>());
+builder.Services.AddHostedService<WalletTopUpReconciliationHostedService>();
 
 // IUnitOfWork: registered by AddDynamoDbPersistence() for dynamodb; for sqlite/mysql, use PayslipDbContext
 if (provider != "dynamodb")
@@ -202,6 +211,7 @@ app.UseGlobalExceptionHandler();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapPost("/api/payments/payfast/notify", PayFastNotifyEndpoint.HandleAsync);
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");

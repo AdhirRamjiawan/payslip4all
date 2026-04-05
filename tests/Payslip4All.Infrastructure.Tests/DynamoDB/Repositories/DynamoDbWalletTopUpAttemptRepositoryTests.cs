@@ -41,4 +41,37 @@ public class DynamoDbWalletTopUpAttemptRepositoryTests : IClassFixture<DynamoDbT
         Assert.NotNull(result);
         Assert.Equal(attempt.Id, result!.Id);
     }
+
+    [Fact]
+    public async Task GetByIdAsync_WithDifferentOwner_ReturnsNull()
+    {
+        var ownerId = Guid.NewGuid();
+        var attempt = WalletTopUpAttempt.CreatePending(ownerId, 100m, "fake");
+        await _repo.AddAsync(attempt);
+
+        var result = await _repo.GetByIdAsync(attempt.Id, Guid.NewGuid());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetByUserIdAsync_ReturnsOnlyOwnerAttemptsInNewestFirstOrder()
+    {
+        var ownerId = Guid.NewGuid();
+        var otherOwnerId = Guid.NewGuid();
+        var first = WalletTopUpAttempt.CreatePending(ownerId, 60m, "payfast");
+        var second = WalletTopUpAttempt.CreatePending(ownerId, 80m, "payfast");
+        var foreign = WalletTopUpAttempt.CreatePending(otherOwnerId, 90m, "payfast");
+
+        await _repo.AddAsync(first);
+        await Task.Delay(5);
+        await _repo.AddAsync(second);
+        await _repo.AddAsync(foreign);
+
+        var attempts = await _repo.GetByUserIdAsync(ownerId);
+
+        Assert.Equal(2, attempts.Count);
+        Assert.Equal(second.Id, attempts[0].Id);
+        Assert.DoesNotContain(attempts, x => x.UserId != ownerId);
+    }
 }

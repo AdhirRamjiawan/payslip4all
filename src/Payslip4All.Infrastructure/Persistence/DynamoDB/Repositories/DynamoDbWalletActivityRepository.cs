@@ -74,6 +74,8 @@ public sealed class DynamoDbWalletActivityRepository : IWalletActivityRepository
             item["referenceType"] = new() { S = activity.ReferenceType };
         if (!string.IsNullOrWhiteSpace(activity.ReferenceId))
             item["referenceId"] = new() { S = activity.ReferenceId };
+        if (activity.PaymentReturnEvidenceId.HasValue)
+            item["paymentReturnEvidenceId"] = new() { S = activity.PaymentReturnEvidenceId.Value.ToString() };
         if (!string.IsNullOrWhiteSpace(activity.Description))
             item["description"] = new() { S = activity.Description };
 
@@ -92,6 +94,7 @@ public sealed class DynamoDbWalletActivityRepository : IWalletActivityRepository
 
         if (item.TryGetValue("referenceType", out var referenceType)) activity.ReferenceType = referenceType.S;
         if (item.TryGetValue("referenceId", out var referenceId)) activity.ReferenceId = referenceId.S;
+        if (item.TryGetValue("paymentReturnEvidenceId", out var paymentReturnEvidenceId)) activity.PaymentReturnEvidenceId = Guid.Parse(paymentReturnEvidenceId.S);
         if (item.TryGetValue("description", out var description)) activity.Description = description.S;
 
         return activity;

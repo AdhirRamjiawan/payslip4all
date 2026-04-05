@@ -6,4 +6,5 @@ public interface IOutcomeNormalizationDecisionRepository
 {
     Task AddAsync(OutcomeNormalizationDecision decision, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<OutcomeNormalizationDecision>> GetByAttemptIdAsync(Guid attemptId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<OutcomeNormalizationDecision>> GetByUnmatchedRecordIdAsync(Guid unmatchedRecordId, CancellationToken cancellationToken = default);
 }

@@ -1,0 +1,243 @@
+@page "/portal/admin/wallet-topups/review"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = Payslip4All.Domain.Constants.ApplicationRoles.SiteAdministrator)]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Payslip4All.Application.DTOs.Wallet
+@using Payslip4All.Application.Interfaces
+@using Payslip4All.Domain.Constants
+@inject IWalletTopUpService WalletTopUpService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Wallet Top-Up Review - Payslip4All</PageTitle>
+
+<div class="container mt-4">
+    <h2>Wallet Top-Up Review</h2>
+    <p class="text-muted">Read-only PayFast audit review for SiteAdministrator users.</p>
+
+    <LoadingSpinner IsLoading="@_isLoading" />
+    <ErrorBanner ErrorMessage="@_errorMessage" OnDismiss="@(() => _errorMessage = null)" />
+
+    @if (!_isLoading && string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Attempt ID</label>
+                        <input class="form-control" value="@(AttemptId?.ToString())" @onchange="OnAttemptIdChanged" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Payment Confirmation Record ID</label>
+                        <input class="form-control" value="@(PaymentConfirmationRecordId?.ToString())" @onchange="OnPaymentConfirmationRecordIdChanged" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Outcome</label>
+                        <select class="form-select" value="@SelectedOutcome" @onchange="OnOutcomeChanged">
+                            <option value="">All</option>
+                            @foreach (var option in Enum.GetNames<Payslip4All.Domain.Enums.WalletTopUpAttemptStatus>())
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check me-3">
+                            <InputCheckbox class="form-check-input" @bind-Value="ConflictsOnly" />
+                            <label class="form-check-label">Conflicts only</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check">
+                            <InputCheckbox class="form-check-input" @bind-Value="UnmatchedOnly" />
+                            <label class="form-check-label">Unmatched only</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary" @onclick="LoadAsync">Refresh Review</button>
+                </div>
+            </div>
+        </div>
+
+        @if (_items.Count == 0)
+        {
+            <div class="alert alert-info">No matching wallet top-up review records were found.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Attempt</th>
+                            <th>Owner</th>
+                            <th>Status</th>
+                            <th>Payment Confirmation Record</th>
+                            <th>Decision</th>
+                            <th>Safe Correlation</th>
+                            <th>Audit Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _items)
+                        {
+                            <tr>
+                                <td>
+                                    <div>@(item.WalletTopUpAttemptId?.ToString() ?? "Unmatched return")</div>
+                                    @if (item.UnmatchedPaymentReturnRecordId.HasValue)
+                                    {
+                                        <small class="text-muted">Unmatched record: @item.UnmatchedPaymentReturnRecordId</small>
+                                    }
+                                </td>
+                                <td>@(item.OwnerUserId?.ToString() ?? "Hidden")</td>
+                                <td>
+                                    @if (item.IsUnmatchedReturn)
+                                    {
+                                        <span class="badge bg-warning text-dark">Unmatched</span>
+                                    }
+                                    else if (item.Status.HasValue)
+                                    {
+                                        <span class="badge @GetBadgeClass(item.Status.Value)">@item.Status</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div>@(item.PaymentConfirmationRecordId?.ToString() ?? "N/A")</div>
+                                    <small class="text-muted">@item.EvidenceSourceChannel</small>
+                                </td>
+                                <td>
+                                    <div>@item.DecisionType</div>
+                                    <small class="text-muted">@item.DecisionReasonCode</small>
+                                </td>
+                                <td>
+                                    <div>m_payment_id: @(item.MerchantPaymentReference ?? "N/A")</div>
+                                    <div>pf_payment_id: @(item.ProviderPaymentReference ?? "N/A")</div>
+                                    <small class="text-muted">Disposition: @(item.CorrelationDisposition ?? "N/A")</small>
+                                </td>
+                                <td>
+                                    <div>@item.DecisionSummary</div>
+                                    @if (item.ConflictWithAcceptedFinalOutcome)
+                                    {
+                                        <div class="text-warning-emphasis">Conflict retained for internal review.</div>
+                                    }
+                                    @if (item.CreditedWallet)
+                                    {
+                                        <div>Wallet activity: @item.WalletActivityId</div>
+                                    }
+                                    @if (item.IsUnmatchedReturn && !string.IsNullOrWhiteSpace(item.SafePayloadSnapshot))
+                                    {
+                                        <small class="text-muted">@item.SafePayloadSnapshot</small>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? AttemptId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public Guid? PaymentConfirmationRecordId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "outcome")]
+    public string? SelectedOutcome { get; set; }
+
+    [SupplyParameterFromQuery]
+    public bool ConflictsOnly { get; set; }
+
+    [SupplyParameterFromQuery]
+    public bool UnmatchedOnly { get; set; }
+
+    private readonly List<SiteAdministratorPaymentReviewDto> _items = [];
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+        => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        _items.Clear();
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (!(authState.User.Identity?.IsAuthenticated ?? false))
+            {
+                _errorMessage = "Access denied.";
+                return;
+            }
+
+            if (!authState.User.IsInRole(ApplicationRoles.SiteAdministrator))
+            {
+                _errorMessage = "Access denied.";
+                return;
+            }
+
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus? outcome =
+                Enum.TryParse<Payslip4All.Domain.Enums.WalletTopUpAttemptStatus>(SelectedOutcome, ignoreCase: true, out var parsedOutcome)
+                    ? parsedOutcome
+                    : null;
+
+            var rows = await WalletTopUpService.GetAdminReviewAsync(new SiteAdministratorPaymentReviewQueryDto
+            {
+                RequestingUserIsSiteAdministrator = true,
+                AttemptId = AttemptId,
+                PaymentConfirmationRecordId = PaymentConfirmationRecordId,
+                Outcome = outcome,
+                ConflictsOnly = ConflictsOnly,
+                UnmatchedOnly = UnmatchedOnly
+            });
+
+            _items.AddRange(rows);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch
+        {
+            _errorMessage = "The wallet top-up review data could not be loaded.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task OnAttemptIdChanged(ChangeEventArgs args)
+    {
+        AttemptId = Guid.TryParse(args.Value?.ToString(), out var parsed) ? parsed : null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPaymentConfirmationRecordIdChanged(ChangeEventArgs args)
+    {
+        PaymentConfirmationRecordId = Guid.TryParse(args.Value?.ToString(), out var parsed) ? parsed : null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnOutcomeChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        SelectedOutcome = string.IsNullOrWhiteSpace(value) ? null : value;
+        return Task.CompletedTask;
+    }
+
+    private static string GetBadgeClass(Payslip4All.Domain.Enums.WalletTopUpAttemptStatus status)
+        => status switch
+        {
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus.Completed => "bg-success",
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus.Expired => "bg-dark",
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
+            Payslip4All.Domain.Enums.WalletTopUpAttemptStatus.NotConfirmed => "bg-info text-dark",
+            _ => "bg-primary"
+        };
+}

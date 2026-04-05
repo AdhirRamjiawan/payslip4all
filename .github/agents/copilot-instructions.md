@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-02
+Auto-generated from all feature plans. Last updated: 2026-04-05
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -32,6 +32,21 @@ Auto-generated from all feature plans. Last updated: 2026-04-02
 - SQLite/MySQL through EF Core migrations; DynamoDB through parallel Infrastructure repositories selected by `PERSISTENCE_PROVIDER=dynamodb` (008-wallet-card-topup)
 - C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUni (008-wallet-card-topup)
 - SQLite for local EF Core development, MySQL / SQL Server via EF Core configuration, DynamoDB via approved provider path (008-wallet-card-topup)
+- C# 12 on .NET 8 Blazor Server + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUnit, PayFast hosted checkout via form-post + ITN validation using built-in `HttpClient` and .NET cryptography (009-payfast-card-integration)
+- SQLite/MySQL through EF Core and DynamoDB through existing repository implementations; wallet top-up attempts, payment evidence, normalization decisions, unmatched return records, and wallet activity ledger entries persist audit state (009-payfast-card-integration)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUnit, built-in `HttpClient` + hashing utilities for PayFast signing/validation (009-payfast-card-integration)
+- SQLite for local EF Core development, MySQL / SQL Server via EF Core provider swap, DynamoDB via approved provider path; existing wallet top-up attempts, evidence, normalization decisions, unmatched returns, wallets, and wallet activities remain the persistence anchors (009-payfast-card-integration)
+- C# / .NET 8 Blazor Server + ASP.NET Core Blazor Server, Entity Framework Core 8, xUnit, Moq, bUnit, Serilog, PayFast hosted-payment integration via `IHostedPaymentProvider` (009-payfast-card-integration)
+- EF Core-backed SQLite/MySQL/SQL Server path plus DynamoDB provider parity; payment/top-up audit data persisted via existing repository abstractions (009-payfast-card-integration)
+- C# 12 / .NET 8 (LTS) + ASP.NET Core 8 Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, Moq, bUnit, built-in `HttpClient` plus .NET hashing/validation utilities behind `IHostedPaymentProvider` (009-payfast-card-integration)
+- SQLite/MySQL/SQL Server via EF Core for relational providers; DynamoDB via `PERSISTENCE_PROVIDER=dynamodb`; persisted audit state in wallet top-up attempts, payment evidence, normalization decisions, unmatched return records, and wallet activity ledger entries (009-payfast-card-integration)
+- C# 12 / .NET 8 LTS + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, Moq, bUni (009-payfast-card-integration)
+- SQLite by default, MySQL via EF Core, or DynamoDB via `PERSISTENCE_PROVIDER=dynamodb`; payment flows rely on `wallet_topup_attempts`, `payment_return_evidences`, `outcome_normalization_decisions`, `unmatched_payment_return_records`, `wallets`, and `wallet_activities` (009-payfast-card-integration)
+- C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUnit, BCrypt.Net-Next, QuestPDF (009-payfast-card-integration)
+- C# 12 on .NET 8 (`net8.0`) + ASP.NET Core 8 Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, `IHttpClientFactory`, PayFast hosted checkout integration (009-payfast-card-integration)
+- SQLite for local relational development, MySQL/other EF Core relational providers in supported deployments, and DynamoDB when `PERSISTENCE_PROVIDER=dynamodb`; payment audit data is persisted as wallet top-up attempts, payment return evidence, normalization decisions, unmatched return records, wallets, and wallet activities (009-payfast-card-integration)
+- C# 12 on .NET 8 / ASP.NET Core 8 Blazor Web App + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, bUnit, Moq, PayFast hosted-payment integration (009-payfast-card-integration)
+- SQLite/MySQL via EF Core migrations; DynamoDB via repository implementations and startup table verification when `PERSISTENCE_PROVIDER=dynamodb` (009-payfast-card-integration)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -52,9 +67,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
-- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUni
-- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, xUnit, Moq, bUnit, Serilog
-- 008-wallet-card-topup: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, cookie authentication, Serilog, xUnit, Moq, bUni
+- 009-payfast-card-integration: Added C# 12 on .NET 8 / ASP.NET Core 8 Blazor Web App + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, bUnit, Moq, PayFast hosted-payment integration
+- 009-payfast-card-integration: Added C# 12 on .NET 8 (`net8.0`) + ASP.NET Core 8 Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, `IHttpClientFactory`, PayFast hosted checkout integration
+- 009-payfast-card-integration: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUnit, BCrypt.Net-Next, QuestPDF
 
 
 <!-- MANUAL ADDITIONS START -->

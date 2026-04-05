@@ -14,7 +14,7 @@ public class WalletTopUpNotConfirmedTests : TestContext
 
         var cut = RenderComponent<Payslip4All.Web.Pages.WalletTopUpNotConfirmed>();
 
-        Assert.Contains("could not match", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Top-up not confirmed", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("abc-123", cut.Markup);
         Assert.DoesNotContain("wallet balance", cut.Markup, StringComparison.OrdinalIgnoreCase);
     }

@@ -47,7 +47,7 @@ public class WalletTopUpReturnTests : TestContext
 
     [Theory]
     [InlineData(WalletTopUpAttemptStatus.Pending, "Payment is still pending.")]
-    [InlineData(WalletTopUpAttemptStatus.Unverified, "Manual review required.")]
+    [InlineData(WalletTopUpAttemptStatus.NotConfirmed, "Top-up not confirmed")]
     [InlineData(WalletTopUpAttemptStatus.Abandoned, "abandoned")]
     public void ReturnPage_ShowsExplicitStates(WalletTopUpAttemptStatus status, string message)
     {
@@ -91,6 +91,39 @@ public class WalletTopUpReturnTests : TestContext
             .Add(p => p.AttemptId, attemptId));
 
         cut.WaitForAssertion(() => Assert.Contains("could not be found", cut.Markup, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ReturnPage_ShowsAuthoritativeResultWithinFreshnessWindow()
+    {
+        var userId = SetAuthorizedOwner();
+        var attemptId = Guid.NewGuid();
+        var acceptedAt = DateTimeOffset.UtcNow.AddSeconds(-45);
+        var walletTopUpService = new Mock<IWalletTopUpService>();
+        walletTopUpService
+            .Setup(s => s.GetAttemptResultAsync(attemptId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FinalizedWalletTopUpResultDto
+            {
+                WalletTopUpAttemptId = attemptId,
+                Status = WalletTopUpAttemptStatus.Completed,
+                RequestedAmount = 100m,
+                ConfirmedChargedAmount = 95m,
+                WalletBalance = 95m,
+                CreditedWallet = true,
+                DisplayMessage = "Wallet credited successfully.",
+                AuthoritativeOutcomeAcceptedAt = acceptedAt
+            });
+
+        Services.AddSingleton(walletTopUpService.Object);
+        var cut = RenderComponent<Payslip4All.Web.Pages.WalletTopUpReturn>(parameters => parameters
+            .Add(p => p.AttemptId, attemptId));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(DateTimeOffset.UtcNow - acceptedAt <= TimeSpan.FromMinutes(1));
+            Assert.Contains("Wallet credited successfully.", cut.Markup);
+            Assert.Contains("R 95.00", cut.Markup);
+        });
     }
 
     private Guid SetAuthorizedOwner()

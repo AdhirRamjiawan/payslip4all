@@ -41,17 +41,34 @@ public sealed class DynamoDbOutcomeNormalizationDecisionRepository : IOutcomeNor
         return response.Items.Select(Map).OrderBy(d => d.DecidedAt).ToList();
     }
 
+    public async Task<IReadOnlyList<OutcomeNormalizationDecision>> GetByUnmatchedRecordIdAsync(Guid unmatchedRecordId, CancellationToken cancellationToken = default)
+    {
+        var response = await _dynamoDb.ScanAsync(new ScanRequest
+        {
+            TableName = _tableName,
+            FilterExpression = "unmatchedPaymentReturnRecordId = :unmatchedId",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":unmatchedId"] = new() { S = unmatchedRecordId.ToString() }
+            }
+        }, cancellationToken);
+
+        return response.Items.Select(Map).OrderBy(d => d.DecidedAt).ToList();
+    }
+
     private static Dictionary<string, AttributeValue> ToItem(OutcomeNormalizationDecision decision)
     {
         var item = new Dictionary<string, AttributeValue>
         {
             ["id"] = new() { S = decision.Id.ToString() },
             ["decisionType"] = new() { S = decision.DecisionType },
+            ["triggerSource"] = new() { S = decision.TriggerSource },
             ["appliedPrecedence"] = new() { S = decision.AppliedPrecedence },
             ["normalizedOutcome"] = new() { S = decision.NormalizedOutcome },
             ["decisionReasonCode"] = new() { S = decision.DecisionReasonCode },
             ["decisionSummary"] = new() { S = decision.DecisionSummary },
             ["supersededAbandonment"] = new() { BOOL = decision.SupersededAbandonment },
+            ["supersededNotConfirmed"] = new() { BOOL = decision.SupersededNotConfirmed },
             ["conflictWithAcceptedFinalOutcome"] = new() { BOOL = decision.ConflictWithAcceptedFinalOutcome },
             ["walletEffect"] = new() { S = decision.WalletEffect },
             ["decidedAt"] = new() { S = decision.DecidedAt.ToString("O") }
@@ -71,11 +88,13 @@ public sealed class DynamoDbOutcomeNormalizationDecisionRepository : IOutcomeNor
         var decision = new OutcomeNormalizationDecision
         {
             DecisionType = item["decisionType"].S,
+            TriggerSource = item["triggerSource"].S,
             AppliedPrecedence = item["appliedPrecedence"].S,
             NormalizedOutcome = item["normalizedOutcome"].S,
             DecisionReasonCode = item["decisionReasonCode"].S,
             DecisionSummary = item["decisionSummary"].S,
             SupersededAbandonment = item["supersededAbandonment"].BOOL,
+            SupersededNotConfirmed = item.TryGetValue("supersededNotConfirmed", out var supersededNotConfirmed) && supersededNotConfirmed.BOOL,
             ConflictWithAcceptedFinalOutcome = item["conflictWithAcceptedFinalOutcome"].BOOL,
             WalletEffect = item["walletEffect"].S
         };

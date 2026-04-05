@@ -27,6 +27,12 @@ public sealed class DynamoDbLocalStartupTests : IDisposable
         "employee_loans",
         "payslips",
         "payslip_loan_deductions",
+        "wallets",
+        "wallet_activities",
+        "wallet_topup_attempts",
+        "payment_return_evidences",
+        "outcome_normalization_decisions",
+        "unmatched_payment_return_records"
     };
 
     private void SetEnv(string key, string? value)
@@ -120,6 +126,38 @@ public sealed class DynamoDbLocalStartupTests : IDisposable
         }
         finally
         {
+            await DeleteProvisionedTablesAsync(dynamoDb, prefix);
+        }
+    }
+
+    [Fact]
+    public async Task CreateClient_WithLocalEndpoint_ExposesPayFastNotifyRoute()
+    {
+        var prefix = $"webtest_{Guid.NewGuid():N}";
+        var endpoint = GetTestEndpoint();
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", endpoint);
+        SetEnv("DYNAMODB_TABLE_PREFIX", prefix);
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        await using var factory = BuildFactory();
+        using var client = factory.CreateClient();
+
+        try
+        {
+            using var response = await client.PostAsync("/api/payments/payfast/notify", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["m_payment_id"] = Guid.NewGuid().ToString("N"),
+                ["signature"] = "invalid"
+            }));
+
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        }
+        finally
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dynamoDb = scope.ServiceProvider.GetRequiredService<IAmazonDynamoDB>();
             await DeleteProvisionedTablesAsync(dynamoDb, prefix);
         }
     }

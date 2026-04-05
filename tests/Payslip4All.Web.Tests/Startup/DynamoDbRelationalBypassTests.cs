@@ -2,6 +2,7 @@ using Amazon.DynamoDBv2;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Infrastructure.Persistence;
@@ -44,10 +45,8 @@ public sealed class DynamoDbRelationalBypassTests : IDisposable
             builder.UseSetting("PERSISTENCE_PROVIDER", "dynamodb");
             builder.ConfigureServices(services =>
             {
-                var provisionerDescriptor = services.SingleOrDefault(
-                    d => d.ImplementationType == typeof(DynamoDbTableProvisioner));
-                if (provisionerDescriptor != null)
-                    services.Remove(provisionerDescriptor);
+                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+                    services.Remove(descriptor);
             });
         });
     }

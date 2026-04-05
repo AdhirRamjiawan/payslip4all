@@ -33,6 +33,8 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
             $"&amount={attempt.RequestedAmount.ToString("0.00", CultureInfo.InvariantCulture)}" +
             "&currency=ZAR" +
             $"&provider={Uri.EscapeDataString(ProviderKey)}" +
+            $"&m_payment_id={Uri.EscapeDataString(attempt.MerchantPaymentReference)}" +
+            $"&custom_str1={Uri.EscapeDataString(attempt.UserId.ToString())}" +
             $"&session={Uri.EscapeDataString(sessionReference)}" +
             $"&token={Uri.EscapeDataString(correlationToken)}" +
             $"&returnUrl={Uri.EscapeDataString(returnUrl.ToString())}" +
@@ -66,8 +68,8 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
                 ProviderSessionReference = session,
                 ValidatedAt = DateTimeOffset.UtcNow,
                 FailureCode = "correlation_mismatch",
-                FailureMessage = "We could not verify this payment return.",
-                DisplayMessage = "We could not verify this payment yet. Your wallet has not been credited."
+                FailureMessage = "Top-up not confirmed",
+                DisplayMessage = "Top-up not confirmed"
             });
         }
 
@@ -87,8 +89,8 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
                 {
                     result.Outcome = HostedPaymentOutcome.Unverified;
                     result.FailureCode = "invalid_amount";
-                    result.FailureMessage = "The payment amount could not be verified.";
-                    result.DisplayMessage = "We could not verify the charged amount yet. Your wallet has not been credited.";
+                    result.FailureMessage = "Top-up not confirmed";
+                    result.DisplayMessage = "Top-up not confirmed";
                     return Task.FromResult(result);
                 }
 
@@ -128,6 +130,8 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
         payload.TryGetValue("token", out var token);
         payload.TryGetValue("outcome", out var outcomeValue);
         payload.TryGetValue("paymentReference", out var paymentReference);
+        payload.TryGetValue("m_payment_id", out var merchantPaymentReference);
+        payload.TryGetValue("custom_str1", out var ownerUserIdValue);
         payload.TryGetValue("amount", out var amountValue);
 
         var outcome = NormalizeOutcome(outcomeValue);
@@ -152,11 +156,19 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
             SourceChannel = "BrowserReturn",
             ProviderSessionReference = session,
             ProviderPaymentReference = string.IsNullOrWhiteSpace(paymentReference) ? null : paymentReference.Trim(),
+            MerchantPaymentReference = string.IsNullOrWhiteSpace(merchantPaymentReference) ? null : merchantPaymentReference.Trim(),
             ReturnCorrelationToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim(),
+            OwnerUserId = Guid.TryParse(ownerUserIdValue, out var ownerUserId) ? ownerUserId : null,
             CorrelationDisposition = disposition,
             ClaimedOutcome = outcome == PaymentReturnClaimedOutcome.Unknown ? null : outcome,
             TrustLevel = trustLevel,
+            PaymentMethodCode = "cc",
+            EnvironmentMode = "fake",
+            SignatureVerified = disposition == PaymentReturnCorrelationDisposition.ExactMatch,
+            SourceVerified = disposition == PaymentReturnCorrelationDisposition.ExactMatch,
+            ServerConfirmed = false,
             ConfirmedChargedAmount = hasAmount ? parsedAmount : null,
+            ConfirmedCurrencyCode = "ZAR",
             EvidenceOccurredAt = DateTimeOffset.UtcNow,
             ReceivedAt = DateTimeOffset.UtcNow,
             ValidatedAt = DateTimeOffset.UtcNow,
@@ -168,6 +180,23 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
                 _ => "Hosted return could not be trusted."
             }
         });
+    }
+
+    public Task<HostedPaymentReturnEvidenceDto> ParseAuthoritativeEvidenceAsync(
+        IReadOnlyDictionary<string, string> payload,
+        CancellationToken cancellationToken = default)
+    {
+        var dtoTask = ParseReturnEvidenceAsync(payload, cancellationToken);
+        return dtoTask.ContinueWith(task =>
+        {
+            var dto = task.Result;
+            dto.SourceChannel = "FakeNotify";
+            dto.ServerConfirmed = true;
+            dto.SignatureVerified = true;
+            dto.SourceVerified = true;
+            dto.EnvironmentMode = "live";
+            return dto;
+        }, cancellationToken);
     }
 
     private static PaymentReturnClaimedOutcome NormalizeOutcome(string? outcomeValue)

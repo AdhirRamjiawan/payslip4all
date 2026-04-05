@@ -80,3 +80,7 @@ logs/
 
 # Generated CSS isolation bundle (produced by MSBuild AfterTargets="Build" target)
 src/Payslip4All.Web/wwwroot/Payslip4All.Web.styles.css
+
+
+# Application Specific configuration files for private local development
+src/Payslip4All.Web/appsettings.Development.Private.json

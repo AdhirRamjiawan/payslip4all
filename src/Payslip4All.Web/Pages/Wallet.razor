@@ -1,6 +1,7 @@
 @page "/portal/wallet"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Logging
 @using Payslip4All.Application.DTOs.Wallet
 @using Payslip4All.Application.Interfaces
 @using Payslip4All.Domain.Entities
@@ -9,6 +10,7 @@
 @inject IWalletTopUpService WalletTopUpService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
+@inject ILogger<Wallet> Logger
 
 <PageTitle>Wallet - Payslip4All</PageTitle>
 
@@ -47,12 +49,12 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">Add Wallet Credits</h5>
-                <p class="text-muted">Card details are collected on an external hosted payment page. Payslip4All never stores or displays card details.</p>
+                <p class="text-muted">Card-only payments are collected on an external PayFast hosted page. Payslip4All never stores or displays card details.</p>
                 <EditForm Model="_form" OnValidSubmit="HandleTopUpAsync">
                     <DataAnnotationsValidator />
                     <div class="row g-3 align-items-end">
                         <div class="col-md-6">
-                            <label class="form-label">Amount (R)</label>
+                            <label class="form-label">Amount (R50 to R1000)</label>
                             <InputNumber class="form-control" @bind-Value="_form.Amount" />
                             <ValidationMessage For="@(() => _form.Amount)" />
                         </div>
@@ -73,7 +75,7 @@
 
                 @if (_topUpAttempts.Count == 0)
                 {
-                    <p class="text-muted mb-0">No hosted card top-ups yet.</p>
+                    <p class="text-muted mb-0">No hosted PayFast card top-ups yet.</p>
                 }
                 else
                 {
@@ -182,6 +184,7 @@
             {
                 UserId = userId.Value,
                 RequestedAmount = _form.Amount,
+                ProviderKey = "payfast",
                 ReturnUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet/top-ups/return",
                 CancelUrl = $"{Nav.BaseUri.TrimEnd('/')}/portal/wallet"
             });
@@ -194,11 +197,13 @@
         }
         catch (InvalidOperationException ex)
         {
+            Logger.LogError(ex, "Hosted wallet top-up could not be started.");
             _errorMessage = ex.Message;
         }
-        catch
+        catch (Exception ex)
         {
-            _errorMessage = "The hosted card top-up could not be started right now. Please try again.";
+            Logger.LogError(ex, "Unexpected wallet top-up start failure.");
+            _errorMessage = "Payment could not be started";
         }
         finally
         {
@@ -220,8 +225,9 @@
             _wallet = await WalletService.GetWalletAsync(userId.Value);
             _topUpAttempts = await WalletTopUpService.GetHistoryAsync(userId.Value);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load wallet details.");
             _errorMessage = "Wallet details are temporarily unavailable. Please refresh the page or try again shortly.";
         }
         finally
@@ -244,13 +250,13 @@
             WalletTopUpAttemptStatus.Cancelled => "bg-secondary",
             WalletTopUpAttemptStatus.Expired => "bg-dark",
             WalletTopUpAttemptStatus.Abandoned => "bg-warning text-dark",
-            WalletTopUpAttemptStatus.Unverified => "bg-info text-dark",
+            WalletTopUpAttemptStatus.NotConfirmed => "bg-info text-dark",
             _ => "bg-primary"
         };
 
     public class FormModel
     {
-        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
+        [System.ComponentModel.DataAnnotations.Range(50, 1000, ErrorMessage = "Amount must be between R50 and R1000.")]
         public decimal Amount { get; set; }
     }
 }

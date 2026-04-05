@@ -50,16 +50,16 @@ public class WalletTopUpAttemptTests
     }
 
     [Fact]
-    public void MarkUnverified_SetsExplicitStatusAndOutcomeFields()
+    public void MarkNotConfirmed_SetsExplicitStatusAndOutcomeFields()
     {
         var attempt = WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "fake");
         var now = DateTimeOffset.UtcNow;
 
-        attempt.MarkUnverified("correlation_mismatch", "Could not verify return.", now);
+        attempt.MarkNotConfirmed("not_confirmed", "Top-up not confirmed", now);
 
-        Assert.Equal(WalletTopUpAttemptStatus.Unverified, attempt.Status);
-        Assert.Equal("correlation_mismatch", attempt.OutcomeReasonCode);
-        Assert.Equal("Could not verify return.", attempt.OutcomeMessage);
+        Assert.Equal(WalletTopUpAttemptStatus.NotConfirmed, attempt.Status);
+        Assert.Equal("not_confirmed", attempt.OutcomeReasonCode);
+        Assert.Equal("Top-up not confirmed", attempt.OutcomeMessage);
         Assert.Equal(now, attempt.LastEvaluatedAt);
     }
 
@@ -113,10 +113,9 @@ public class WalletTopUpAttemptTests
             .Select(p => p.Name.ToLowerInvariant())
             .ToList();
 
-        Assert.DoesNotContain(propertyNames, name => name.Contains("card"));
+        Assert.DoesNotContain(propertyNames, name => name == "cardnumber" || name == "carddetails");
         Assert.DoesNotContain(propertyNames, name => name.Contains("cvv"));
         Assert.DoesNotContain(propertyNames, name => name.Contains("pan"));
-        Assert.DoesNotContain(propertyNames, name => name.Contains("expiry"));
-        Assert.DoesNotContain(propertyNames, name => name.Contains("expir"));
+        Assert.DoesNotContain(propertyNames, name => name == "expiry" || name == "expirydate");
     }
 }

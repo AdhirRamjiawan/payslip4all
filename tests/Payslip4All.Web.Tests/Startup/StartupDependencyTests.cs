@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
+using Payslip4All.Infrastructure.HostedServices;
 using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
@@ -174,6 +176,52 @@ public class StartupDependencyTests : IClassFixture<TestWebApplicationFactory>
         Assert.NotNull(scope.ServiceProvider.GetService<IHostedPaymentProvider>());
         Assert.NotNull(scope.ServiceProvider.GetService<HostedPaymentProviderFactory>());
         Assert.NotNull(scope.ServiceProvider.GetService<IWalletTopUpAttemptRepository>());
+    }
+
+    [Fact]
+    public void DynamoDbBootstrapServices_AreRegistered_AndResolvable()
+    {
+        var savedRegion = Environment.GetEnvironmentVariable("DYNAMODB_REGION");
+        var savedEndpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("DYNAMODB_REGION", "us-east-1");
+            Environment.SetEnvironmentVariable("DYNAMODB_ENDPOINT", "http://localhost:8000");
+
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("PERSISTENCE_PROVIDER", "dynamodb");
+                builder.ConfigureServices(services =>
+                {
+                    foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+                        services.Remove(descriptor);
+                });
+            });
+
+            using var scope = factory.Services.CreateScope();
+            Assert.NotNull(scope.ServiceProvider.GetService<DynamoDbTableProvisioner>());
+            Assert.NotNull(scope.ServiceProvider.GetService<DynamoDbPaymentBootstrapHostedService>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DYNAMODB_REGION", savedRegion);
+            Environment.SetEnvironmentVariable("DYNAMODB_ENDPOINT", savedEndpoint);
+        }
+    }
+
+    [Fact]
+    public async Task PayFastNotifyEndpoint_IsPubliclyExposed()
+    {
+        using var client = _factory.CreateClient();
+        using var response = await client.PostAsync("/api/payments/payfast/notify", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["m_payment_id"] = Guid.NewGuid().ToString("N"),
+            ["signature"] = "invalid"
+        }));
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

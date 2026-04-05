@@ -11,7 +11,9 @@ public class HostedPaymentReturnResolutionDto
     public PaymentReturnTrustLevel TrustLevel { get; set; }
     public bool IsAuthoritative { get; set; }
     public bool SupersededAbandonment { get; set; }
+    public bool SupersededNotConfirmed { get; set; }
     public bool ConflictWithAcceptedFinal { get; set; }
+    public string TriggerSource { get; set; } = "BrowserReturn";
     public string? ReasonCode { get; set; }
     public string? ResolutionSummary { get; set; }
     public decimal? ConfirmedChargedAmount { get; set; }

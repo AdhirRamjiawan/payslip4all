@@ -7,5 +7,7 @@ public enum PaymentReturnCorrelationDisposition
     MultipleMatches = 2,
     MissingData = 3,
     InvalidData = 4,
-    ConflictingData = 5
+    ConflictingData = 5,
+    ForeignOwner = 6,
+    DuplicateFinalized = 7
 }

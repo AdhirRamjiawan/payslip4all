@@ -17,4 +17,10 @@ public class FinalizedWalletTopUpResultDto
     public string? OutcomeReasonCode { get; set; }
     public string? OutcomeMessage { get; set; }
     public DateTimeOffset? AuthoritativeOutcomeAcceptedAt { get; set; }
+    public DateTimeOffset? HostedPageDeadline { get; set; }
+    public DateTimeOffset? NextReconciliationDueAt { get; set; }
+    public DateTimeOffset? CancelledAt { get; set; }
+    public DateTimeOffset? ExpiredAt { get; set; }
+    public DateTimeOffset? AbandonedAt { get; set; }
+    public Guid? AuthoritativeEvidenceId { get; set; }
 }
