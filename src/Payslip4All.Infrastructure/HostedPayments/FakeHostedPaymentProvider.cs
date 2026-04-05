@@ -144,9 +144,7 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
                 ? PaymentReturnCorrelationDisposition.ExactMatch
                 : PaymentReturnCorrelationDisposition.NoMatch;
         var trustLevel = disposition == PaymentReturnCorrelationDisposition.ExactMatch
-            ? outcome == PaymentReturnClaimedOutcome.Completed && !hasAmount
-                ? PaymentReturnTrustLevel.LowConfidence
-                : PaymentReturnTrustLevel.Trustworthy
+            ? PaymentReturnTrustLevel.LowConfidence
             : PaymentReturnTrustLevel.Untrusted;
 
         return Task.FromResult(new HostedPaymentReturnEvidenceDto
@@ -164,8 +162,8 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
             TrustLevel = trustLevel,
             PaymentMethodCode = "cc",
             EnvironmentMode = "fake",
-            SignatureVerified = disposition == PaymentReturnCorrelationDisposition.ExactMatch,
-            SourceVerified = disposition == PaymentReturnCorrelationDisposition.ExactMatch,
+            SignatureVerified = false,
+            SourceVerified = false,
             ServerConfirmed = false,
             ConfirmedChargedAmount = hasAmount ? parsedAmount : null,
             ConfirmedCurrencyCode = "ZAR",
@@ -175,8 +173,7 @@ public class FakeHostedPaymentProvider : IHostedPaymentProvider
             SafePayloadSnapshot = JsonSerializer.Serialize(payload),
             ValidationMessage = trustLevel switch
             {
-                PaymentReturnTrustLevel.Trustworthy => "Hosted return parsed successfully.",
-                PaymentReturnTrustLevel.LowConfidence => "Hosted return matched but charged amount requires verification.",
+                PaymentReturnTrustLevel.LowConfidence => "Hosted return matched but still requires authoritative verification.",
                 _ => "Hosted return could not be trusted."
             }
         });

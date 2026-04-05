@@ -74,4 +74,32 @@ public class DynamoDbWalletTopUpAttemptRepositoryTests : IClassFixture<DynamoDbT
         Assert.Equal(second.Id, attempts[0].Id);
         Assert.DoesNotContain(attempts, x => x.UserId != ownerId);
     }
+
+    [Fact]
+    public async Task GetDueForReconciliationAsync_ReturnsDueAttemptsAcrossScanPages()
+    {
+        var userId = Guid.NewGuid();
+        var dueAttemptIds = new List<Guid>();
+
+        for (var index = 0; index < 55; index++)
+        {
+            var attempt = WalletTopUpAttempt.CreatePending(userId, 100m + index, "fake");
+            attempt.NextReconciliationDueAt = attempt.CreatedAt.AddMinutes(-1);
+            await _repo.AddAsync(attempt);
+            dueAttemptIds.Add(attempt.Id);
+        }
+
+        var futureAttempt = WalletTopUpAttempt.CreatePending(userId, 999m, "fake");
+        futureAttempt.NextReconciliationDueAt = futureAttempt.CreatedAt.AddHours(1);
+        await _repo.AddAsync(futureAttempt);
+
+        var result = await _repo.GetDueForReconciliationAsync(DateTimeOffset.UtcNow);
+
+        foreach (var attemptId in dueAttemptIds)
+        {
+            Assert.Contains(result, attempt => attempt.Id == attemptId);
+        }
+
+        Assert.DoesNotContain(result, attempt => attempt.Id == futureAttempt.Id);
+    }
 }

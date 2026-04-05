@@ -145,21 +145,33 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
 
     public async Task<IReadOnlyList<WalletTopUpAttempt>> GetDueForReconciliationAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
     {
-        var response = await _dynamoDb.ScanAsync(new ScanRequest
-        {
-            TableName = _tableName,
-            FilterExpression = "nextReconciliationDueAt <= :cutoff AND (#status = :pending OR #status = :notConfirmed OR #status = :expired)",
-            ExpressionAttributeNames = new Dictionary<string, string> { ["#status"] = "status" },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":cutoff"] = new() { S = cutoff.ToString("O") },
-                [":pending"] = new() { N = ((int)WalletTopUpAttemptStatus.Pending).ToString(CultureInfo.InvariantCulture) },
-                [":notConfirmed"] = new() { N = ((int)WalletTopUpAttemptStatus.NotConfirmed).ToString(CultureInfo.InvariantCulture) },
-                [":expired"] = new() { N = ((int)WalletTopUpAttemptStatus.Expired).ToString(CultureInfo.InvariantCulture) }
-            }
-        }, cancellationToken);
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastEvaluatedKey = null;
 
-        return response.Items.Select(Map).OrderBy(a => a.NextReconciliationDueAt).ToList();
+        do
+        {
+            var response = await _dynamoDb.ScanAsync(new ScanRequest
+            {
+                TableName = _tableName,
+                FilterExpression = "attribute_exists(nextReconciliationDueAt) AND nextReconciliationDueAt <= :cutoff AND (#status = :pending OR #status = :notConfirmed OR #status = :expired)",
+                ExpressionAttributeNames = new Dictionary<string, string> { ["#status"] = "status" },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":cutoff"] = new() { S = cutoff.ToString("O") },
+                    [":pending"] = new() { N = ((int)WalletTopUpAttemptStatus.Pending).ToString(CultureInfo.InvariantCulture) },
+                    [":notConfirmed"] = new() { N = ((int)WalletTopUpAttemptStatus.NotConfirmed).ToString(CultureInfo.InvariantCulture) },
+                    [":expired"] = new() { N = ((int)WalletTopUpAttemptStatus.Expired).ToString(CultureInfo.InvariantCulture) }
+                },
+                Limit = QueryPageSize,
+                ExclusiveStartKey = lastEvaluatedKey
+            }, cancellationToken);
+
+            items.AddRange(response.Items);
+            lastEvaluatedKey = response.LastEvaluatedKey;
+        }
+        while (lastEvaluatedKey is { Count: > 0 });
+
+        return items.Select(Map).OrderBy(a => a.NextReconciliationDueAt).ToList();
     }
 
     public async Task<IReadOnlyList<WalletTopUpAttempt>> GetForAdminReviewAsync(Guid? attemptId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, WalletTopUpAttemptStatus? status, CancellationToken cancellationToken = default)
