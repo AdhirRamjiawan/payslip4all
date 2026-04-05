@@ -169,6 +169,7 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(a => a.Amount).HasPrecision(18, 2).IsRequired();
             e.Property(a => a.ReferenceType).HasMaxLength(100);
             e.Property(a => a.ReferenceId).HasMaxLength(100);
+            e.Property(a => a.PaymentReturnEvidenceId);
             e.Property(a => a.Description).HasMaxLength(300);
             e.Property(a => a.BalanceAfterActivity).HasPrecision(18, 2).IsRequired();
             e.Property(a => a.OccurredAt).IsRequired();
@@ -185,6 +186,7 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(a => a.ProviderKey).HasMaxLength(100).IsRequired();
             e.Property(a => a.ProviderSessionReference).HasMaxLength(200);
             e.Property(a => a.ProviderPaymentReference).HasMaxLength(200);
+            e.Property(a => a.MerchantPaymentReference).HasMaxLength(200).IsRequired();
             e.Property(a => a.ReturnCorrelationToken).HasMaxLength(200);
             e.Property(a => a.FailureCode).HasMaxLength(100);
             e.Property(a => a.FailureMessage).HasMaxLength(300);
@@ -193,7 +195,13 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(a => a.CreatedAt).IsRequired();
             e.Property(a => a.UpdatedAt).IsRequired();
             e.Property(a => a.AbandonAfterUtc).IsRequired();
+            e.Property(a => a.LastReconciledAt);
+            e.Property(a => a.CancelledAt);
+            e.Property(a => a.ExpiredAt);
+            e.Property(a => a.AbandonedAt);
+            e.Property(a => a.NextReconciliationDueAt);
             e.HasIndex(a => new { a.UserId, a.CreatedAt });
+            e.HasIndex(a => a.MerchantPaymentReference);
             e.HasIndex(a => a.ProviderSessionReference);
             e.HasIndex(a => a.ReturnCorrelationToken);
             e.HasOne<User>()
@@ -209,10 +217,14 @@ public class PayslipDbContext : DbContext, IUnitOfWork
             e.Property(x => x.SourceChannel).HasMaxLength(50).IsRequired();
             e.Property(x => x.ProviderSessionReference).HasMaxLength(200);
             e.Property(x => x.ProviderPaymentReference).HasMaxLength(200);
+            e.Property(x => x.MerchantPaymentReference).HasMaxLength(200);
             e.Property(x => x.ReturnCorrelationToken).HasMaxLength(200);
             e.Property(x => x.CorrelationDisposition).HasConversion<int>().IsRequired();
             e.Property(x => x.ClaimedOutcome).HasConversion<int?>();
             e.Property(x => x.TrustLevel).HasConversion<int>().IsRequired();
+            e.Property(x => x.PaymentMethodCode).HasMaxLength(50);
+            e.Property(x => x.EnvironmentMode).HasMaxLength(20);
+            e.Property(x => x.ConfirmedCurrencyCode).HasMaxLength(3);
             e.Property(x => x.ConfirmedChargedAmount).HasPrecision(18, 2);
             e.Property(x => x.SafePayloadSnapshot).HasMaxLength(2000);
             e.Property(x => x.ValidationMessage).HasMaxLength(500);
@@ -223,6 +235,7 @@ public class PayslipDbContext : DbContext, IUnitOfWork
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.DecisionType).HasMaxLength(100).IsRequired();
+            e.Property(x => x.TriggerSource).HasMaxLength(100).IsRequired();
             e.Property(x => x.AppliedPrecedence).HasMaxLength(100).IsRequired();
             e.Property(x => x.NormalizedOutcome).HasMaxLength(100).IsRequired();
             e.Property(x => x.AuthoritativeOutcomeBefore).HasMaxLength(100);

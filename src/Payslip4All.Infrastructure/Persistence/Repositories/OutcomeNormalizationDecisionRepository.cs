@@ -21,4 +21,12 @@ public sealed class OutcomeNormalizationDecisionRepository : IOutcomeNormalizati
 
     public async Task<IReadOnlyList<OutcomeNormalizationDecision>> GetByAttemptIdAsync(Guid attemptId, CancellationToken cancellationToken = default)
         => (await _db.OutcomeNormalizationDecisions.AsNoTracking().Where(d => d.AttemptId == attemptId).ToListAsync(cancellationToken)).OrderBy(d => d.DecidedAt).ToList();
+
+    public async Task<IReadOnlyList<OutcomeNormalizationDecision>> GetByUnmatchedRecordIdAsync(Guid unmatchedRecordId, CancellationToken cancellationToken = default)
+        => (await _db.OutcomeNormalizationDecisions
+                .AsNoTracking()
+                .Where(d => d.UnmatchedPaymentReturnRecordId == unmatchedRecordId)
+                .ToListAsync(cancellationToken))
+            .OrderBy(d => d.DecidedAt)
+            .ToList();
 }

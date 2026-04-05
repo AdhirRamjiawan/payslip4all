@@ -3,13 +3,13 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "CompanyOwner")]
 @using Microsoft.AspNetCore.Components
 
-<PageTitle>Payment Not Confirmed - Payslip4All</PageTitle>
+<PageTitle>Top-up Not Confirmed - Payslip4All</PageTitle>
 
 <div class="container mt-4">
     <div class="card">
         <div class="card-body">
-            <h2 class="card-title">Payment Not Confirmed</h2>
-            <p class="mb-3">We could not match this payment return to a confirmed wallet top-up attempt. If your card was charged, please contact support and share the reference below.</p>
+            <h2 class="card-title">Top-up not confirmed</h2>
+            <p class="mb-3">We could not confirm this wallet top-up. If your card was charged, please contact support and share the reference below.</p>
             @if (!string.IsNullOrWhiteSpace(Reference))
             {
                 <p class="text-muted mb-0">Reference: @Reference</p>

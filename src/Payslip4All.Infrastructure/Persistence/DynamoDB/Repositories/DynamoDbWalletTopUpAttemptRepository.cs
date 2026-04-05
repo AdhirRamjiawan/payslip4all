@@ -68,6 +68,21 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         return attempt.UserId == userId ? attempt : null;
     }
 
+    public async Task<WalletTopUpAttempt?> GetAnyByIdAsync(Guid attemptId, CancellationToken cancellationToken = default)
+    {
+        var response = await _dynamoDb.GetItemAsync(new GetItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["id"] = new() { S = attemptId.ToString() }
+            },
+            ConsistentRead = true
+        }, cancellationToken);
+
+        return response.IsItemSet ? Map(response.Item) : null;
+    }
+
     public async Task<IReadOnlyList<WalletTopUpAttempt>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var items = new List<Dictionary<string, AttributeValue>>();
@@ -113,22 +128,75 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         return response.Items.Count == 0 ? null : Map(response.Items[0]);
     }
 
-    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetPendingOrUnverifiedExpiredAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetByMerchantPaymentReferenceAsync(string merchantPaymentReference, CancellationToken cancellationToken = default)
     {
         var response = await _dynamoDb.ScanAsync(new ScanRequest
         {
             TableName = _tableName,
-            FilterExpression = "abandonAfterUtc <= :cutoff AND (#status = :pending OR #status = :unverified)",
-            ExpressionAttributeNames = new Dictionary<string, string> { ["#status"] = "status" },
+            FilterExpression = "merchantPaymentReference = :merchantPaymentReference",
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":cutoff"] = new() { S = cutoff.ToString("O") },
-                [":pending"] = new() { N = ((int)WalletTopUpAttemptStatus.Pending).ToString(CultureInfo.InvariantCulture) },
-                [":unverified"] = new() { N = ((int)WalletTopUpAttemptStatus.Unverified).ToString(CultureInfo.InvariantCulture) }
+                [":merchantPaymentReference"] = new() { S = merchantPaymentReference }
             }
         }, cancellationToken);
 
-        return response.Items.Select(Map).OrderBy(a => a.AbandonAfterUtc).ToList();
+        return response.Items.Select(Map).OrderByDescending(a => a.CreatedAt).ToList();
+    }
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetDueForReconciliationAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    {
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastEvaluatedKey = null;
+
+        do
+        {
+            var response = await _dynamoDb.ScanAsync(new ScanRequest
+            {
+                TableName = _tableName,
+                FilterExpression = "attribute_exists(nextReconciliationDueAt) AND nextReconciliationDueAt <= :cutoff AND (#status = :pending OR #status = :notConfirmed OR #status = :expired)",
+                ExpressionAttributeNames = new Dictionary<string, string> { ["#status"] = "status" },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":cutoff"] = new() { S = cutoff.ToString("O") },
+                    [":pending"] = new() { N = ((int)WalletTopUpAttemptStatus.Pending).ToString(CultureInfo.InvariantCulture) },
+                    [":notConfirmed"] = new() { N = ((int)WalletTopUpAttemptStatus.NotConfirmed).ToString(CultureInfo.InvariantCulture) },
+                    [":expired"] = new() { N = ((int)WalletTopUpAttemptStatus.Expired).ToString(CultureInfo.InvariantCulture) }
+                },
+                Limit = QueryPageSize,
+                ExclusiveStartKey = lastEvaluatedKey
+            }, cancellationToken);
+
+            items.AddRange(response.Items);
+            lastEvaluatedKey = response.LastEvaluatedKey;
+        }
+        while (lastEvaluatedKey is { Count: > 0 });
+
+        return items.Select(Map).OrderBy(a => a.NextReconciliationDueAt).ToList();
+    }
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetForAdminReviewAsync(Guid? attemptId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, WalletTopUpAttemptStatus? status, CancellationToken cancellationToken = default)
+    {
+        if (attemptId.HasValue)
+        {
+            var attempt = await GetAnyByIdAsync(attemptId.Value, cancellationToken);
+            if (attempt == null)
+                return Array.Empty<WalletTopUpAttempt>();
+
+            return MatchesFilters(attempt, fromUtc, toUtc, status)
+                ? new[] { attempt }
+                : Array.Empty<WalletTopUpAttempt>();
+        }
+
+        var response = await _dynamoDb.ScanAsync(new ScanRequest
+        {
+            TableName = _tableName
+        }, cancellationToken);
+
+        return response.Items
+            .Select(Map)
+            .Where(a => MatchesFilters(a, fromUtc, toUtc, status))
+            .OrderByDescending(a => a.CreatedAt)
+            .ToList();
     }
 
     public async Task<WalletTopUpSettlementResult> SettleSuccessfulAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default)
@@ -165,6 +233,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
                 WalletId = wallet.Id,
                 ActivityType = WalletActivityType.Credit,
                 Amount = attempt.ConfirmedChargedAmount.Value,
+                PaymentReturnEvidenceId = attempt.AuthoritativeEvidenceId,
                 Description = WalletActivity.HostedCardTopUpDescription,
                 ReferenceType = WalletActivity.WalletTopUpReferenceType,
                 ReferenceId = attempt.Id.ToString(),
@@ -299,6 +368,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             ["currencyCode"] = new() { S = attempt.CurrencyCode },
             ["status"] = new() { N = ((int)attempt.Status).ToString(CultureInfo.InvariantCulture) },
             ["providerKey"] = new() { S = attempt.ProviderKey },
+            ["merchantPaymentReference"] = new() { S = attempt.MerchantPaymentReference },
             ["createdAt"] = new() { S = attempt.CreatedAt.ToString("O") },
             ["updatedAt"] = new() { S = attempt.UpdatedAt.ToString("O") },
             ["abandonAfterUtc"] = new() { S = attempt.AbandonAfterUtc.ToString("O") }
@@ -318,9 +388,14 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         SetOptional(item, "lastValidatedAt", attempt.LastValidatedAt?.ToString("O"));
         SetOptional(item, "lastEvaluatedAt", attempt.LastEvaluatedAt?.ToString("O"));
         SetOptional(item, "lastEvidenceReceivedAt", attempt.LastEvidenceReceivedAt?.ToString("O"));
+        SetOptional(item, "lastReconciledAt", attempt.LastReconciledAt?.ToString("O"));
+        SetOptional(item, "cancelledAt", attempt.CancelledAt?.ToString("O"));
+        SetOptional(item, "expiredAt", attempt.ExpiredAt?.ToString("O"));
+        SetOptional(item, "abandonedAt", attempt.AbandonedAt?.ToString("O"));
         SetOptional(item, "completedAt", attempt.CompletedAt?.ToString("O"));
         SetOptional(item, "authoritativeOutcomeAcceptedAt", attempt.AuthoritativeOutcomeAcceptedAt?.ToString("O"));
         SetOptional(item, "hostedPageDeadline", attempt.HostedPageDeadline?.ToString("O"));
+        SetOptional(item, "nextReconciliationDueAt", attempt.NextReconciliationDueAt?.ToString("O"));
         return item;
     }
 
@@ -333,6 +408,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         attempt.CurrencyCode = item["currencyCode"].S;
         attempt.Status = (WalletTopUpAttemptStatus)int.Parse(item["status"].N, CultureInfo.InvariantCulture);
         attempt.ProviderKey = item["providerKey"].S;
+        attempt.MerchantPaymentReference = item["merchantPaymentReference"].S;
         SetProperty(attempt, nameof(WalletTopUpAttempt.CreatedAt), DateTimeOffset.Parse(item["createdAt"].S, CultureInfo.InvariantCulture));
         attempt.UpdatedAt = DateTimeOffset.Parse(item["updatedAt"].S, CultureInfo.InvariantCulture);
         attempt.AbandonAfterUtc = DateTimeOffset.Parse(item["abandonAfterUtc"].S, CultureInfo.InvariantCulture);
@@ -365,12 +441,22 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             attempt.LastEvaluatedAt = DateTimeOffset.Parse(lastEvaluatedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("lastEvidenceReceivedAt", out var lastEvidenceReceivedAt))
             attempt.LastEvidenceReceivedAt = DateTimeOffset.Parse(lastEvidenceReceivedAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("lastReconciledAt", out var lastReconciledAt))
+            attempt.LastReconciledAt = DateTimeOffset.Parse(lastReconciledAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("cancelledAt", out var cancelledAt))
+            attempt.CancelledAt = DateTimeOffset.Parse(cancelledAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("expiredAt", out var expiredAt))
+            attempt.ExpiredAt = DateTimeOffset.Parse(expiredAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("abandonedAt", out var abandonedAt))
+            attempt.AbandonedAt = DateTimeOffset.Parse(abandonedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("completedAt", out var completedAt))
             attempt.CompletedAt = DateTimeOffset.Parse(completedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("authoritativeOutcomeAcceptedAt", out var acceptedAt))
             attempt.AuthoritativeOutcomeAcceptedAt = DateTimeOffset.Parse(acceptedAt.S, CultureInfo.InvariantCulture);
         if (item.TryGetValue("hostedPageDeadline", out var expiresAt))
             attempt.HostedPageDeadline = DateTimeOffset.Parse(expiresAt.S, CultureInfo.InvariantCulture);
+        if (item.TryGetValue("nextReconciliationDueAt", out var nextReconciliationDueAt))
+            attempt.NextReconciliationDueAt = DateTimeOffset.Parse(nextReconciliationDueAt.S, CultureInfo.InvariantCulture);
 
         return attempt;
     }
@@ -401,7 +487,7 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
 
     private static Dictionary<string, AttributeValue> ToWalletActivityItem(WalletActivity activity)
     {
-        return new Dictionary<string, AttributeValue>
+        var item = new Dictionary<string, AttributeValue>
         {
             ["id"] = new() { S = activity.Id.ToString() },
             ["walletId"] = new() { S = activity.WalletId.ToString() },
@@ -413,6 +499,11 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
             ["referenceType"] = new() { S = activity.ReferenceType ?? WalletActivity.WalletTopUpReferenceType },
             ["referenceId"] = new() { S = activity.ReferenceId ?? string.Empty }
         };
+
+        if (activity.PaymentReturnEvidenceId.HasValue)
+            item["paymentReturnEvidenceId"] = new() { S = activity.PaymentReturnEvidenceId.Value.ToString() };
+
+        return item;
     }
 
     private static void SetOptional(Dictionary<string, AttributeValue> item, string key, string? value)
@@ -420,6 +511,11 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
         if (!string.IsNullOrWhiteSpace(value))
             item[key] = new AttributeValue { S = value };
     }
+
+    private static bool MatchesFilters(WalletTopUpAttempt attempt, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, WalletTopUpAttemptStatus? status)
+        => (!fromUtc.HasValue || attempt.CreatedAt >= fromUtc.Value)
+            && (!toUtc.HasValue || attempt.CreatedAt <= toUtc.Value)
+            && (!status.HasValue || attempt.Status == status.Value);
 
     private static void SetProperty<T>(T obj, string propertyName, object value)
     {

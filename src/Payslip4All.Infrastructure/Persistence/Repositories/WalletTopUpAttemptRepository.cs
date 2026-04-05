@@ -32,6 +32,11 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.UserId == userId, cancellationToken);
 
+    public Task<WalletTopUpAttempt?> GetAnyByIdAsync(Guid attemptId, CancellationToken cancellationToken = default)
+        => _db.WalletTopUpAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == attemptId, cancellationToken);
+
     public async Task<IReadOnlyList<WalletTopUpAttempt>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var results = await _db.WalletTopUpAttempts
@@ -47,17 +52,48 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.ReturnCorrelationToken == token, cancellationToken);
 
-    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetPendingOrUnverifiedExpiredAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetByMerchantPaymentReferenceAsync(string merchantPaymentReference, CancellationToken cancellationToken = default)
+    {
+        var attempts = await _db.WalletTopUpAttempts
+            .AsNoTracking()
+            .Where(a => a.MerchantPaymentReference == merchantPaymentReference)
+            .ToListAsync(cancellationToken);
+
+        return attempts.OrderByDescending(a => a.CreatedAt).ToList();
+    }
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetDueForReconciliationAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
     {
         var attempts = await _db.WalletTopUpAttempts
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
         return attempts
-            .Where(a => (a.Status == WalletTopUpAttemptStatus.Pending || a.Status == WalletTopUpAttemptStatus.Unverified)
-                        && a.AbandonAfterUtc <= cutoff)
-            .OrderBy(a => a.AbandonAfterUtc)
+            .Where(a => a.NextReconciliationDueAt.HasValue
+                        && a.NextReconciliationDueAt.Value <= cutoff
+                        && (a.Status == WalletTopUpAttemptStatus.Pending
+                            || a.Status == WalletTopUpAttemptStatus.NotConfirmed
+                            || a.Status == WalletTopUpAttemptStatus.Expired))
+            .OrderBy(a => a.NextReconciliationDueAt)
             .ToList();
+    }
+
+    public async Task<IReadOnlyList<WalletTopUpAttempt>> GetForAdminReviewAsync(Guid? attemptId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, WalletTopUpAttemptStatus? status, CancellationToken cancellationToken = default)
+    {
+        var query = _db.WalletTopUpAttempts.AsNoTracking().AsQueryable();
+
+        if (attemptId.HasValue)
+            query = query.Where(a => a.Id == attemptId.Value);
+        if (fromUtc.HasValue)
+            query = query.Where(a => a.CreatedAt >= fromUtc.Value);
+        if (toUtc.HasValue)
+            query = query.Where(a => a.CreatedAt <= toUtc.Value);
+        if (status.HasValue)
+            query = query.Where(a => a.Status == status.Value);
+
+        return await query
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<WalletTopUpSettlementResult> SettleSuccessfulAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default)
@@ -103,6 +139,7 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
                 WalletId = wallet.Id,
                 ActivityType = WalletActivityType.Credit,
                 Amount = attempt.ConfirmedChargedAmount.Value,
+                PaymentReturnEvidenceId = attempt.AuthoritativeEvidenceId,
                 Description = WalletActivity.HostedCardTopUpDescription,
                 ReferenceType = WalletActivity.WalletTopUpReferenceType,
                 ReferenceId = attempt.Id.ToString(),
@@ -119,6 +156,11 @@ public class WalletTopUpAttemptRepository : IWalletTopUpAttemptRepository
             persistedAttempt.AuthoritativeEvidenceId = attempt.AuthoritativeEvidenceId;
             persistedAttempt.LastEvidenceReceivedAt = attempt.LastEvidenceReceivedAt;
             persistedAttempt.LastEvaluatedAt = attempt.LastEvaluatedAt ?? attempt.LastValidatedAt;
+            persistedAttempt.LastReconciledAt = attempt.LastReconciledAt;
+            persistedAttempt.CancelledAt = attempt.CancelledAt;
+            persistedAttempt.ExpiredAt = attempt.ExpiredAt;
+            persistedAttempt.AbandonedAt = attempt.AbandonedAt;
+            persistedAttempt.NextReconciliationDueAt = attempt.NextReconciliationDueAt;
             persistedAttempt.AuthoritativeOutcomeAcceptedAt = attempt.AuthoritativeOutcomeAcceptedAt ?? attempt.LastValidatedAt ?? DateTimeOffset.UtcNow;
             persistedAttempt.OutcomeReasonCode = null;
             persistedAttempt.OutcomeMessage = null;

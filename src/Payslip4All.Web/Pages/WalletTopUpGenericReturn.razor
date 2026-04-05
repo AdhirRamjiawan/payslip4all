@@ -48,6 +48,12 @@
                 return;
             }
 
+            if (payload.TryGetValue("attemptId", out var attemptIdValue) && Guid.TryParse(attemptIdValue, out var attemptId))
+            {
+                Nav.NavigateTo($"/portal/wallet/top-ups/{attemptId:D}/return", forceLoad: true);
+                return;
+            }
+
             var target = result.UnmatchedRecordId.HasValue
                 ? $"/portal/wallet/top-ups/return/not-confirmed?ref={result.UnmatchedRecordId.Value:D}"
                 : "/portal/wallet/top-ups/return/not-confirmed";

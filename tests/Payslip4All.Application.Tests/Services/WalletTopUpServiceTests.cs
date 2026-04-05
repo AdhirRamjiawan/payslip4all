@@ -79,12 +79,12 @@ public class WalletTopUpServiceTests
         Assert.Equal(WalletTopUpAttemptStatus.Pending, result.Status);
         Assert.Equal("https://example.test/hosted", result.RedirectUrl);
         Assert.Equal(createdAttempt!.Id, result.WalletTopUpAttemptId);
-        Assert.Equal(createdAttempt.CreatedAt.AddHours(1), createdAttempt.AbandonAfterUtc);
+        Assert.Equal(result.HostedPageDeadline!.Value.AddMinutes(1), createdAttempt.AbandonAfterUtc);
         Assert.Equal("https://app.test/portal/wallet/top-ups/return", actualReturnUrl?.ToString());
     }
 
     [Fact]
-    public async Task ProcessGenericReturnAsync_WhenTrustworthyCompletedEvidenceMatched_SettlesExactlyOnce()
+    public async Task ProcessGenericReturnAsync_WhenBrowserReturnMatches_KeepsAttemptPendingWithoutSettlement()
     {
         var userId = Guid.NewGuid();
         var attempt = WalletTopUpAttempt.CreatePending(userId, 100m, "fake");
@@ -107,13 +107,13 @@ public class WalletTopUpServiceTests
             EvidenceId = evidenceDto.Id,
             MatchedAttemptId = attempt.Id,
             CorrelationDisposition = PaymentReturnCorrelationDisposition.ExactMatch,
-            NormalizedOutcome = PaymentReturnClaimedOutcome.Completed,
-            TrustLevel = PaymentReturnTrustLevel.Trustworthy,
-            IsAuthoritative = true,
-            ReasonCode = "trustworthy_completed",
-            ResolutionSummary = "Trustworthy completion evidence accepted.",
+            NormalizedOutcome = PaymentReturnClaimedOutcome.Unknown,
+            TrustLevel = PaymentReturnTrustLevel.Untrusted,
+            IsAuthoritative = false,
+            ReasonCode = "browser_return_informational",
+            ResolutionSummary = "Top-up not confirmed",
             ConfirmedChargedAmount = 95m,
-            WalletEffect = "CreditWallet"
+            WalletEffect = "NoCredit"
         };
 
         _provider.Setup(p => p.ParseReturnEvidenceAsync(It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<CancellationToken>())).ReturnsAsync(evidenceDto);
@@ -139,8 +139,12 @@ public class WalletTopUpServiceTests
         Assert.True(result.IsMatched);
         Assert.Equal(attempt.Id, result.MatchedAttemptId);
         _evidenceRepository.Verify(r => r.AddAsync(It.Is<PaymentReturnEvidence>(e => e.MatchedAttemptId == attempt.Id), It.IsAny<CancellationToken>()), Times.Once);
-        _attemptRepository.Verify(r => r.SettleSuccessfulAsync(It.Is<WalletTopUpAttempt>(a => a.ConfirmedChargedAmount == 95m), It.IsAny<CancellationToken>()), Times.Once);
-        _decisionRepository.Verify(r => r.AddAsync(It.Is<OutcomeNormalizationDecision>(d => d.AttemptId == attempt.Id && d.WalletEffect == "CreditWallet"), It.IsAny<CancellationToken>()), Times.Once);
+        _attemptRepository.Verify(r => r.SettleSuccessfulAsync(It.IsAny<WalletTopUpAttempt>(), It.IsAny<CancellationToken>()), Times.Never);
+        _attemptRepository.Verify(r => r.UpdateAsync(It.Is<WalletTopUpAttempt>(a =>
+            a.Status == WalletTopUpAttemptStatus.Pending
+            && a.OutcomeReasonCode == "browser_return_informational"
+            && a.OutcomeMessage == "Payment is still pending. Your wallet has not been credited yet."), It.IsAny<CancellationToken>()), Times.Once);
+        _decisionRepository.Verify(r => r.AddAsync(It.Is<OutcomeNormalizationDecision>(d => d.AttemptId == attempt.Id && d.WalletEffect == "NoCredit"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -176,7 +180,7 @@ public class WalletTopUpServiceTests
         });
 
         Assert.False(result.IsMatched);
-        Assert.Equal("unmatched", result.GenericResultCode);
+        Assert.Equal("not_confirmed", result.GenericResultCode);
         _unmatchedRepository.Verify(r => r.AddAsync(It.IsAny<UnmatchedPaymentReturnRecord>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -231,7 +235,7 @@ public class WalletTopUpServiceTests
     {
         var userId = Guid.NewGuid();
         var attempt = WalletTopUpAttempt.CreatePending(userId, 100m, "fake");
-        attempt.MarkUnverified("low_confidence_return", "Manual review required.", DateTimeOffset.UtcNow);
+        attempt.MarkNotConfirmed("not_confirmed", "Top-up not confirmed", DateTimeOffset.UtcNow);
 
         _attemptRepository.Setup(r => r.GetByIdAsync(attempt.Id, userId, It.IsAny<CancellationToken>())).ReturnsAsync(attempt);
         _walletRepository.Setup(r => r.GetByUserIdAsync(userId)).ReturnsAsync(new Wallet { UserId = userId, CurrentBalance = 0m });
@@ -239,8 +243,8 @@ public class WalletTopUpServiceTests
         var result = await CreateService().GetAttemptResultAsync(attempt.Id, userId);
 
         Assert.NotNull(result);
-        Assert.Equal(WalletTopUpAttemptStatus.Unverified, result!.Status);
-        Assert.Equal("Manual review required.", result.OutcomeMessage);
+        Assert.Equal(WalletTopUpAttemptStatus.NotConfirmed, result!.Status);
+        Assert.Equal("Top-up not confirmed", result.OutcomeMessage);
     }
 
     [Fact]
@@ -248,5 +252,106 @@ public class WalletTopUpServiceTests
     {
         await CreateService().AbandonExpiredAttemptsAsync();
         _abandonmentService.Verify(s => s.AbandonExpiredAttemptsAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(typeof(HttpRequestException))]
+    [InlineData(typeof(InvalidOperationException))]
+    public async Task StartHostedTopUpAsync_WhenProviderStartFails_ReturnsSameOwnerSafeMessage(Type exceptionType)
+    {
+        var userId = Guid.NewGuid();
+        Exception exception = exceptionType == typeof(HttpRequestException)
+            ? new HttpRequestException("gateway down")
+            : new InvalidOperationException("merchant invalid");
+
+        _provider
+            .Setup(p => p.StartHostedTopUpAsync(
+                It.IsAny<WalletTopUpAttempt>(),
+                It.IsAny<Uri>(),
+                It.IsAny<Uri?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(exception);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService().StartHostedTopUpAsync(new StartWalletTopUpCommand
+        {
+            UserId = userId,
+            RequestedAmount = 100m,
+            ReturnUrl = "https://app.test/portal/wallet/top-ups/return"
+        }));
+
+        Assert.Equal("Payment could not be started", ex.Message);
+        _attemptRepository.Verify(r => r.UpdateAsync(
+            It.Is<WalletTopUpAttempt>(a =>
+                a.UserId == userId
+                && a.Status == WalletTopUpAttemptStatus.NotConfirmed
+                && a.OutcomeMessage == "Top-up not confirmed"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessAuthoritativeCallbackAsync_WhenEvidenceConflictsWithAcceptedFinalOutcome_PersistsConflictDecisionWithoutChangingWallet()
+    {
+        var userId = Guid.NewGuid();
+        var attempt = WalletTopUpAttempt.CreatePending(userId, 100m, "fake");
+        attempt.Status = WalletTopUpAttemptStatus.Completed;
+        attempt.ConfirmedChargedAmount = 95m;
+        attempt.ProviderPaymentReference = "payment-123";
+        attempt.CreditedWalletActivityId = Guid.NewGuid();
+        attempt.AuthoritativeEvidenceId = Guid.NewGuid();
+        attempt.CompletedAt = DateTimeOffset.UtcNow;
+        attempt.AuthoritativeOutcomeAcceptedAt = DateTimeOffset.UtcNow;
+        attempt.NextReconciliationDueAt = null;
+
+        var parsedEvidence = new HostedPaymentReturnEvidenceDto
+        {
+            Id = Guid.NewGuid(),
+            ProviderKey = "fake",
+            SourceChannel = "PayFastNotify",
+            MerchantPaymentReference = attempt.MerchantPaymentReference,
+            ClaimedOutcome = PaymentReturnClaimedOutcome.Cancelled,
+            TrustLevel = PaymentReturnTrustLevel.Trustworthy,
+            SignatureVerified = true,
+            SourceVerified = true,
+            ServerConfirmed = true,
+            ConfirmedChargedAmount = 95m,
+            ConfirmedCurrencyCode = "ZAR",
+            ValidatedAt = DateTimeOffset.UtcNow,
+            ReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        _provider
+            .Setup(p => p.ParseAuthoritativeEvidenceAsync(It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(parsedEvidence);
+        _attemptRepository
+            .Setup(r => r.GetByMerchantPaymentReferenceAsync(attempt.MerchantPaymentReference, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { attempt });
+        _normalizer
+            .Setup(n => n.NormalizeAsync(It.IsAny<PaymentReturnEvidence>(), It.Is<WalletTopUpAttempt?>(a => a != null && a.Id == attempt.Id), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostedPaymentReturnResolutionDto
+            {
+                EvidenceId = parsedEvidence.Id,
+                MatchedAttemptId = attempt.Id,
+                CorrelationDisposition = PaymentReturnCorrelationDisposition.DuplicateFinalized,
+                TriggerSource = "PayFastNotify",
+                ConflictWithAcceptedFinal = true,
+                ReasonCode = "duplicate_finalized",
+                ResolutionSummary = "Top-up not confirmed",
+                WalletEffect = "NoCredit"
+            });
+
+        await CreateService().ProcessAuthoritativeCallbackAsync("fake", new Dictionary<string, string>
+        {
+            ["m_payment_id"] = attempt.MerchantPaymentReference
+        });
+
+        _attemptRepository.Verify(r => r.UpdateAsync(It.IsAny<WalletTopUpAttempt>(), It.IsAny<CancellationToken>()), Times.Never);
+        _attemptRepository.Verify(r => r.SettleSuccessfulAsync(It.IsAny<WalletTopUpAttempt>(), It.IsAny<CancellationToken>()), Times.Never);
+        _decisionRepository.Verify(r => r.AddAsync(
+            It.Is<OutcomeNormalizationDecision>(d =>
+                d.AttemptId == attempt.Id
+                && d.ConflictWithAcceptedFinalOutcome
+                && d.DecisionReasonCode == "duplicate_finalized"
+                && d.WalletEffect == "NoCredit"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

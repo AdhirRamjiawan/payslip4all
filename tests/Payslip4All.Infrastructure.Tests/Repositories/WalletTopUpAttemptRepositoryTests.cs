@@ -49,22 +49,56 @@ public class WalletTopUpAttemptRepositoryTests : RepositoryTestBase
     }
 
     [Fact]
-    public async Task GetPendingOrUnverifiedExpiredAsync_ReturnsOnlyCutoffAttempts()
+    public async Task GetByIdAsync_WithDifferentOwner_ReturnsNull()
+    {
+        var owner = SeedUser("owner-filter@test.com");
+        var otherOwnerId = Guid.NewGuid();
+        var attempt = WalletTopUpAttempt.CreatePending(owner.Id, 100m, "fake");
+        await _repo.AddAsync(attempt);
+
+        var result = await _repo.GetByIdAsync(attempt.Id, otherOwnerId);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetByUserIdAsync_ReturnsOnlyOwnerAttemptsInNewestFirstOrder()
+    {
+        var owner = SeedUser("history-owner@test.com");
+        var otherOwner = SeedUser("history-other@test.com");
+        var first = WalletTopUpAttempt.CreatePending(owner.Id, 60m, "payfast");
+        var second = WalletTopUpAttempt.CreatePending(owner.Id, 80m, "payfast");
+        var foreign = WalletTopUpAttempt.CreatePending(otherOwner.Id, 90m, "payfast");
+
+        await _repo.AddAsync(first);
+        await Task.Delay(5);
+        await _repo.AddAsync(second);
+        await _repo.AddAsync(foreign);
+
+        var attempts = await _repo.GetByUserIdAsync(owner.Id);
+
+        Assert.Equal(2, attempts.Count);
+        Assert.Equal(second.Id, attempts[0].Id);
+        Assert.DoesNotContain(attempts, x => x.UserId != owner.Id);
+    }
+
+    [Fact]
+    public async Task GetDueForReconciliationAsync_ReturnsOnlyDueAttempts()
     {
         var user = SeedUser("expiry-topup@test.com");
         var expiredPending = WalletTopUpAttempt.CreatePending(user.Id, 50m, "fake");
-        expiredPending.AbandonAfterUtc = expiredPending.CreatedAt;
+        expiredPending.NextReconciliationDueAt = expiredPending.CreatedAt;
         var expiredUnverified = WalletTopUpAttempt.CreatePending(user.Id, 75m, "fake");
         expiredUnverified.MarkUnverified("low_confidence_return", "Manual review required.", DateTimeOffset.UtcNow);
-        expiredUnverified.AbandonAfterUtc = expiredUnverified.CreatedAt;
-        var activePending = WalletTopUpAttempt.CreatePending(user.Id, 30m, "fake");
-        activePending.AbandonAfterUtc = DateTimeOffset.UtcNow.AddHours(2);
+        expiredUnverified.NextReconciliationDueAt = expiredUnverified.CreatedAt;
+        var activePending = WalletTopUpAttempt.CreatePending(user.Id, 55m, "fake");
+        activePending.NextReconciliationDueAt = DateTimeOffset.UtcNow.AddHours(2);
 
         await _repo.AddAsync(expiredPending);
         await _repo.AddAsync(expiredUnverified);
         await _repo.AddAsync(activePending);
 
-        var result = await _repo.GetPendingOrUnverifiedExpiredAsync(DateTimeOffset.UtcNow.AddMinutes(1));
+        var result = await _repo.GetDueForReconciliationAsync(DateTimeOffset.UtcNow.AddMinutes(1));
 
         Assert.Equal(2, result.Count);
         Assert.DoesNotContain(result, a => a.Id == activePending.Id);

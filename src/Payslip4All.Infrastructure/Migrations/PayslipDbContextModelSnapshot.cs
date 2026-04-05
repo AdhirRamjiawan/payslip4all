@@ -214,6 +214,14 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.Property<bool>("SupersededAbandonment")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("SupersededNotConfirmed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TriggerSource")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("UnmatchedPaymentReturnRecordId")
                         .HasColumnType("TEXT");
 
@@ -245,8 +253,16 @@ namespace Payslip4All.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ConfirmedCurrencyCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("CorrelationDisposition")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("EnvironmentMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("EvidenceOccurredAt")
                         .HasColumnType("TEXT");
@@ -255,6 +271,17 @@ namespace Payslip4All.Infrastructure.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("MatchedAttemptId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MerchantPaymentReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaymentMethodCode")
+                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderKey")
@@ -281,10 +308,19 @@ namespace Payslip4All.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ServerConfirmed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SignatureVerified")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SourceChannel")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("SourceVerified")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("TrustLevel")
                         .HasColumnType("INTEGER");
@@ -543,6 +579,9 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("PaymentReturnEvidenceId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReferenceId")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -570,10 +609,16 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("AbandonAfterUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("AbandonedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("AuthoritativeEvidenceId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("AuthoritativeOutcomeAcceptedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
@@ -594,6 +639,9 @@ namespace Payslip4All.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("ExpiredAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FailureCode")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -611,7 +659,18 @@ namespace Payslip4All.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LastEvidenceReceivedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("LastReconciledAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastValidatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MerchantPaymentReference")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("NextReconciliationDueAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OutcomeMessage")
@@ -656,6 +715,8 @@ namespace Payslip4All.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MerchantPaymentReference");
 
                     b.HasIndex("ProviderSessionReference");
 

@@ -1,7 +1,13 @@
 using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Payslip4All.Infrastructure.HostedServices;
+using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Web.Tests.Startup;
 
@@ -30,10 +36,8 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
             builder.UseSetting("PERSISTENCE_PROVIDER", "dynamodb");
             builder.ConfigureServices(services =>
             {
-                var provisionerDescriptor = services.SingleOrDefault(
-                    d => d.ImplementationType == typeof(Payslip4All.Infrastructure.Persistence.DynamoDB.DynamoDbTableProvisioner));
-                if (provisionerDescriptor != null)
-                    services.Remove(provisionerDescriptor);
+                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+                    services.Remove(descriptor);
             });
         });
     }
@@ -123,5 +127,55 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
 
         Assert.NotNull(client);
         Assert.Null(((AmazonDynamoDBClient)client).Config.ServiceURL);
+    }
+
+    [Fact]
+    public void DynamoDbProvider_WhenBootstrapHostedServiceFails_StartupFailsFast()
+    {
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", "http://localhost:8000");
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        var neverActive = new Mock<IAmazonDynamoDB>();
+        neverActive
+            .Setup(x => x.DescribeTableAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ResourceNotFoundException("missing"));
+        neverActive
+            .Setup(x => x.CreateTableAsync(It.IsAny<CreateTableRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateTableResponse());
+
+        var ex = Assert.ThrowsAny<Exception>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("PERSISTENCE_PROVIDER", "dynamodb");
+                builder.ConfigureServices(services =>
+                {
+                    foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+                        services.Remove(descriptor);
+                    foreach (var descriptor in services.Where(d => d.ServiceType == typeof(DynamoDbTableProvisioner)
+                                                                  || d.ServiceType == typeof(DynamoDbPaymentBootstrapHostedService)
+                                                                  || d.ServiceType == typeof(IAmazonDynamoDB)).ToList())
+                    {
+                        services.Remove(descriptor);
+                    }
+
+                    services.AddSingleton(neverActive.Object);
+                    services.AddSingleton(new DynamoDbTableProvisioner(
+                        neverActive.Object,
+                        NullLogger<DynamoDbTableProvisioner>.Instance,
+                        activationTimeout: TimeSpan.Zero,
+                        pollInterval: TimeSpan.Zero));
+                    services.AddSingleton<DynamoDbPaymentBootstrapHostedService>();
+                    services.AddHostedService(sp => sp.GetRequiredService<DynamoDbPaymentBootstrapHostedService>());
+                });
+            });
+
+            _ = factory.CreateClient();
+        });
+
+        Assert.Contains("ACTIVE", ex.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 }

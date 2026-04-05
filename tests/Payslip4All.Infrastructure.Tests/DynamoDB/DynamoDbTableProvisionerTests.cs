@@ -33,6 +33,8 @@ public class DynamoDbTableProvisionerTests : IAsyncLifetime
         {
             $"{_prefix}_users", $"{_prefix}_companies", $"{_prefix}_employees",
             $"{_prefix}_employee_loans", $"{_prefix}_payslips", $"{_prefix}_payslip_loan_deductions",
+            $"{_prefix}_wallets", $"{_prefix}_wallet_activities", $"{_prefix}_wallet_topup_attempts",
+            $"{_prefix}_payment_return_evidences", $"{_prefix}_outcome_normalization_decisions", $"{_prefix}_unmatched_payment_return_records"
         };
         foreach (var name in tableNames)
         {
@@ -44,7 +46,7 @@ public class DynamoDbTableProvisionerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StartAsync_WhenNoTablesExist_CreatesAll6Tables()
+    public async Task StartAsync_WhenNoTablesExist_CreatesRequiredPaymentAndWalletTables()
     {
         // Arrange
         Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", _prefix);
@@ -54,11 +56,11 @@ public class DynamoDbTableProvisionerTests : IAsyncLifetime
         // Act
         await provisioner.StartAsync(CancellationToken.None);
 
-        // Assert — all 6 tables should exist and be ACTIVE
+        // Assert — all required payment and dependent wallet tables should exist and be ACTIVE
         var tableNames = new[]
         {
-            $"{_prefix}_users", $"{_prefix}_companies", $"{_prefix}_employees",
-            $"{_prefix}_employee_loans", $"{_prefix}_payslips", $"{_prefix}_payslip_loan_deductions",
+            $"{_prefix}_wallets", $"{_prefix}_wallet_activities", $"{_prefix}_wallet_topup_attempts",
+            $"{_prefix}_payment_return_evidences", $"{_prefix}_outcome_normalization_decisions", $"{_prefix}_unmatched_payment_return_records"
         };
 
         foreach (var name in tableNames)

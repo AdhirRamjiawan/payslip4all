@@ -13,6 +13,7 @@ public class WalletActivity
     public decimal Amount { get; set; }
     public string? ReferenceType { get; set; }
     public string? ReferenceId { get; set; }
+    public Guid? PaymentReturnEvidenceId { get; set; }
     public string? Description { get; set; }
     public decimal BalanceAfterActivity { get; set; }
     public DateTimeOffset OccurredAt { get; private set; }

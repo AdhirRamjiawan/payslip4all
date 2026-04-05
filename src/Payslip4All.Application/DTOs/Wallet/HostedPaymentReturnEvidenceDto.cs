@@ -9,12 +9,20 @@ public class HostedPaymentReturnEvidenceDto
     public string SourceChannel { get; set; } = "BrowserReturn";
     public string? ProviderSessionReference { get; set; }
     public string? ProviderPaymentReference { get; set; }
+    public string? MerchantPaymentReference { get; set; }
     public string? ReturnCorrelationToken { get; set; }
+    public Guid? OwnerUserId { get; set; }
     public Guid? MatchedAttemptId { get; set; }
     public PaymentReturnCorrelationDisposition CorrelationDisposition { get; set; }
     public PaymentReturnClaimedOutcome? ClaimedOutcome { get; set; }
     public PaymentReturnTrustLevel TrustLevel { get; set; }
+    public string? PaymentMethodCode { get; set; }
+    public string? EnvironmentMode { get; set; }
+    public bool SignatureVerified { get; set; }
+    public bool SourceVerified { get; set; }
+    public bool ServerConfirmed { get; set; }
     public decimal? ConfirmedChargedAmount { get; set; }
+    public string? ConfirmedCurrencyCode { get; set; }
     public DateTimeOffset? EvidenceOccurredAt { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
     public DateTimeOffset ValidatedAt { get; set; }

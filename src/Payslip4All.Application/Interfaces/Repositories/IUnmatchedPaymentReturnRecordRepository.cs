@@ -6,4 +6,5 @@ public interface IUnmatchedPaymentReturnRecordRepository
 {
     Task AddAsync(UnmatchedPaymentReturnRecord record, CancellationToken cancellationToken = default);
     Task<UnmatchedPaymentReturnRecord?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<UnmatchedPaymentReturnRecord>> GetForAdminReviewAsync(Guid? id, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, CancellationToken cancellationToken = default);
 }

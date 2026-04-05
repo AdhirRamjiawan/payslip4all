@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Infrastructure.HostedPayments;
@@ -97,10 +98,7 @@ public class DynamoDbProviderSwitchingTests
                 builder.UseSetting("PERSISTENCE_PROVIDER", "dynamodb");
                 builder.ConfigureServices(services =>
                 {
-                    // Remove DynamoDbTableProvisioner to avoid connecting to real DynamoDB in unit tests
-                    var descriptor = services.SingleOrDefault(
-                        d => d.ImplementationType?.Name == "DynamoDbTableProvisioner");
-                    if (descriptor != null)
+                    foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
                         services.Remove(descriptor);
                 });
             });

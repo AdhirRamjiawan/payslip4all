@@ -40,6 +40,25 @@ public class FakeHostedPaymentProviderTests
     }
 
     [Fact]
+    public async Task ParseReturnEvidenceAsync_WhenBrowserReturnMatches_DoesNotPromoteEvidenceToVerified()
+    {
+        var result = await _provider.ParseReturnEvidenceAsync(new Dictionary<string, string>
+        {
+            ["session"] = "session-123",
+            ["token"] = "token-123",
+            ["outcome"] = "succeeded",
+            ["amount"] = "100.00"
+        });
+
+        Assert.Equal(PaymentReturnCorrelationDisposition.ExactMatch, result.CorrelationDisposition);
+        Assert.Equal(PaymentReturnClaimedOutcome.Completed, result.ClaimedOutcome);
+        Assert.Equal(PaymentReturnTrustLevel.LowConfidence, result.TrustLevel);
+        Assert.False(result.SignatureVerified);
+        Assert.False(result.SourceVerified);
+        Assert.False(result.ServerConfirmed);
+    }
+
+    [Fact]
     public async Task ValidateReturnAsync_WhenCorrelationDoesNotMatch_ReturnsUnverified()
     {
         var attempt = WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "fake");

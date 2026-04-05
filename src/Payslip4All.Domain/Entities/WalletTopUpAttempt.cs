@@ -14,6 +14,7 @@ public class WalletTopUpAttempt
     public string ProviderKey { get; set; } = string.Empty;
     public string? ProviderSessionReference { get; set; }
     public string? ProviderPaymentReference { get; set; }
+    public string MerchantPaymentReference { get; set; } = string.Empty;
     public string? ReturnCorrelationToken { get; set; }
     public string? FailureCode { get; set; }
     public string? FailureMessage { get; set; }
@@ -27,9 +28,15 @@ public class WalletTopUpAttempt
     public DateTimeOffset? LastValidatedAt { get; set; }
     public DateTimeOffset? LastEvaluatedAt { get; set; }
     public DateTimeOffset? LastEvidenceReceivedAt { get; set; }
+    public DateTimeOffset? LastReconciledAt { get; set; }
+    public DateTimeOffset? CancelledAt { get; set; }
+    public DateTimeOffset? ExpiredAt { get; set; }
+    public DateTimeOffset? AbandonedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? AuthoritativeOutcomeAcceptedAt { get; set; }
     public DateTimeOffset? HostedPageDeadline { get; set; }
+    public DateTimeOffset? NextReconciliationDueAt { get; set; }
+    /// <summary>Legacy compatibility field retained for existing persistence/tests.</summary>
     public DateTimeOffset AbandonAfterUtc { get; set; }
 
     public WalletTopUpAttempt()
@@ -37,6 +44,7 @@ public class WalletTopUpAttempt
         Id = Guid.NewGuid();
         CreatedAt = DateTimeOffset.UtcNow;
         UpdatedAt = CreatedAt;
+        MerchantPaymentReference = Id.ToString("N");
         AbandonAfterUtc = CreatedAt.AddHours(1);
         Status = WalletTopUpAttemptStatus.Pending;
     }
@@ -55,14 +63,23 @@ public class WalletTopUpAttempt
             Status = WalletTopUpAttemptStatus.Pending
         };
 
-        attempt.AbandonAfterUtc = attempt.CreatedAt.AddHours(1);
         attempt.EnsureValid();
         return attempt;
     }
 
+    public bool IsFinalForSettlement
+        => Status is WalletTopUpAttemptStatus.Completed
+            or WalletTopUpAttemptStatus.Cancelled
+            or WalletTopUpAttemptStatus.Expired
+            or WalletTopUpAttemptStatus.Abandoned;
+
+    public bool IsUnresolved
+        => Status is WalletTopUpAttemptStatus.Pending or WalletTopUpAttemptStatus.NotConfirmed or WalletTopUpAttemptStatus.Expired;
+
     public void RegisterHostedSession(string providerSessionReference, string returnCorrelationToken, DateTimeOffset? expiresAt)
     {
-        EnsureMutable();
+        if (IsFinalForSettlement || Status == WalletTopUpAttemptStatus.NotConfirmed)
+            throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
 
         if (string.IsNullOrWhiteSpace(providerSessionReference))
             throw new ArgumentException("Provider session reference is required.", nameof(providerSessionReference));
@@ -74,13 +91,16 @@ public class WalletTopUpAttempt
         ReturnCorrelationToken = returnCorrelationToken.Trim();
         RedirectedAt = DateTimeOffset.UtcNow;
         HostedPageDeadline = expiresAt;
+        NextReconciliationDueAt = expiresAt;
+        if (expiresAt.HasValue)
+            AbandonAfterUtc = expiresAt.Value.AddMinutes(1);
         UpdatedAt = DateTimeOffset.UtcNow;
         EnsureValid();
     }
 
     public void MarkPendingValidation(DateTimeOffset validatedAt, string? failureCode, string? failureMessage)
     {
-        EnsureMutable();
+        EnsurePendingLike();
         LastValidatedAt = validatedAt;
         LastEvaluatedAt = validatedAt;
         OutcomeReasonCode = Normalize(failureCode);
@@ -91,67 +111,16 @@ public class WalletTopUpAttempt
         EnsureValid();
     }
 
-    public void RecordValidatedSuccess(decimal confirmedChargedAmount, string? providerPaymentReference, DateTimeOffset validatedAt)
+    public void MarkNotConfirmed(string? reasonCode, string? message, DateTimeOffset at)
     {
-        EnsureMutable();
-        WalletCalculator.ValidateAmount(confirmedChargedAmount);
-
-        ConfirmedChargedAmount = confirmedChargedAmount;
-        ProviderPaymentReference = Normalize(providerPaymentReference);
-        LastValidatedAt = validatedAt;
-        LastEvaluatedAt = validatedAt;
-        OutcomeReasonCode = null;
-        OutcomeMessage = null;
-        FailureCode = null;
-        FailureMessage = null;
-        UpdatedAt = validatedAt;
-        EnsureValid();
-    }
-
-    public void MarkCompleted(decimal confirmedChargedAmount, string? providerPaymentReference, DateTimeOffset validatedAt, Guid creditedWalletActivityId)
-    {
-        EnsureMutable();
-        WalletCalculator.ValidateAmount(confirmedChargedAmount);
-
-        if (creditedWalletActivityId == Guid.Empty)
-            throw new ArgumentException("Credited wallet activity id is required.", nameof(creditedWalletActivityId));
-
-        ConfirmedChargedAmount = confirmedChargedAmount;
-        ProviderPaymentReference = Normalize(providerPaymentReference);
-        CreditedWalletActivityId = creditedWalletActivityId;
-        Status = WalletTopUpAttemptStatus.Completed;
-        LastValidatedAt = validatedAt;
-        LastEvaluatedAt = validatedAt;
-        CompletedAt = validatedAt;
-        AuthoritativeOutcomeAcceptedAt = validatedAt;
-        OutcomeReasonCode = null;
-        OutcomeMessage = null;
-        FailureCode = null;
-        FailureMessage = null;
-        UpdatedAt = validatedAt;
-        EnsureValid();
-    }
-
-    /// <summary>Legacy method kept for backward compatibility with pre-008 data. Do not use in new code — use MarkUnverified instead.</summary>
-    [Obsolete("Use MarkUnverified instead. Failed status is no longer used in new top-up flows.")]
-    public void MarkFailed(string? failureCode, string? failureMessage, DateTimeOffset validatedAt)
-        => MarkFinal(WalletTopUpAttemptStatus.Failed, failureCode, failureMessage, validatedAt);
-
-    public void MarkCancelled(string? failureCode, string? failureMessage, DateTimeOffset validatedAt)
-        => MarkFinal(WalletTopUpAttemptStatus.Cancelled, failureCode, failureMessage, validatedAt);
-
-    public void MarkExpired(string? failureCode, string? failureMessage, DateTimeOffset validatedAt)
-        => MarkFinal(WalletTopUpAttemptStatus.Expired, failureCode, failureMessage, validatedAt);
-
-    public void MarkAbandoned(DateTimeOffset at)
-    {
-        if (Status is WalletTopUpAttemptStatus.Completed or WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Expired)
+        if (IsFinalForSettlement)
             throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
 
-        Status = WalletTopUpAttemptStatus.Abandoned;
+        Status = WalletTopUpAttemptStatus.NotConfirmed;
         LastEvaluatedAt = at;
-        OutcomeReasonCode = "abandoned";
-        OutcomeMessage = "The hosted payment session was abandoned.";
+        LastValidatedAt ??= at;
+        OutcomeReasonCode = Normalize(reasonCode);
+        OutcomeMessage = Normalize(message);
         FailureCode = OutcomeReasonCode;
         FailureMessage = OutcomeMessage;
         UpdatedAt = at;
@@ -159,18 +128,99 @@ public class WalletTopUpAttempt
     }
 
     public void MarkUnverified(string? reasonCode, string? message, DateTimeOffset at)
+        => MarkNotConfirmed(reasonCode, message, at);
+
+    public void RecordValidatedSuccess(decimal confirmedChargedAmount, string? providerPaymentReference, DateTimeOffset validatedAt)
     {
-        if (Status is WalletTopUpAttemptStatus.Completed or WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Expired)
+        if (IsFinalForSettlement)
             throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
 
-        Status = WalletTopUpAttemptStatus.Unverified;
+        WalletCalculator.ValidateAmount(confirmedChargedAmount);
+        ConfirmedChargedAmount = confirmedChargedAmount;
+        ProviderPaymentReference = Normalize(providerPaymentReference);
+        LastValidatedAt = validatedAt;
+        LastEvaluatedAt = validatedAt;
+        UpdatedAt = validatedAt;
+        EnsureValid();
+    }
+
+    public void MarkCompleted(decimal confirmedChargedAmount, string? providerPaymentReference, DateTimeOffset validatedAt, Guid creditedWalletActivityId)
+    {
+        if (creditedWalletActivityId == Guid.Empty)
+            throw new ArgumentException("Credited wallet activity id is required.", nameof(creditedWalletActivityId));
+
+        RecordValidatedSuccess(confirmedChargedAmount, providerPaymentReference, validatedAt);
+        CreditedWalletActivityId = creditedWalletActivityId;
+        Status = WalletTopUpAttemptStatus.Completed;
+        CompletedAt = validatedAt;
+        AuthoritativeOutcomeAcceptedAt = validatedAt;
+        NextReconciliationDueAt = null;
+        OutcomeReasonCode = null;
+        OutcomeMessage = null;
+        FailureCode = null;
+        FailureMessage = null;
+        UpdatedAt = validatedAt;
+        EnsureValid();
+    }
+
+    public void MarkCancelled(string? failureCode, string? failureMessage, DateTimeOffset validatedAt)
+    {
+        if (IsFinalForSettlement)
+            throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
+
+        Status = WalletTopUpAttemptStatus.Cancelled;
+        CancelledAt = validatedAt;
+        LastValidatedAt = validatedAt;
+        LastEvaluatedAt = validatedAt;
+        AuthoritativeOutcomeAcceptedAt = validatedAt;
+        NextReconciliationDueAt = null;
+        OutcomeReasonCode = Normalize(failureCode);
+        OutcomeMessage = Normalize(failureMessage);
+        FailureCode = OutcomeReasonCode;
+        FailureMessage = OutcomeMessage;
+        UpdatedAt = validatedAt;
+        EnsureValid();
+    }
+
+    public void MarkExpired(string? failureCode, string? failureMessage, DateTimeOffset validatedAt, DateTimeOffset? nextReconciliationDueAt = null)
+    {
+        if (Status is WalletTopUpAttemptStatus.Completed or WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Abandoned)
+            throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
+
+        Status = WalletTopUpAttemptStatus.Expired;
+        ExpiredAt = validatedAt;
+        LastValidatedAt = validatedAt;
+        LastEvaluatedAt = validatedAt;
+        NextReconciliationDueAt = nextReconciliationDueAt;
+        OutcomeReasonCode = Normalize(failureCode);
+        OutcomeMessage = Normalize(failureMessage);
+        FailureCode = OutcomeReasonCode;
+        FailureMessage = OutcomeMessage;
+        UpdatedAt = validatedAt;
+        EnsureValid();
+    }
+
+    public void MarkAbandoned(DateTimeOffset at)
+    {
+        if (Status is WalletTopUpAttemptStatus.Completed or WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Abandoned)
+            throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
+
+        Status = WalletTopUpAttemptStatus.Abandoned;
+        AbandonedAt = at;
         LastEvaluatedAt = at;
-        OutcomeReasonCode = Normalize(reasonCode);
-        OutcomeMessage = Normalize(message);
+        NextReconciliationDueAt = null;
+        OutcomeReasonCode = "abandoned";
+        OutcomeMessage = "Top-up not confirmed";
         FailureCode = OutcomeReasonCode;
         FailureMessage = OutcomeMessage;
         UpdatedAt = at;
         EnsureValid();
+    }
+
+    public void RecordReconciled(DateTimeOffset at)
+    {
+        LastReconciledAt = at;
+        UpdatedAt = at;
     }
 
     public void AcceptTrustworthyEvidence(
@@ -184,40 +234,45 @@ public class WalletTopUpAttempt
         if (evidenceId == Guid.Empty)
             throw new ArgumentException("Evidence id is required.", nameof(evidenceId));
 
-        if (Status is WalletTopUpAttemptStatus.Completed or WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Expired)
+        if (IsFinalForSettlement)
             throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
 
         AuthoritativeEvidenceId = evidenceId;
         AuthoritativeOutcomeAcceptedAt = at;
-        LastEvaluatedAt = at;
         ProviderPaymentReference = Normalize(paymentRef) ?? ProviderPaymentReference;
         ConfirmedChargedAmount = confirmedAmount ?? ConfirmedChargedAmount;
         CreditedWalletActivityId = creditedActivityId ?? CreditedWalletActivityId;
+
+        switch (claimedOutcome)
+        {
+            case PaymentReturnClaimedOutcome.Completed:
+                if (!ConfirmedChargedAmount.HasValue)
+                    throw new ArgumentException("Confirmed amount is required for completed outcomes.", nameof(confirmedAmount));
+                Status = WalletTopUpAttemptStatus.Completed;
+                CompletedAt = at;
+                NextReconciliationDueAt = null;
+                break;
+            case PaymentReturnClaimedOutcome.Cancelled:
+                Status = WalletTopUpAttemptStatus.Cancelled;
+                CancelledAt = at;
+                NextReconciliationDueAt = null;
+                break;
+            case PaymentReturnClaimedOutcome.Expired:
+                Status = WalletTopUpAttemptStatus.Expired;
+                ExpiredAt = at;
+                NextReconciliationDueAt = at.AddMinutes(1);
+                break;
+            default:
+                Status = WalletTopUpAttemptStatus.NotConfirmed;
+                break;
+        }
+
+        LastValidatedAt = at;
+        LastEvaluatedAt = at;
         OutcomeReasonCode = null;
         OutcomeMessage = null;
         FailureCode = null;
         FailureMessage = null;
-
-        Status = claimedOutcome switch
-        {
-            PaymentReturnClaimedOutcome.Completed => WalletTopUpAttemptStatus.Completed,
-            PaymentReturnClaimedOutcome.Cancelled => WalletTopUpAttemptStatus.Cancelled,
-            PaymentReturnClaimedOutcome.Expired => WalletTopUpAttemptStatus.Expired,
-            _ => WalletTopUpAttemptStatus.Unverified
-        };
-
-        if (Status == WalletTopUpAttemptStatus.Completed)
-        {
-            if (!ConfirmedChargedAmount.HasValue)
-                throw new ArgumentException("Confirmed amount is required for completed outcomes.", nameof(confirmedAmount));
-
-            CompletedAt = at;
-        }
-        else if (Status is WalletTopUpAttemptStatus.Cancelled or WalletTopUpAttemptStatus.Expired)
-        {
-            CompletedAt = at;
-        }
-
         UpdatedAt = at;
         EnsureValid();
     }
@@ -229,6 +284,9 @@ public class WalletTopUpAttempt
 
         if (string.IsNullOrWhiteSpace(ProviderKey))
             throw new ArgumentException("ProviderKey is required.", nameof(ProviderKey));
+
+        if (string.IsNullOrWhiteSpace(MerchantPaymentReference))
+            throw new ArgumentException("MerchantPaymentReference is required.", nameof(MerchantPaymentReference));
 
         WalletCalculator.ValidateAmount(RequestedAmount);
         EnsureTwoDecimalPlaces(RequestedAmount, nameof(RequestedAmount));
@@ -251,9 +309,6 @@ public class WalletTopUpAttempt
                 throw new ArgumentException("ReturnCorrelationToken is required after redirect initiation.", nameof(ReturnCorrelationToken));
         }
 
-        if (AbandonAfterUtc != CreatedAt.AddHours(1))
-            throw new ArgumentException("AbandonAfterUtc must be exactly one hour after CreatedAt.", nameof(AbandonAfterUtc));
-
         if (Status == WalletTopUpAttemptStatus.Completed)
         {
             if (!ConfirmedChargedAmount.HasValue)
@@ -264,35 +319,10 @@ public class WalletTopUpAttempt
         }
     }
 
-    private void MarkFinal(WalletTopUpAttemptStatus finalStatus, string? failureCode, string? failureMessage, DateTimeOffset validatedAt)
+    private void EnsurePendingLike()
     {
-        EnsureMutable();
-        Status = finalStatus;
-        LastValidatedAt = validatedAt;
-        LastEvaluatedAt = validatedAt;
-        CompletedAt = validatedAt;
-        AuthoritativeOutcomeAcceptedAt = validatedAt;
-        OutcomeReasonCode = Normalize(failureCode);
-        OutcomeMessage = Normalize(failureMessage);
-        FailureCode = OutcomeReasonCode;
-        FailureMessage = OutcomeMessage;
-        UpdatedAt = validatedAt;
-        EnsureValid();
-    }
-
-    private void EnsureMutable()
-    {
-#pragma warning disable CS0618 // Failed is legacy but still guards the entity against mutation
-        if (Status is WalletTopUpAttemptStatus.Completed
-            or WalletTopUpAttemptStatus.Failed
-            or WalletTopUpAttemptStatus.Cancelled
-            or WalletTopUpAttemptStatus.Expired
-            or WalletTopUpAttemptStatus.Abandoned
-            or WalletTopUpAttemptStatus.Unverified)
-#pragma warning restore CS0618
-        {
+        if (IsFinalForSettlement)
             throw new InvalidOperationException("Wallet top-up attempt is already in a final state.");
-        }
     }
 
     private static void EnsureTwoDecimalPlaces(decimal amount, string propertyName)
