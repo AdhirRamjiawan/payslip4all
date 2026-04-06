@@ -204,6 +204,20 @@ public class PayFastHostedPaymentProviderTests
     }
 
     [Fact]
+    public async Task StartHostedTopUpAsync_WhenLiveModeConfigured_UsesLiveProcessUrl()
+    {
+        _options.UseSandbox = false;
+        var attempt = Payslip4All.Domain.Entities.WalletTopUpAttempt.CreatePending(Guid.NewGuid(), 100m, "payfast");
+
+        var result = await CreateProvider().StartHostedTopUpAsync(
+            attempt,
+            new Uri("https://app.example.test/portal/wallet/top-ups/return"),
+            new Uri("https://app.example.test/portal/wallet"));
+
+        Assert.StartsWith("https://www.payfast.co.za/", result.RedirectUrl, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ParseAuthoritativeEvidenceAsync_WhenSandboxModeConfigured_CanStillBeTrustworthy()
     {
         _options.UseSandbox = true;
@@ -243,6 +257,20 @@ public class PayFastHostedPaymentProviderTests
         Assert.DoesNotContain("signature=", postedBody, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("custom_str5=", postedBody, StringComparison.Ordinal);
         Assert.StartsWith("m_payment_id=", postedBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ParseAuthoritativeEvidenceAsync_WhenStep4RequestThrows_LogsGatewayUnavailableCategory()
+    {
+        var payload = PayFastTestData.CompletedNotifyPayload(Guid.NewGuid());
+        payload["signature"] = new PayFastSignatureVerifier().ComputeNotificationSignature(payload, _options.Passphrase);
+        var provider = CreateProvider(new StubHttpMessageHandler((_, _) => throw new HttpRequestException("gateway unavailable")));
+
+        var result = await provider.ParseAuthoritativeEvidenceAsync(payload);
+
+        Assert.Equal(PaymentReturnTrustLevel.LowConfidence, result.TrustLevel);
+        Assert.False(result.ServerConfirmed);
+        VerifyLogContains(LogLevel.Warning, "GatewayUnavailable");
     }
 
     private void VerifyLogContains(LogLevel level, string expectedText)

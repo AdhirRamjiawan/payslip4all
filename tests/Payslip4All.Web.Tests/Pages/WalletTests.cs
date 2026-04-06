@@ -36,6 +36,34 @@ public class WalletTests : TestContext
     }
 
     [Fact]
+    public void Wallet_ShowsHostedPaymentMessaging_WithoutCollectingCardDetails()
+    {
+        var userId = SetAuthorizedOwner();
+        var walletService = new Mock<IWalletService>();
+        var walletTopUpService = new Mock<IWalletTopUpService>();
+        walletService.Setup(s => s.GetWalletAsync(userId)).ReturnsAsync(new WalletDto
+        {
+            UserId = userId,
+            CurrentBalance = 150m,
+            CurrentPayslipPrice = 5m
+        });
+        walletTopUpService.Setup(s => s.GetHistoryAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<WalletTopUpAttemptDto>());
+        Services.AddSingleton(walletService.Object);
+        Services.AddSingleton(walletTopUpService.Object);
+
+        var cut = RenderComponent<Payslip4All.Web.Pages.Wallet>();
+
+        cut.WaitForAssertion(() => Assert.Contains("Add Wallet Credits", cut.Markup));
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("PayFast", cut.Markup);
+            Assert.Contains("Card-only payments are collected on an external PayFast hosted page.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("card number", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("cvv", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
     public void Wallet_SubmittingTopUp_RedirectsToHostedPage_UsingGenericReturnRoute()
     {
         var userId = SetAuthorizedOwner();
