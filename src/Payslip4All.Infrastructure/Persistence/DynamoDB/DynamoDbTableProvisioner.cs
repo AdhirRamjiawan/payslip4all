@@ -28,10 +28,35 @@ public sealed class DynamoDbTableProvisioner : IHostedService
     {
         _dynamoDb = dynamoDb;
         _logger = logger;
-        _prefix = (Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim()
-                   ?? "payslip4all");
+        _prefix = GetCurrentTablePrefix();
         _activationTimeout = activationTimeout ?? DefaultActivationTimeout;
         _pollInterval = pollInterval ?? DefaultPollInterval;
+    }
+
+    public static string GetCurrentTablePrefix()
+    {
+        return Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim()
+               ?? "payslip4all";
+    }
+
+    public static IReadOnlyList<string> GetRequiredTableNames(string prefix)
+    {
+        return new[]
+        {
+            $"{prefix}_users",
+            $"{prefix}_companies",
+            $"{prefix}_employees",
+            $"{prefix}_employee_loans",
+            $"{prefix}_payslips",
+            $"{prefix}_payslip_loan_deductions",
+            $"{prefix}_wallets",
+            $"{prefix}_wallet_activities",
+            $"{prefix}_payslip_pricing",
+            $"{prefix}_payment_return_evidences",
+            $"{prefix}_outcome_normalization_decisions",
+            $"{prefix}_unmatched_payment_return_records",
+            $"{prefix}_wallet_topup_attempts"
+        };
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
