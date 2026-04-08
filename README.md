@@ -11,6 +11,7 @@ A web application for generating and managing employee payslips, built for South
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
+- [AWS CloudFormation Deployment](#aws-cloudformation-deployment)
 - [Payment Gateway Setup](#payment-gateway-setup)
 - [Configuration](#configuration)
 - [Running Tests](#running-tests)
@@ -151,6 +152,32 @@ dotnet run
 For hosted AWS, either set both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` explicitly or
 let the AWS SDK resolve credentials from its default chain (for example IAM roles, container
 credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
+
+### 5. Deploy to AWS with CloudFormation
+
+Payslip4All includes a repository-owned AWS deployment guide for a low-cost hosted setup using:
+
+- one EC2 instance for the web application,
+- one Application Load Balancer for public HTTPS access,
+- Route 53 aliasing for `payslip4all.co.za`,
+- DynamoDB persistence with hosted AWS point-in-time recovery backups.
+
+Start with:
+
+- template: `infra/aws/cloudformation/payslip4all-web.yaml`
+- operator guide: `infra/aws/cloudformation/README.md`
+
+The deployment guide keeps the operator workflow intentionally small:
+
+1. publish the application artifact,
+2. confirm ACM certificate issuance,
+3. confirm Route 53 authority for `payslip4all.co.za`,
+4. gather external secret references,
+5. launch the CloudFormation stack.
+
+Operators then verify deployment success using the documented signal set: `ApplicationUrl`, `InstanceId`, `LoadBalancerArn`, `InstanceSecurityGroupId`, `LoadBalancerSecurityGroupId`, `BackupProtectionMode`, ALB target health, and the public `/health` endpoint.
+
+This deployment path is designed to use as much of the AWS free tier as practical, but it is not fully free-tier-only because the ALB and Route 53 are required paid services for the requested public-domain setup.
 
 ### First-run walkthrough
 

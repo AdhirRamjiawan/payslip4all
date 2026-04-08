@@ -38,7 +38,10 @@ public static class DynamoDbServiceExtensions
 
         services.AddSingleton<DynamoDbTableProvisioner>();
         services.AddSingleton<DynamoDbPaymentBootstrapHostedService>();
+        services.AddSingleton<DynamoDbBackupProtectionHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<DynamoDbTableProvisioner>());
         services.AddHostedService(sp => sp.GetRequiredService<DynamoDbPaymentBootstrapHostedService>());
+        services.AddHostedService(sp => sp.GetRequiredService<DynamoDbBackupProtectionHostedService>());
 
         return services;
     }

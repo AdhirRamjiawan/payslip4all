@@ -205,12 +205,14 @@ if (!app.Environment.IsDevelopment())
 // Forwarded headers MUST be first so UseHttpsRedirection() sees the correct scheme
 // when the app is behind a TLS-terminating reverse proxy (nginx, Apache, Azure, etc.).
 app.UseForwardedHeaders();
+app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseGlobalExceptionHandler();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGet(HealthEndpoint.Path, HealthEndpoint.Handle);
 app.MapPost("/api/payments/payfast/notify", PayFastNotifyEndpoint.HandleAsync);
 app.MapRazorPages();
 app.MapBlazorHub();
