@@ -3,10 +3,12 @@ using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Payslip4All.Infrastructure.Tests.DynamoDB;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Infrastructure.Tests.Persistence.DynamoDB;
 
+[Collection(DynamoDbTestCollection.Name)]
 public class DynamoDbBackupProtectionTests
 {
     [Fact]

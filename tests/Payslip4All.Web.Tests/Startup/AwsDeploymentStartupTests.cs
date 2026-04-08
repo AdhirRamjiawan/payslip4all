@@ -7,6 +7,7 @@ using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Web.Tests.Startup;
 
+[Collection(DynamoDbStartupTestCollection.Name)]
 public sealed class AwsDeploymentStartupTests : IDisposable
 {
     private readonly Dictionary<string, string?> _savedEnv = new();

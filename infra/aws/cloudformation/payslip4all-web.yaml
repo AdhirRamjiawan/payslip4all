@@ -181,6 +181,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - cloudformation:SignalResource
                   - dynamodb:BatchWriteItem
                   - dynamodb:CreateTable
                   - dynamodb:DeleteItem
@@ -245,9 +246,6 @@ Resources:
       HealthCheckPath: /health
       Matcher:
         HttpCode: 200
-      Targets:
-        - Id: !Ref WebInstance
-          Port: 80
       Tags:
         - Key: Name
           Value: !Sub payslip4all-co-za-targets-${EnvironmentName}
@@ -274,6 +272,7 @@ Resources:
       LoadBalancerArn: !Ref ApplicationLoadBalancer
       Port: 443
       Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
       Certificates:
         - CertificateArn: !Ref CertificateArn
       DefaultActions:
@@ -282,6 +281,10 @@ Resources:
 
   WebInstance:
     Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT15M
     Properties:
       ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
       InstanceType: !Ref InstanceType
@@ -307,7 +310,13 @@ Resources:
           if ! id "${APP_USER}" >/dev/null 2>&1; then
             useradd --system --home "${APP_ROOT}" --shell /sbin/nologin "${APP_USER}"
           fi
+          signal_failure() {
+            local reason="${1:-bootstrap failed}"
+            aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status FAILURE --reason "${reason}" --unique-id "${HOSTNAME:-webinstance}" --region "${AWS::Region}" || true
+          }
+          trap 'signal_failure "bootstrap failed at line ${LINENO}"' ERR
           mkdir -p "${APP_ROOT}" "${ENV_DIR}"
+          install -m 0600 /dev/null "${ENV_FILE}"
           curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
           rm -rf "${APP_ROOT:?}/"*
           tar -xzf /tmp/payslip4all.tgz -C "${APP_ROOT}"
@@ -319,6 +328,7 @@ Resources:
           DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
           DYNAMODB_ENABLE_PITR=${EnablePointInTimeRecovery}
           EOF
+          chmod 600 "${ENV_FILE}"
           if [[ -n "${HostedPaymentsSecretArn}" ]]; then
             aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "${ENV_FILE}"
           fi
@@ -344,11 +354,28 @@ Resources:
           systemctl daemon-reload
           systemctl enable payslip4all.service
           systemctl restart payslip4all.service
+          for attempt in $(seq 1 12); do
+            if systemctl is-active --quiet payslip4all.service && curl --fail --silent http://127.0.0.1/health >/dev/null; then
+              aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status SUCCESS --unique-id "${HOSTNAME:-webinstance}" --region "${AWS::Region}"
+              trap - ERR
+              exit 0
+            fi
+            sleep 5
+          done
+          signal_failure "payslip4all.service did not become healthy in time"
+          exit 1
       Tags:
         - Key: Name
           Value: !Sub payslip4all-co-za-web-${EnvironmentName}
         - Key: Domain
           Value: !Ref DomainName
+
+  WebInstanceTargetAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties:
+      TargetGroupArn: !Ref ApplicationTargetGroup
+      TargetId: !Ref WebInstance
+      Port: 80
 
   PublicDnsRecord:
     Type: AWS::Route53::RecordSet

@@ -22,6 +22,7 @@ fi
 dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0
 
 mkdir -p "${APP_ROOT}" "${ENV_DIR}"
+install -m 0600 /dev/null "${ENV_FILE}"
 curl --fail --location --silent --show-error "${ARTIFACT_SOURCE}" --output /tmp/payslip4all.tgz
 rm -rf "${APP_ROOT:?}/"*
 tar -xzf /tmp/payslip4all.tgz -C "${APP_ROOT}"
@@ -34,6 +35,8 @@ DYNAMODB_REGION=${DYNAMODB_REGION}
 DYNAMODB_TABLE_PREFIX=${DYNAMODB_TABLE_PREFIX}
 DYNAMODB_ENABLE_PITR=${DYNAMODB_ENABLE_PITR}
 EOF
+
+chmod 600 "${ENV_FILE}"
 
 if [[ -n "${HOSTED_PAYMENTS_SECRET_ARN}" ]]; then
   aws secretsmanager get-secret-value \
