@@ -8,7 +8,7 @@ Parameters:
     Description: Environment identifier used in resource names and tags.
   DomainName:
     Type: String
-    Default: payslip.co.za
+    Default: payslip4all.co.za
     Description: Public application hostname.
   HostedZoneId:
     Type: String
@@ -55,14 +55,14 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-vpc-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-vpc-${EnvironmentName}
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-igw-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-igw-${EnvironmentName}
 
   VpcGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -79,7 +79,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-public-a-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-public-a-${EnvironmentName}
 
   PublicSubnetB:
     Type: AWS::EC2::Subnet
@@ -90,7 +90,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-public-b-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-public-b-${EnvironmentName}
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -98,7 +98,7 @@ Resources:
       VpcId: !Ref PublicVpc
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-public-rt-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-public-rt-${EnvironmentName}
 
   DefaultRoute:
     Type: AWS::EC2::Route
@@ -139,7 +139,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-alb-sg-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-alb-sg-${EnvironmentName}
 
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -160,7 +160,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-web-sg-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-web-sg-${EnvironmentName}
 
   AppInstanceRole:
     Type: AWS::IAM::Role
@@ -210,7 +210,7 @@ Resources:
                 - !Ref AWS::NoValue
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-web-role-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-web-role-${EnvironmentName}
 
   AppInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -221,7 +221,7 @@ Resources:
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: !Sub payslip-co-za-alb-${EnvironmentName}
+      Name: !Sub payslip4all-co-za-alb-${EnvironmentName}
       Scheme: internet-facing
       Type: application
       SecurityGroups:
@@ -231,7 +231,7 @@ Resources:
         - !Ref PublicSubnetB
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-alb-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-alb-${EnvironmentName}
 
   ApplicationTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -250,7 +250,7 @@ Resources:
           Port: 80
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-targets-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-targets-${EnvironmentName}
 
   HttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -346,7 +346,7 @@ Resources:
           systemctl restart payslip4all.service
       Tags:
         - Key: Name
-          Value: !Sub payslip-co-za-web-${EnvironmentName}
+          Value: !Sub payslip4all-co-za-web-${EnvironmentName}
         - Key: Domain
           Value: !Ref DomainName
 

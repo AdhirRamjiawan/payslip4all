@@ -5,7 +5,7 @@
 
 ## Summary
 
-Deliver a CloudFormation-first AWS deployment path for Payslip4All that runs the web app on one EC2 instance behind an internet-facing ALB, publishes `payslip.co.za` through Route 53 and ACM, uses the existing DynamoDB provider path, and enables automated DynamoDB point-in-time recovery. The refined plan makes the operator-visible signal set explicit, keeps reusable secrets out of committed assets, and constrains the manual pre-launch workflow to five actions so success criteria remain testable.
+Deliver a CloudFormation-first AWS deployment path for Payslip4All that runs the web app on one EC2 instance behind an internet-facing ALB, publishes `payslip4all.co.za` through Route 53 and ACM, uses the existing DynamoDB provider path, and enables automated DynamoDB point-in-time recovery. The refined plan makes the operator-visible signal set explicit, keeps reusable secrets out of committed assets, and constrains the manual pre-launch workflow to five actions so success criteria remain testable.
 
 ## Technical Context
 
@@ -15,8 +15,8 @@ Deliver a CloudFormation-first AWS deployment path for Payslip4All that runs the
 **Testing**: Existing `dotnet test` suites plus xUnit/WebApplicationFactory coverage for CloudFormation contract checks, deployment documentation, startup health endpoint registration, DynamoDB backup protection, and focused validation of the five-step operator workflow  
 **Target Platform**: AWS single-environment deployment running the ASP.NET Core Blazor Server app on Linux EC2 behind an internet-facing load balancer  
 **Project Type**: Infrastructure feature for an existing Clean Architecture web application  
-**Performance Goals**: Support stack launch within 45 minutes after prerequisites are ready, first page load through `payslip.co.za` within 10 seconds in smoke tests, DynamoDB recovery drills within 60 minutes, and expose operator-visible signals through stack outputs, ALB target health, `/health`, and deployment documentation  
-**Constraints**: Must use one EC2 instance for the web app, DynamoDB for persistence, `payslip.co.za` as the public load-balancer address, payslip.co.za-derived instance identification, secure HTTPS access, health-based routing, no hardcoded reusable secrets, no more than five manual pre-launch setup actions, and the lowest practical ongoing cost; ALB and Route 53 remain expected paid services  
+**Performance Goals**: Support stack launch within 45 minutes after prerequisites are ready, first page load through `payslip4all.co.za` within 10 seconds in smoke tests, DynamoDB recovery drills within 60 minutes, and expose operator-visible signals through stack outputs, ALB target health, `/health`, and deployment documentation  
+**Constraints**: Must use one EC2 instance for the web app, DynamoDB for persistence, `payslip4all.co.za` as the public load-balancer address, payslip4all.co.za-derived instance identification, secure HTTPS access, health-based routing, no hardcoded reusable secrets, no more than five manual pre-launch setup actions, and the lowest practical ongoing cost; ALB and Route 53 remain expected paid services  
 **Scale/Scope**: One low-traffic environment, one replaceable web instance, application-owned DynamoDB tables auto-created at startup, explicit operator signals limited to stack outputs plus documented runtime health checks, and implementation scoped to infrastructure assets, startup configuration glue, docs, and tests inside the four-project repository
 
 ## Constitution Check
@@ -91,7 +91,7 @@ specs/011-aws-cloudformation/
 
 ## Phase 0 Research Outcome
 
-- The lowest-cost architecture that still satisfies the spec is a single EC2 instance in a public subnet behind an internet-facing ALB, with Route 53 aliasing `payslip.co.za` to the ALB and payslip.co.za-derived instance tagging for operator identification.
+- The lowest-cost architecture that still satisfies the spec is a single EC2 instance in a public subnet behind an internet-facing ALB, with Route 53 aliasing `payslip4all.co.za` to the ALB and payslip4all.co.za-derived instance tagging for operator identification.
 - Required operator-visible signals are now fixed as: CloudFormation outputs for `ApplicationUrl`, `InstanceId`, `LoadBalancerArn`, security-group identifiers, and backup mode; ALB target health; the public `/health` endpoint; and deployment runbook guidance that ties those signals together.
 - Reusable secrets must stay out of committed template values, bootstrap scripts, and docs; the supported patterns are IAM instance profiles plus external secret references such as AWS Secrets Manager.
 - The pre-launch workflow is constrained to five manual actions: publish the app artifact, confirm ACM issuance, confirm Route 53 authority, gather secret references, and launch the CloudFormation stack with parameters.

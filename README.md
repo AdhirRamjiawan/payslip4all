@@ -159,7 +159,7 @@ Payslip4All includes a repository-owned AWS deployment guide for a low-cost host
 
 - one EC2 instance for the web application,
 - one Application Load Balancer for public HTTPS access,
-- Route 53 aliasing for `payslip.co.za`,
+- Route 53 aliasing for `payslip4all.co.za`,
 - DynamoDB persistence with hosted AWS point-in-time recovery backups.
 
 Start with:
@@ -171,7 +171,7 @@ The deployment guide keeps the operator workflow intentionally small:
 
 1. publish the application artifact,
 2. confirm ACM certificate issuance,
-3. confirm Route 53 authority for `payslip.co.za`,
+3. confirm Route 53 authority for `payslip4all.co.za`,
 4. gather external secret references,
 5. launch the CloudFormation stack.
 

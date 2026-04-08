@@ -7,8 +7,8 @@ Validate that the planned CloudFormation assets are sufficient to launch, verify
 ## Prerequisites
 
 - AWS account with permission to create EC2, ALB, Route 53, IAM, CloudWatch, and DynamoDB resources
-- Control of the `payslip.co.za` DNS zone or the ability to create the required Route 53 records
-- An ACM certificate for `payslip.co.za` in the same AWS region as the load balancer
+- Control of the `payslip4all.co.za` DNS zone or the ability to create the required Route 53 records
+- An ACM certificate for `payslip4all.co.za` in the same AWS region as the load balancer
 - A deployable Payslip4All application artifact
 - Hosted-payment and application secrets stored outside source control
 - A chosen DynamoDB region and table prefix
@@ -17,8 +17,8 @@ Validate that the planned CloudFormation assets are sufficient to launch, verify
 ## Scenario 1: Prepare deployment inputs
 
 1. Publish or stage the deployment artifact referenced by `ArtifactSource`.
-2. Confirm the ACM certificate for `payslip.co.za` is issued in the target region.
-3. Confirm the Route 53 hosted zone is authoritative for `payslip.co.za`.
+2. Confirm the ACM certificate for `payslip4all.co.za` is issued in the target region.
+3. Confirm the Route 53 hosted zone is authoritative for `payslip4all.co.za`.
 4. Gather the external secret references required by the deployment.
 5. Launch the CloudFormation template with the required parameters, including the intended environment name and DynamoDB runtime values.
 
@@ -31,16 +31,16 @@ These five actions define the full manual pre-launch workflow for SC-005.
 3. Confirm the deployed resources include:
    - one EC2 application instance,
    - one internet-facing load balancer,
-   - DNS wiring for `payslip.co.za`,
+   - DNS wiring for `payslip4all.co.za`,
    - runtime configuration for DynamoDB,
    - automated DynamoDB recovery protection.
 
-## Scenario 3: Verify public access through `payslip.co.za`
+## Scenario 3: Verify public access through `payslip4all.co.za`
 
-1. Open `https://payslip.co.za`.
+1. Open `https://payslip4all.co.za`.
 2. Confirm the browser reaches Payslip4All through HTTPS.
 3. Confirm insecure HTTP is redirected to HTTPS.
-4. Confirm the instance is identified in AWS with payslip.co.za-derived metadata.
+4. Confirm the instance is identified in AWS with payslip4all.co.za-derived metadata.
 
 ## Scenario 4: Verify operator-visible signals
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the operator-facing contract for the AWS CloudFormation assets that deploy Payslip4All on EC2 with DynamoDB persistence and a public `payslip.co.za` entry point.
+Define the operator-facing contract for the AWS CloudFormation assets that deploy Payslip4All on EC2 with DynamoDB persistence and a public `payslip4all.co.za` entry point.
 
 ## Audience
 
@@ -20,7 +20,7 @@ The CloudFormation assets MUST accept or document operator-supplied values for:
 | Input | Purpose |
 |-------|---------|
 | `EnvironmentName` | Distinguishes environments such as production or staging |
-| `DomainName` | Public application hostname, expected to be `payslip.co.za` for the target environment |
+| `DomainName` | Public application hostname, expected to be `payslip4all.co.za` for the target environment |
 | `HostedZoneId` or equivalent DNS prerequisite | Allows the public hostname to resolve to the load balancer |
 | `CertificateArn` | Enables HTTPS on the public entry point |
 | `InstanceType` | Allows low-cost default compute with explicit override when needed |
@@ -35,13 +35,13 @@ The CloudFormation assets MUST accept or document operator-supplied values for:
 The CloudFormation assets MUST:
 
 1. create one EC2-based Payslip4All web host,
-2. create an internet-facing load-balanced entry point for `payslip.co.za`,
+2. create an internet-facing load-balanced entry point for `payslip4all.co.za`,
 3. enforce secure HTTPS access and redirect insecure HTTP traffic,
 4. route application traffic to the EC2 instance only when health checks pass,
 5. configure the app to run with `PERSISTENCE_PROVIDER=dynamodb`,
 6. provide `DYNAMODB_REGION` and `DYNAMODB_TABLE_PREFIX` to the running app,
 7. prefer IAM-based AWS access from the instance over embedded static AWS credentials,
-8. identify the EC2 instance with payslip.co.za-derived metadata,
+8. identify the EC2 instance with payslip4all.co.za-derived metadata,
 9. avoid provisioning unnecessary paid services when a lower-cost supported alternative exists,
 10. enable automated DynamoDB recovery protection suitable for regular backups.
 
@@ -96,7 +96,7 @@ The deployment documentation MUST keep the manual pre-launch workflow to no more
 
 1. publish the application artifact,
 2. confirm ACM certificate issuance,
-3. confirm Route 53 authority for `payslip.co.za`,
+3. confirm Route 53 authority for `payslip4all.co.za`,
 4. gather external secret references,
 5. launch the CloudFormation stack with parameters.
 
@@ -105,7 +105,7 @@ The deployment documentation MUST keep the manual pre-launch workflow to no more
 This contract is satisfied when:
 
 1. An operator can deploy Payslip4All to AWS through one CloudFormation-driven workflow.
-2. End users reach the app at `https://payslip.co.za` rather than through the EC2 instance directly.
+2. End users reach the app at `https://payslip4all.co.za` rather than through the EC2 instance directly.
 3. The running app boots successfully using the existing DynamoDB provider path and environment variables.
 4. Replacing the EC2 instance does not discard DynamoDB-backed application data.
 5. The deployment provides an operator-verifiable automated DynamoDB recovery path.

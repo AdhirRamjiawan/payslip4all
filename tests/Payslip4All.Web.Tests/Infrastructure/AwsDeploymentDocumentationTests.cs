@@ -54,7 +54,7 @@ public class AwsDeploymentDocumentationTests
     {
         var readme = LoadDeploymentReadme();
 
-        Assert.Contains("payslip.co.za", readme, StringComparison.Ordinal);
+        Assert.Contains("payslip4all.co.za", readme, StringComparison.Ordinal);
         Assert.Contains("Application Load Balancer", readme, StringComparison.Ordinal);
         Assert.Contains("Route 53", readme, StringComparison.Ordinal);
         Assert.Contains("ACM", readme, StringComparison.Ordinal);

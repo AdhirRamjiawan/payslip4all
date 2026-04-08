@@ -9,7 +9,7 @@
 **Organization**: Tasks are grouped by user story priority so each deployment slice can be implemented, tested, and validated independently.
 
 **Gap resolutions encoded in this task list**:
-- **FR-002 sequencing fix**: ALB + target group + health-based routing are provisioned in US1 (working environment) so the app is behind a load balancer from day one; Route 53 + ACM + public `payslip.co.za` access are added in US2. MVP no longer promises public reachability.
+- **FR-002 sequencing fix**: ALB + target group + health-based routing are provisioned in US1 (working environment) so the app is behind a load balancer from day one; Route 53 + ACM + public `payslip4all.co.za` access are added in US2. MVP no longer promises public reachability.
 - **FR-006 allowlist coverage**: Explicit test (T012) verifies `AllowedSshCidr` is a template parameter wired to the security group ingress rule with no hardcoded operator-access range.
 - **FR-009 signal inventory coverage**: Explicit test (T005) verifies the complete required output set — `ApplicationUrl`, `InstanceId`, `LoadBalancerArn`, security-group identifiers, and backup mode — is present in the template before implementation.
 - **FR-011 EC2 replacement coverage**: Explicit test (T013) verifies the CloudFormation template's resource structure keeps DynamoDB, networking, and ALB resources independent of the EC2 instance lifecycle so replacement does not destroy application data or shared infrastructure.
@@ -52,7 +52,7 @@
 
 ## Phase 3: User Story 1 - Deploy a working environment (Priority: P1) 🎯 MVP
 
-**Goal**: Give operators one CloudFormation-driven path to launch a working Payslip4All environment on EC2 behind an ALB with DynamoDB-backed persistence. Public `payslip.co.za` reachability is NOT required at this stage (see US2).
+**Goal**: Give operators one CloudFormation-driven path to launch a working Payslip4All environment on EC2 behind an ALB with DynamoDB-backed persistence. Public `payslip4all.co.za` reachability is NOT required at this stage (see US2).
 
 **Independent Test**: Launch the stack with required inputs and confirm the EC2-hosted app starts successfully, the ALB target is healthy, DynamoDB tables are provisioned, and no core AWS resources were created by hand. Public DNS reachability is out of scope for this story.
 
@@ -75,23 +75,23 @@
 
 ---
 
-## Phase 4: User Story 2 - Publish the application on payslip.co.za (Priority: P2)
+## Phase 4: User Story 2 - Publish the application on payslip4all.co.za (Priority: P2)
 
-**Goal**: Expose the deployed application through `payslip.co.za` with secure public routing and payslip.co.za-derived operational naming. This phase extends the US1 ALB with HTTPS, Route 53, and ACM integration.
+**Goal**: Expose the deployed application through `payslip4all.co.za` with secure public routing and payslip4all.co.za-derived operational naming. This phase extends the US1 ALB with HTTPS, Route 53, and ACM integration.
 
-**Independent Test**: Complete the deployment with domain prerequisites and confirm `https://payslip.co.za` resolves to the ALB-backed application, HTTP traffic redirects to HTTPS, and the EC2 instance is identifiable through payslip.co.za-based metadata.
+**Independent Test**: Complete the deployment with domain prerequisites and confirm `https://payslip4all.co.za` resolves to the ALB-backed application, HTTP traffic redirects to HTTPS, and the EC2 instance is identifiable through payslip4all.co.za-based metadata.
 
 ### Tests for User Story 2 (REQUIRED — TDD, confirm FAILING before T021)
 
-- [X] T019 [P] [US2] Add failing template tests for HTTPS ALB listener with ACM certificate reference, HTTP-to-HTTPS redirect rule, Route 53 alias record pointing `payslip.co.za` at the ALB, and payslip.co.za-derived `Name` tag on the EC2 instance and ALB in `tests/Payslip4All.Web.Tests/Infrastructure/AwsCloudFormationTemplateTests.cs`
+- [X] T019 [P] [US2] Add failing template tests for HTTPS ALB listener with ACM certificate reference, HTTP-to-HTTPS redirect rule, Route 53 alias record pointing `payslip4all.co.za` at the ALB, and payslip4all.co.za-derived `Name` tag on the EC2 instance and ALB in `tests/Payslip4All.Web.Tests/Infrastructure/AwsCloudFormationTemplateTests.cs`
 - [X] T020 [P] [US2] Add failing documentation tests for DNS ownership confirmation prerequisite, ACM certificate issuance prerequisite, and non-free-tier cost disclosure for ALB and Route 53 in `tests/Payslip4All.Web.Tests/Infrastructure/AwsDeploymentDocumentationTests.cs`
 
 ### Implementation for User Story 2
 
-- [X] T021 [US2] Implement HTTPS ALB listener with ACM certificate attachment, HTTP-to-HTTPS redirect rule, Route 53 alias record for `payslip.co.za`, and payslip.co.za-derived instance and load-balancer tags in `infra/aws/cloudformation/payslip4all-web.yaml`
+- [X] T021 [US2] Implement HTTPS ALB listener with ACM certificate attachment, HTTP-to-HTTPS redirect rule, Route 53 alias record for `payslip4all.co.za`, and payslip4all.co.za-derived instance and load-balancer tags in `infra/aws/cloudformation/payslip4all-web.yaml`
 - [X] T022 [US2] Document public-domain setup, HTTPS behaviour, operator-visible resource naming, and non-free-tier cost exceptions in `infra/aws/cloudformation/README.md` and `README.md`
 
-**Checkpoint**: US2 is complete when `https://payslip.co.za` resolves to the application and operators can identify the EC2 instance from payslip.co.za-derived metadata.
+**Checkpoint**: US2 is complete when `https://payslip4all.co.za` resolves to the application and operators can identify the EC2 instance from payslip4all.co.za-derived metadata.
 
 ---
 
@@ -179,7 +179,7 @@ Task T014: "Launch prerequisites and runtime environment variables"
 
 ```bash
 # Launch the US2 failing tests together:
-Task T019: "HTTPS listener, HTTP redirect, Route 53 alias, payslip.co.za tags — AwsCloudFormationTemplateTests.cs"
+Task T019: "HTTPS listener, HTTP redirect, Route 53 alias, payslip4all.co.za tags — AwsCloudFormationTemplateTests.cs"
 Task T020: "ACM prerequisites, DNS ownership, cost disclosures — AwsDeploymentDocumentationTests.cs"
 ```
 
@@ -210,7 +210,7 @@ Task T024: "Backup IAM permissions, backup-mode output, restore runbook content 
 
 1. Finish Setup + Foundational → deployment contract, runtime expectations, and signal inventory locked
 2. Deliver **US1** → core launchable AWS environment with ALB and DynamoDB, five-step workflow verified
-3. Deliver **US2** → public `payslip.co.za` entry point, HTTPS, Route 53, operational naming
+3. Deliver **US2** → public `payslip4all.co.za` entry point, HTTPS, Route 53, operational naming
 4. Deliver **US3** → automated DynamoDB PITR protection and documented restore drill
 5. Finish with **Polish** to align docs and run full validation suite
 
@@ -230,7 +230,7 @@ Task T024: "Backup IAM permissions, backup-mode output, restore runbook content 
 - `[P]` tasks can run in parallel because they target separate files or non-overlapping test methods
 - All user-story tasks carry story labels and exact file paths for traceability
 - Each story is independently testable from the operator's perspective before subsequent stories begin
-- FR-002 is fully satisfied at US2 completion (public load-balanced entry on `payslip.co.za`); US1 satisfies the load-balancer infrastructure prerequisite without requiring public DNS
+- FR-002 is fully satisfied at US2 completion (public load-balanced entry on `payslip4all.co.za`); US1 satisfies the load-balancer infrastructure prerequisite without requiring public DNS
 - FR-006, FR-009, FR-011, and SC-005 each have dedicated test tasks (T012, T005, T013, T015) to ensure they are verified before implementation is marked complete
 - The CloudFormation template and deployment README are shared assets across stories; parallel work must focus on isolated test methods and separate code files first to avoid merge conflicts
 - Do not auto-commit; the Manual Test Gate must be presented and approved before any `git commit`, `git merge`, or `git push`

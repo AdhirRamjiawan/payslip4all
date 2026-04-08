@@ -3,7 +3,7 @@
 ## Decision 1: Use a single EC2 instance behind an internet-facing ALB
 
 - **Decision**: Deploy Payslip4All on one Linux EC2 instance and place it behind an internet-facing Application Load Balancer.
-- **Rationale**: The feature explicitly requires both an EC2-hosted web app and a load-balanced public entry point. A single instance keeps compute cost low while the ALB satisfies HTTPS termination, health checks, and stable routing through `payslip.co.za`.
+- **Rationale**: The feature explicitly requires both an EC2-hosted web app and a load-balanced public entry point. A single instance keeps compute cost low while the ALB satisfies HTTPS termination, health checks, and stable routing through `payslip4all.co.za`.
 - **Alternatives considered**:
   - **Expose EC2 directly with an Elastic IP**: Rejected because it does not satisfy the load-balancer requirement or health-based routing requirement.
   - **Use an Auto Scaling group with multiple instances**: Rejected because it adds cost and operational complexity beyond the feature's low-cost single-environment scope.
@@ -16,17 +16,17 @@
   - **Private subnet plus NAT gateway**: Rejected because the NAT gateway materially increases monthly cost in a feature that is explicitly cost-sensitive.
   - **Private subnet plus multiple VPC endpoints**: Rejected because it adds design and implementation complexity that is unnecessary for the single-instance scope.
 
-## Decision 3: Point `payslip.co.za` at the ALB and use payslip.co.za-derived tags for the EC2 instance
+## Decision 3: Point `payslip4all.co.za` at the ALB and use payslip4all.co.za-derived tags for the EC2 instance
 
-- **Decision**: Route the public apex domain `payslip.co.za` to the ALB and identify the EC2 instance with a payslip.co.za-derived name or tag such as `payslip-co-za-web-prod`.
+- **Decision**: Route the public apex domain `payslip4all.co.za` to the ALB and identify the EC2 instance with a payslip4all.co.za-derived name or tag such as `payslip4all-co-za-web-prod`.
 - **Rationale**: One public DNS name cannot safely represent both the load balancer and the instance at the same time. Using the apex domain only for the public entry point keeps DNS valid while still giving operators a clear way to recognize the backing instance.
 - **Alternatives considered**:
-  - **Assign `payslip.co.za` directly to the EC2 instance as well**: Rejected because it conflicts with the ALB requirement and creates ambiguous routing.
+  - **Assign `payslip4all.co.za` directly to the EC2 instance as well**: Rejected because it conflicts with the ALB requirement and creates ambiguous routing.
   - **Create a second public name for the instance**: Rejected because the spec does not ask for a second public endpoint and that would weaken the single-entry-point design.
 
 ## Decision 4: Use an ACM certificate and Route 53 alias records for the public domain
 
-- **Decision**: Use an ACM public certificate in the same AWS region as the ALB and create a Route 53 alias record from `payslip.co.za` to the ALB.
+- **Decision**: Use an ACM public certificate in the same AWS region as the ALB and create a Route 53 alias record from `payslip4all.co.za` to the ALB.
 - **Rationale**: ACM certificates integrate directly with ALB listeners and do not add certificate-management cost. Route 53 aliasing provides the cleanest supported way to serve an apex domain through an ALB.
 - **Alternatives considered**:
   - **Terminate TLS on the EC2 instance only**: Rejected because HTTPS redirection and load-balancer health checks are simpler and safer when TLS terminates at the ALB.

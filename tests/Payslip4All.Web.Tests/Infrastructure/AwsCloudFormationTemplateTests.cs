@@ -99,8 +99,8 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("CertificateArn: !Ref CertificateArn", template, StringComparison.Ordinal);
         Assert.Contains("AWS::Route53::RecordSet", template, StringComparison.Ordinal);
         Assert.Contains("EvaluateTargetHealth: true", template, StringComparison.Ordinal);
-        Assert.Contains("payslip-co-za-web-${EnvironmentName}", template, StringComparison.Ordinal);
-        Assert.Contains("payslip-co-za-alb-${EnvironmentName}", template, StringComparison.Ordinal);
+        Assert.Contains("payslip4all-co-za-web-${EnvironmentName}", template, StringComparison.Ordinal);
+        Assert.Contains("payslip4all-co-za-alb-${EnvironmentName}", template, StringComparison.Ordinal);
     }
 
     [Fact]

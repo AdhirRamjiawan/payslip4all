@@ -13,7 +13,7 @@ This feature does not introduce new business-domain persistence. Its data model 
 **Fields**:
 - `stackName` — operator-visible deployment name
 - `environmentName` — environment identifier such as `prod` or `staging`
-- `domainName` — public hostname served by the stack (`payslip.co.za`)
+- `domainName` — public hostname served by the stack (`payslip4all.co.za`)
 - `region` — AWS region where the resources are launched
 - `artifactSource` — deployable application package or machine-image reference
 - `status` — current deployment lifecycle state
@@ -32,7 +32,7 @@ This feature does not introduce new business-domain persistence. Its data model 
 
 ### 2. Public Entry Point
 
-**Purpose**: The public traffic boundary that serves `payslip.co.za`.
+**Purpose**: The public traffic boundary that serves `payslip4all.co.za`.
 
 **Fields**:
 - `domainName` — public hostname
@@ -57,7 +57,7 @@ This feature does not introduce new business-domain persistence. Its data model 
 
 **Fields**:
 - `instanceType` — operator-selected or default low-cost instance size
-- `instanceName` — payslip.co.za-derived identification value
+- `instanceName` — payslip4all.co.za-derived identification value
 - `bootstrapMode` — how the instance receives app artifacts and runtime configuration
 - `allowedIngressSources` — permitted upstream traffic sources
 - `replaceable` — whether the instance can be recreated without losing persistence
@@ -70,7 +70,7 @@ This feature does not introduce new business-domain persistence. Its data model 
 **Validation Rules**:
 - Must not be the system of record for application data.
 - Must accept application traffic only from the load balancer and approved operator access ranges.
-- Must expose enough metadata for operators to identify it as the payslip.co.za host.
+- Must expose enough metadata for operators to identify it as the payslip4all.co.za host.
 
 ### 4. Runtime Access Profile
 
@@ -194,7 +194,7 @@ This feature does not introduce new business-domain persistence. Its data model 
 1. `Prepared` — operator has gathered domain, certificate, artifact, secret, and access inputs.
 2. `Provisioning` — CloudFormation is creating or updating infrastructure resources.
 3. `Bootstrapping` — EC2 is starting Payslip4All with DynamoDB configuration and initial table provisioning.
-4. `Healthy` — the ALB routes secure traffic to the instance and the application is reachable at `payslip.co.za`.
+4. `Healthy` — the ALB routes secure traffic to the instance and the application is reachable at `payslip4all.co.za`.
 5. `Recovering` — operator is restoring DynamoDB data from the defined backup mechanism.
 
 **Transitions**:
