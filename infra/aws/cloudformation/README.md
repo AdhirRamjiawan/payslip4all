@@ -6,7 +6,7 @@ This guide describes the repository-owned AWS deployment path for Payslip4All us
 
 - One internet-facing Application Load Balancer for `payslip4all.co.za`
 - One EC2 web host tagged with payslip4all.co.za-derived metadata
-- One Route 53 alias record that points `payslip4all.co.za` to the ALB
+- An optional Route 53 alias record that points `payslip4all.co.za` to the ALB when a hosted zone ID is provided
 - One IAM instance profile so the app can use the AWS SDK credential chain
 - A DynamoDB-backed runtime with `PERSISTENCE_PROVIDER=dynamodb`
 - Automated DynamoDB point-in-time recovery for regular backups in hosted AWS
@@ -21,7 +21,7 @@ You must prepare these values before launching the stack:
 |-----------|--------------------|
 | `EnvironmentName` | Distinguishes production from any future non-production environment |
 | `DomainName` | Public hostname, expected to be `payslip4all.co.za` |
-| `HostedZoneId` | Lets Route 53 publish the ALB alias record |
+| `HostedZoneId` | Optional. When provided, Route 53 publishes the ALB alias record |
 | `CertificateArn` | Enables HTTPS on the public listener through ACM |
 | `InstanceType` | Defaults to a low-cost option such as `t3.micro`, but can be overridden |
 | `ArtifactSource` | Points the bootstrap process at the published Payslip4All bundle |
@@ -44,7 +44,7 @@ If `HostedPaymentsSecretArn` is provided, the instance also appends the secret v
 
 ## Architecture and traffic flow
 
-1. Route 53 publishes `payslip4all.co.za` as an alias to the Application Load Balancer.
+1. If `HostedZoneId` is provided, Route 53 publishes `payslip4all.co.za` as an alias to the Application Load Balancer.
 2. The ALB terminates TLS with ACM and redirects HTTP traffic to HTTPS.
 3. The ALB forwards only healthy requests to the EC2 instance on port 80.
 4. Payslip4All responds to the ALB health check at `/health`.
@@ -67,7 +67,7 @@ These signals are intentionally minimal: enough to verify stack identity, app re
 
 1. Publish or upload the application artifact that `ArtifactSource` will reference.
 2. Confirm the ACM certificate for `payslip4all.co.za` is issued in the target AWS region.
-3. Confirm the Route 53 hosted zone is authoritative for `payslip4all.co.za`.
+3. If you want the stack to manage DNS, confirm the Route 53 hosted zone is authoritative for `payslip4all.co.za`.
 4. Gather the external secret references required for hosted-payment and application runtime configuration.
 5. Launch `infra/aws/cloudformation/payslip4all-web.yaml` with the required parameters.
 
