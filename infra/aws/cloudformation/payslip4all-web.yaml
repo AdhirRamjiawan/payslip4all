@@ -241,6 +241,9 @@ Resources:
       Port: 80
       Protocol: HTTP
       TargetType: instance
+      Targets:
+        - Id: !Ref WebInstance
+          Port: 80
       VpcId: !Ref PublicVpc
       HealthCheckEnabled: true
       HealthCheckPath: /health
@@ -304,23 +307,29 @@ Resources:
           APP_ROOT="/opt/payslip4all"
           APP_USER="payslip4all"
           ENV_DIR="/etc/payslip4all"
-          ENV_FILE="${ENV_DIR}/payslip4all.env"
+          ENV_FILE="$ENV_DIR/payslip4all.env"
           SERVICE_FILE="/etc/systemd/system/payslip4all.service"
           dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0
-          if ! id "${APP_USER}" >/dev/null 2>&1; then
-            useradd --system --home "${APP_ROOT}" --shell /sbin/nologin "${APP_USER}"
+          if ! id "$APP_USER" >/dev/null 2>&1; then
+            useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
           fi
           signal_failure() {
-            local reason="${1:-bootstrap failed}"
-            aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status FAILURE --reason "${reason}" --unique-id "${HOSTNAME:-webinstance}" --region "${AWS::Region}" || true
+            local reason=""
+            if (($# > 0)); then
+              reason="$1"
+            fi
+            if [[ -z "$reason" ]]; then
+              reason="bootstrap failed"
+            fi
+            aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status FAILURE --reason "$reason" --unique-id "$(hostname)" --region "${AWS::Region}" || true
           }
-          trap 'signal_failure "bootstrap failed at line ${LINENO}"' ERR
-          mkdir -p "${APP_ROOT}" "${ENV_DIR}"
-          install -m 0600 /dev/null "${ENV_FILE}"
+          trap 'signal_failure "bootstrap failed at line $LINENO"' ERR
+          mkdir -p "$APP_ROOT" "$ENV_DIR"
+          install -m 0600 /dev/null "$ENV_FILE"
           curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
-          rm -rf "${APP_ROOT:?}/"*
-          tar -xzf /tmp/payslip4all.tgz -C "${APP_ROOT}"
-          cat > "${ENV_FILE}" <<EOF
+          find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
+          tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
+          cat > "$ENV_FILE" <<EOF
           ASPNETCORE_ENVIRONMENT=Production
           ASPNETCORE_URLS=http://0.0.0.0:80
           PERSISTENCE_PROVIDER=dynamodb
@@ -328,11 +337,11 @@ Resources:
           DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
           DYNAMODB_ENABLE_PITR=${EnablePointInTimeRecovery}
           EOF
-          chmod 600 "${ENV_FILE}"
+          chmod 600 "$ENV_FILE"
           if [[ -n "${HostedPaymentsSecretArn}" ]]; then
-            aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "${ENV_FILE}"
+            aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
           fi
-          cat > "${SERVICE_FILE}" <<EOF
+          cat > "$SERVICE_FILE" <<EOF
           [Unit]
           Description=Payslip4All web application
           After=network-online.target
@@ -340,23 +349,23 @@ Resources:
 
           [Service]
           Type=simple
-          User=${APP_USER}
-          WorkingDirectory=${APP_ROOT}
-          EnvironmentFile=${ENV_FILE}
-          ExecStart=/usr/bin/dotnet ${APP_ROOT}/Payslip4All.Web.dll
+          User=$APP_USER
+          WorkingDirectory=$APP_ROOT
+          EnvironmentFile=$ENV_FILE
+          ExecStart=/usr/bin/dotnet $APP_ROOT/Payslip4All.Web.dll
           Restart=always
           RestartSec=5
 
           [Install]
           WantedBy=multi-user.target
           EOF
-          chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}" "${ENV_DIR}"
+          chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
           systemctl daemon-reload
           systemctl enable payslip4all.service
           systemctl restart payslip4all.service
           for attempt in $(seq 1 12); do
             if systemctl is-active --quiet payslip4all.service && curl --fail --silent http://127.0.0.1/health >/dev/null; then
-              aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status SUCCESS --unique-id "${HOSTNAME:-webinstance}" --region "${AWS::Region}"
+              aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status SUCCESS --unique-id "$(hostname)" --region "${AWS::Region}"
               trap - ERR
               exit 0
             fi
@@ -369,13 +378,6 @@ Resources:
           Value: !Sub payslip4all-co-za-web-${EnvironmentName}
         - Key: Domain
           Value: !Ref DomainName
-
-  WebInstanceTargetAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref ApplicationTargetGroup
-      TargetId: !Ref WebInstance
-      Port: 80
 
   PublicDnsRecord:
     Type: AWS::Route53::RecordSet
