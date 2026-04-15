@@ -12,7 +12,8 @@ Parameters:
     Description: Public application hostname.
   HostedZoneId:
     Type: String
-    Description: Route 53 hosted zone ID that serves the public hostname.
+    Default: ''
+    Description: Optional Route 53 hosted zone ID that serves the public hostname.
   CertificateArn:
     Type: String
     Description: ACM certificate ARN for the public hostname.
@@ -381,6 +382,7 @@ Resources:
 
   PublicDnsRecord:
     Type: AWS::Route53::RecordSet
+    Condition: HasHostedZoneId
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Ref DomainName
@@ -391,12 +393,16 @@ Resources:
         EvaluateTargetHealth: true
 
 Conditions:
+  HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, '']]
   HasHostedPaymentsSecret: !Not [!Equals [!Ref HostedPaymentsSecretArn, '']]
 
 Outputs:
   ApplicationUrl:
     Description: Public HTTPS URL for Payslip4All.
-    Value: !Sub https://${DomainName}
+    Value: !If
+      - HasHostedZoneId
+      - !Sub https://${DomainName}
+      - !Sub https://${ApplicationLoadBalancer.DNSName}
   InstanceId:
     Description: The EC2 instance serving Payslip4All.
     Value: !Ref WebInstance
