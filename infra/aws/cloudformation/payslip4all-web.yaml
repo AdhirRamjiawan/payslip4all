@@ -1,22 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy Payslip4All to AWS on a single EC2 instance behind an ALB with DynamoDB persistence.
+Description: Deploy Payslip4All to AWS on a single EC2 instance with an Elastic IP and DynamoDB persistence.
 
 Parameters:
   EnvironmentName:
     Type: String
     Default: prod
     Description: Environment identifier used in resource names and tags.
-  DomainName:
-    Type: String
-    Default: payslip4all.co.za
-    Description: Public application hostname.
-  HostedZoneId:
-    Type: String
-    Default: ''
-    Description: Optional Route 53 hosted zone ID that serves the public hostname.
-  CertificateArn:
-    Type: String
-    Description: ACM certificate ARN for the public hostname.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC that hosts the Payslip4All web instance.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing public subnet with internet access for the Payslip4All web instance.
   InstanceType:
     Type: String
     Default: t3.micro
@@ -24,13 +19,6 @@ Parameters:
   ArtifactSource:
     Type: String
     Description: HTTPS or S3-backed artifact URL for the published Payslip4All deployment bundle.
-  AllowedSshCidr:
-    Type: String
-    Default: 0.0.0.0/32
-    Description: Operator CIDR allowed to reach the instance by SSH.
-  DynamoDbRegion:
-    Type: String
-    Description: Runtime AWS region used by the DynamoDB provider.
   DynamoDbTablePrefix:
     Type: String
     Default: payslip4all
@@ -39,129 +27,24 @@ Parameters:
     Type: String
     Default: ''
     Description: Optional Secrets Manager ARN that stores hosted-payment and app secrets.
-  EnablePointInTimeRecovery:
-    Type: String
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Default: 'true'
-    Description: Leave true in hosted AWS to enable regular DynamoDB backups through PITR.
 
 Resources:
-  PublicVpc:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: 10.42.0.0/16
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-vpc-${EnvironmentName}
-
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-igw-${EnvironmentName}
-
-  VpcGatewayAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref PublicVpc
-      InternetGatewayId: !Ref InternetGateway
-
-  PublicSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref PublicVpc
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.42.0.0/24
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-public-a-${EnvironmentName}
-
-  PublicSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref PublicVpc
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: 10.42.1.0/24
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-public-b-${EnvironmentName}
-
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref PublicVpc
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-public-rt-${EnvironmentName}
-
-  DefaultRoute:
-    Type: AWS::EC2::Route
-    DependsOn: VpcGatewayAttachment
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnetARouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetA
-
-  PublicSubnetBRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnetB
-
-  LoadBalancerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Public ingress for the Payslip4All Application Load Balancer.
-      VpcId: !Ref PublicVpc
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-alb-sg-${EnvironmentName}
-
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: EC2 ingress restricted to the ALB and operator SSH range.
-      VpcId: !Ref PublicVpc
+      GroupDescription: Public ingress for the Payslip4All EC2 host.
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref AllowedSshCidr
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub payslip4all-co-za-web-sg-${EnvironmentName}
+          Value: !Sub payslip4all-web-sg-${EnvironmentName}
 
   AppInstanceRole:
     Type: AWS::IAM::Role
@@ -175,6 +58,8 @@ Resources:
                 - ec2.amazonaws.com
             Action:
               - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
         - PolicyName: !Sub payslip4all-web-${EnvironmentName}
           PolicyDocument:
@@ -182,7 +67,6 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - cloudformation:SignalResource
                   - dynamodb:BatchWriteItem
                   - dynamodb:CreateTable
                   - dynamodb:DeleteItem
@@ -212,7 +96,7 @@ Resources:
                 - !Ref AWS::NoValue
       Tags:
         - Key: Name
-          Value: !Sub payslip4all-co-za-web-role-${EnvironmentName}
+          Value: !Sub payslip4all-web-role-${EnvironmentName}
 
   AppInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -220,75 +104,8 @@ Resources:
       Roles:
         - !Ref AppInstanceRole
 
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: !Sub payslip4all-co-za-alb-${EnvironmentName}
-      Scheme: internet-facing
-      Type: application
-      SecurityGroups:
-        - !Ref LoadBalancerSecurityGroup
-      Subnets:
-        - !Ref PublicSubnetA
-        - !Ref PublicSubnetB
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-alb-${EnvironmentName}
-
-  ApplicationTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub p4a-web-${EnvironmentName}
-      Port: 80
-      Protocol: HTTP
-      TargetType: instance
-      Targets:
-        - Id: !Ref WebInstance
-          Port: 80
-      VpcId: !Ref PublicVpc
-      HealthCheckEnabled: true
-      HealthCheckPath: /health
-      Matcher:
-        HttpCode: 200
-      Tags:
-        - Key: Name
-          Value: !Sub payslip4all-co-za-targets-${EnvironmentName}
-
-  HttpListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
-      DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: '443'
-            Host: '#{host}'
-            Path: '/#{path}'
-            Query: '#{query}'
-            StatusCode: HTTP_301
-
-  HttpsListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 443
-      Protocol: HTTPS
-      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
-      Certificates:
-        - CertificateArn: !Ref CertificateArn
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ApplicationTargetGroup
-
   WebInstance:
     Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Count: 1
-        Timeout: PT15M
     Properties:
       ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
       InstanceType: !Ref InstanceType
@@ -298,7 +115,7 @@ Resources:
           DeviceIndex: '0'
           GroupSet:
             - !Ref InstanceSecurityGroup
-          SubnetId: !Ref PublicSubnetA
+          SubnetId: !Ref SubnetId
       MetadataOptions:
         HttpTokens: required
       UserData:
@@ -314,17 +131,6 @@ Resources:
           if ! id "$APP_USER" >/dev/null 2>&1; then
             useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
           fi
-          signal_failure() {
-            local reason=""
-            if (($# > 0)); then
-              reason="$1"
-            fi
-            if [[ -z "$reason" ]]; then
-              reason="bootstrap failed"
-            fi
-            aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status FAILURE --reason "$reason" --unique-id "$(hostname)" --region "${AWS::Region}" || true
-          }
-          trap 'signal_failure "bootstrap failed at line $LINENO"' ERR
           mkdir -p "$APP_ROOT" "$ENV_DIR"
           install -m 0600 /dev/null "$ENV_FILE"
           curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
@@ -334,9 +140,9 @@ Resources:
           ASPNETCORE_ENVIRONMENT=Production
           ASPNETCORE_URLS=http://0.0.0.0:80
           PERSISTENCE_PROVIDER=dynamodb
-          DYNAMODB_REGION=${DynamoDbRegion}
+          DYNAMODB_REGION=${AWS::Region}
           DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
-          DYNAMODB_ENABLE_PITR=${EnablePointInTimeRecovery}
+          DYNAMODB_ENABLE_PITR=true
           EOF
           chmod 600 "$ENV_FILE"
           if [[ -n "${HostedPaymentsSecretArn}" ]]; then
@@ -364,57 +170,38 @@ Resources:
           systemctl daemon-reload
           systemctl enable payslip4all.service
           systemctl restart payslip4all.service
-          for attempt in $(seq 1 12); do
-            if systemctl is-active --quiet payslip4all.service && curl --fail --silent http://127.0.0.1/health >/dev/null; then
-              aws cloudformation signal-resource --stack-name "${AWS::StackName}" --logical-resource-id WebInstance --status SUCCESS --unique-id "$(hostname)" --region "${AWS::Region}"
-              trap - ERR
-              exit 0
-            fi
-            sleep 5
-          done
-          signal_failure "payslip4all.service did not become healthy in time"
-          exit 1
       Tags:
         - Key: Name
-          Value: !Sub payslip4all-co-za-web-${EnvironmentName}
-        - Key: Domain
-          Value: !Ref DomainName
+          Value: !Sub payslip4all-web-${EnvironmentName}
 
-  PublicDnsRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: HasHostedZoneId
+  ElasticIp:
+    Type: AWS::EC2::EIP
     Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Ref DomainName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
-        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
-        EvaluateTargetHealth: true
+      Domain: vpc
+      InstanceId: !Ref WebInstance
+      Tags:
+        - Key: Name
+          Value: !Sub payslip4all-web-eip-${EnvironmentName}
 
 Conditions:
-  HasHostedZoneId: !Not [!Equals [!Ref HostedZoneId, '']]
   HasHostedPaymentsSecret: !Not [!Equals [!Ref HostedPaymentsSecretArn, '']]
 
 Outputs:
   ApplicationUrl:
-    Description: Public HTTPS URL for Payslip4All.
-    Value: !If
-      - HasHostedZoneId
-      - !Sub https://${DomainName}
-      - !Sub https://${ApplicationLoadBalancer.DNSName}
+    Description: Public HTTP URL for Payslip4All.
+    Value: !Sub http://${ElasticIp}
+  ElasticIpAddress:
+    Description: Elastic IP address assigned to the EC2 instance.
+    Value: !Ref ElasticIp
   InstanceId:
     Description: The EC2 instance serving Payslip4All.
     Value: !Ref WebInstance
-  LoadBalancerArn:
-    Description: ARN of the public Application Load Balancer.
-    Value: !Ref ApplicationLoadBalancer
   InstanceSecurityGroupId:
-    Description: EC2 security group for operator troubleshooting.
+    Description: EC2 security group for network troubleshooting.
     Value: !Ref InstanceSecurityGroup
-  LoadBalancerSecurityGroupId:
-    Description: ALB security group for troubleshooting load balancer ingress.
-    Value: !Ref LoadBalancerSecurityGroup
+  SsmStartSessionCommand:
+    Description: AWS CLI command to open an SSM shell on the instance.
+    Value: !Sub aws ssm start-session --target ${WebInstance}
   HostedPaymentsSecretReference:
     Description: Secret reference used for hosted-payment and runtime app configuration updates.
     Value: !If
