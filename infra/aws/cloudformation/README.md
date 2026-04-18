@@ -76,6 +76,12 @@ These actions are the complete manual pre-launch workflow for this feature.
 4. Start an SSM session using the `SsmStartSessionCommand` output.
 5. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, and `DYNAMODB_TABLE_PREFIX`.
 
+When inspecting the instance over SSM:
+
+- `/etc/payslip4all/payslip4all.env` is written with mode `0600`, so read it with `sudo`.
+- The systemd unit lives at `/etc/systemd/system/payslip4all.service`.
+- Bootstrap output is appended to `/var/log/payslip4all-bootstrap.log`; if the unit file is missing, also inspect `/var/log/cloud-init-output.log`.
+
 ## Cost notes
 
 This deployment is optimized for lower cost than the previous ALB-based version.

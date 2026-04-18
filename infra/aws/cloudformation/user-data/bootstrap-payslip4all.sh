@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+exec > >(tee -a /var/log/payslip4all-bootstrap.log) 2>&1
+trap 'echo "Payslip4All bootstrap failed at line $LINENO" >&2' ERR
 
 APP_ROOT="/opt/payslip4all"
 APP_USER="payslip4all"
@@ -15,17 +17,13 @@ DYNAMODB_TABLE_PREFIX="${DYNAMODB_TABLE_PREFIX:-payslip4all}"
 DYNAMODB_ENABLE_PITR="${DYNAMODB_ENABLE_PITR:-true}"
 HOSTED_PAYMENTS_SECRET_ARN="${HOSTED_PAYMENTS_SECRET_ARN:-}"
 
+dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0
+
 if ! id "$APP_USER" >/dev/null 2>&1; then
   useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
 fi
 
-dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0
-
 mkdir -p "$APP_ROOT" "$ENV_DIR"
-install -m 0600 /dev/null "$ENV_FILE"
-curl --fail --location --silent --show-error "${ARTIFACT_SOURCE}" --output /tmp/payslip4all.tgz
-find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
-tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
 
 cat > "$ENV_FILE" <<EOF
 ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}
@@ -45,8 +43,6 @@ if [[ -n "${HOSTED_PAYMENTS_SECRET_ARN}" ]]; then
     --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
 fi
 
-chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
-
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Payslip4All web application
@@ -65,6 +61,12 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+
+curl --fail --location --silent --show-error "${ARTIFACT_SOURCE}" --output /tmp/payslip4all.tgz
+find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
+tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
+
+chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
 
 systemctl daemon-reload
 systemctl enable payslip4all.service

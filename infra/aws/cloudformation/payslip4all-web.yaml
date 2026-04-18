@@ -122,6 +122,8 @@ Resources:
         Fn::Base64: !Sub |
           #!/usr/bin/env bash
           set -euo pipefail
+          exec > >(tee -a /var/log/payslip4all-bootstrap.log) 2>&1
+          trap 'echo "Payslip4All bootstrap failed at line $LINENO" >&2' ERR
           APP_ROOT="/opt/payslip4all"
           APP_USER="payslip4all"
           ENV_DIR="/etc/payslip4all"
@@ -132,10 +134,6 @@ Resources:
             useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
           fi
           mkdir -p "$APP_ROOT" "$ENV_DIR"
-          install -m 0600 /dev/null "$ENV_FILE"
-          curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
-          find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
-          tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
           cat > "$ENV_FILE" <<EOF
           ASPNETCORE_ENVIRONMENT=Production
           ASPNETCORE_URLS=http://0.0.0.0:80
@@ -166,6 +164,9 @@ Resources:
           [Install]
           WantedBy=multi-user.target
           EOF
+          curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
+          find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
+          tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
           chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
           systemctl daemon-reload
           systemctl enable payslip4all.service
