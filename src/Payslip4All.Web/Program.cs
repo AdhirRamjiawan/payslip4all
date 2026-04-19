@@ -32,7 +32,10 @@ builder.Host.UseSerilog((ctx, lc) =>
 // Must be registered before the middleware pipeline is built.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
     // Trust any proxy IP — restrict to specific KnownProxies entries in production.
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();

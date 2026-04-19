@@ -158,26 +158,27 @@ credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 Payslip4All includes a repository-owned AWS deployment guide for a low-cost hosted setup using:
 
 - one EC2 instance for the web application,
-- one Application Load Balancer for public HTTPS access,
-- Route 53 aliasing for `payslip4all.co.za`,
+- nginx on the EC2 host for public HTTPS access at `payslip4all.co.za`,
+- one Elastic IP that you point the public DNS record at,
 - DynamoDB persistence with hosted AWS point-in-time recovery backups.
 
 Start with:
 
+- nginx operator guide: `infra/nginx/README.md`
 - template: `infra/aws/cloudformation/payslip4all-web.yaml`
 - operator guide: `infra/aws/cloudformation/README.md`
 
 The deployment guide keeps the operator workflow intentionally small:
 
 1. publish the application artifact,
-2. confirm ACM certificate issuance,
-3. confirm Route 53 authority for `payslip4all.co.za`,
+2. stage the nginx certificate secret externally,
+3. point `payslip4all.co.za` at the hosted Elastic IP,
 4. gather external secret references,
 5. launch the CloudFormation stack.
 
-Operators then verify deployment success using the documented signal set: `ApplicationUrl`, `InstanceId`, `LoadBalancerArn`, `InstanceSecurityGroupId`, `LoadBalancerSecurityGroupId`, `BackupProtectionMode`, ALB target health, and the public `/health` endpoint.
+Operators then verify deployment success using the documented signal set: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `TlsCertificateSecretReference`, `BackupProtectionMode`, the public `/health` endpoint, and the HTTP→HTTPS redirect.
 
-This deployment path is designed to use as much of the AWS free tier as practical, but it is not fully free-tier-only because the ALB and Route 53 are required paid services for the requested public-domain setup.
+This deployment path is designed to use as much of the AWS free tier as practical while keeping the public edge repository-owned through nginx instead of relying on an ALB, Route 53, or ACM.
 
 ### First-run walkthrough
 
