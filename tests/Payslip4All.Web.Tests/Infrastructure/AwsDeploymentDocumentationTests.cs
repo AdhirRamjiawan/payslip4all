@@ -13,10 +13,10 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("PERSISTENCE_PROVIDER=dynamodb", readme, StringComparison.Ordinal);
         Assert.Contains("DYNAMODB_REGION", readme, StringComparison.Ordinal);
         Assert.Contains("DYNAMODB_TABLE_PREFIX", readme, StringComparison.Ordinal);
-        Assert.Contains("AllowedSshCidr", readme, StringComparison.Ordinal);
         Assert.Contains("HostedPaymentsSecretArn", readme, StringComparison.Ordinal);
-        Assert.Contains("HostedZoneId", readme, StringComparison.Ordinal);
-        Assert.Contains("CertificateArn", readme, StringComparison.Ordinal);
+        Assert.Contains("TlsCertificateSecretArn", readme, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", readme, StringComparison.Ordinal);
+        Assert.Contains("payslip4all.co.za", readme, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -27,39 +27,43 @@ public class AwsDeploymentDocumentationTests
 
         Assert.Equal(5, actions.Count);
         Assert.Contains(actions, action => action.Contains("Publish or upload the application artifact", StringComparison.Ordinal));
-        Assert.Contains(actions, action => action.Contains("ACM certificate", StringComparison.Ordinal));
-        Assert.Contains(actions, action => action.Contains("Route 53 hosted zone", StringComparison.Ordinal));
+        Assert.Contains(actions, action => action.Contains("TLS certificate secret", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(actions, action => action.Contains("Elastic IP", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(actions, action => action.Contains("payslip4all.co.za", StringComparison.Ordinal));
         Assert.Contains(actions, action => action.Contains("external secret references", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(actions, action => action.Contains("Launch `infra/aws/cloudformation/payslip4all-web.yaml`", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void DeploymentGuide_DocumentsOperatorVisibleSignals_AndBehindAlbHealthChecks()
+    public void DeploymentGuide_DocumentsOperatorVisibleSignals_And_NginxSmokeChecks()
     {
         var readme = LoadDeploymentReadme();
 
         Assert.Contains("ApplicationUrl", readme, StringComparison.Ordinal);
+        Assert.Contains("ElasticIpAddress", readme, StringComparison.Ordinal);
         Assert.Contains("InstanceId", readme, StringComparison.Ordinal);
-        Assert.Contains("LoadBalancerArn", readme, StringComparison.Ordinal);
         Assert.Contains("InstanceSecurityGroupId", readme, StringComparison.Ordinal);
-        Assert.Contains("LoadBalancerSecurityGroupId", readme, StringComparison.Ordinal);
+        Assert.Contains("SsmStartSessionCommand", readme, StringComparison.Ordinal);
+        Assert.Contains("TlsCertificateSecretReference", readme, StringComparison.Ordinal);
         Assert.Contains("BackupProtectionMode", readme, StringComparison.Ordinal);
-        Assert.Contains("ALB target health", readme, StringComparison.Ordinal);
         Assert.Contains("/health", readme, StringComparison.Ordinal);
-        Assert.Contains("forwarded headers", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("http://payslip4all.co.za", readme, StringComparison.Ordinal);
+        Assert.Contains("https://payslip4all.co.za", readme, StringComparison.Ordinal);
+        Assert.Contains("nginx -t", readme, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void DeploymentGuide_DocumentsDnsTls_CostTradeoffs_And_ReplaceableCompute()
+    public void DeploymentGuide_DocumentsElasticIpTlsConstraints_And_NoManagedEdgeAssumptions()
     {
         var readme = LoadDeploymentReadme();
 
         Assert.Contains("payslip4all.co.za", readme, StringComparison.Ordinal);
-        Assert.Contains("Application Load Balancer", readme, StringComparison.Ordinal);
-        Assert.Contains("Route 53", readme, StringComparison.Ordinal);
-        Assert.Contains("ACM", readme, StringComparison.Ordinal);
+        Assert.Contains("Elastic IP", readme, StringComparison.Ordinal);
+        Assert.Contains("nginx", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no-ALB", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no-Route53", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no-ACM", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("free tier", readme, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("ALB", readme, StringComparison.Ordinal);
         Assert.Contains("replacing or recreating the EC2 instance", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("public entry point remains the same", readme, StringComparison.OrdinalIgnoreCase);
     }
@@ -72,18 +76,19 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("point-in-time recovery", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("restore", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("restore to a new table", readme, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("60-minute", readme, StringComparison.Ordinal);
         Assert.Contains("/health", readme, StringComparison.Ordinal);
         Assert.Contains("infra/aws/cloudformation/payslip4all-web.yaml", readme, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void RootReadme_ReferencesCloudFormationDeploymentGuide()
+    public void RootReadme_ReferencesNginxAndCloudFormationDeploymentGuides()
     {
         var rootReadme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "README.md"));
 
         Assert.Contains("AWS CloudFormation Deployment", rootReadme, StringComparison.Ordinal);
         Assert.Contains("infra/aws/cloudformation/README.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("infra/nginx/README.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("payslip4all.co.za", rootReadme, StringComparison.Ordinal);
     }
 
     private static string LoadDeploymentReadme()

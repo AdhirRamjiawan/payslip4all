@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-05
+Auto-generated from all feature plans. Last updated: 2026-04-19
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -47,6 +47,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-05
 - SQLite for local relational development, MySQL/other EF Core relational providers in supported deployments, and DynamoDB when `PERSISTENCE_PROVIDER=dynamodb`; payment audit data is persisted as wallet top-up attempts, payment return evidence, normalization decisions, unmatched return records, wallets, and wallet activities (009-payfast-card-integration)
 - C# 12 on .NET 8 / ASP.NET Core 8 Blazor Web App + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, bUnit, Moq, PayFast hosted-payment integration (009-payfast-card-integration)
 - SQLite/MySQL via EF Core migrations; DynamoDB via repository implementations and startup table verification when `PERSISTENCE_PROVIDER=dynamodb` (009-payfast-card-integration)
+- nginx configuration, Bash bootstrap scripting, and existing C# 12 / .NET 8 application runtime + nginx, ASP.NET Core 8 reverse-proxy support, AWS CloudFormation/EC2/Secrets Manager deployment assets, Serilog request logging, xUnit + WebApplicationFactory (013-nginx-https-proxy)
+- N/A (no application persistence or schema changes) (013-nginx-https-proxy)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -67,9 +69,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
+- 013-nginx-https-proxy: Added nginx configuration, Bash bootstrap scripting, and existing C# 12 / .NET 8 application runtime + nginx, ASP.NET Core 8 reverse-proxy support, AWS CloudFormation/EC2/Secrets Manager deployment assets, Serilog request logging, xUnit + WebApplicationFactory
 - 009-payfast-card-integration: Added C# 12 on .NET 8 / ASP.NET Core 8 Blazor Web App + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, bUnit, Moq, PayFast hosted-payment integration
 - 009-payfast-card-integration: Added C# 12 on .NET 8 (`net8.0`) + ASP.NET Core 8 Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, `IHttpClientFactory`, PayFast hosted checkout integration
-- 009-payfast-card-integration: Added C# / .NET 8 + ASP.NET Core Blazor Server, Entity Framework Core 8, AWSSDK.DynamoDBv2, Serilog, xUnit, Moq, bUnit, BCrypt.Net-Next, QuestPDF
 
 
 <!-- MANUAL ADDITIONS START -->

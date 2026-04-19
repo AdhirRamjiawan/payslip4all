@@ -1,8 +1,11 @@
 using Amazon.DynamoDBv2;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
 
 namespace Payslip4All.Web.Tests.Startup;
@@ -23,6 +26,36 @@ public sealed class AwsDeploymentStartupTests : IDisposable
 
         Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"status\":\"Healthy\"", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReverseProxyStartup_TrustsForwardedHost_Proto_And_ClientIpHeaders()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptions<ForwardedHeadersOptions>>()
+            .Value;
+
+        Assert.Equal(
+            ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+            options.ForwardedHeaders);
+        Assert.Empty(options.KnownNetworks);
+        Assert.Empty(options.KnownProxies);
+    }
+
+    [Fact]
+    public void AwsHostedDeployment_KeepsTheUpstreamOnLoopbackOnly()
+    {
+        var solutionRoot = GetSolutionRoot();
+        var bootstrap = File.ReadAllText(Path.Combine(solutionRoot, "infra", "aws", "cloudformation", "user-data", "bootstrap-payslip4all.sh"));
+        var template = File.ReadAllText(Path.Combine(solutionRoot, "infra", "aws", "cloudformation", "payslip4all-web.yaml"));
+
+        Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", template, StringComparison.Ordinal);
+        Assert.DoesNotContain("ASPNETCORE_URLS=http://0.0.0.0:80", bootstrap, StringComparison.Ordinal);
+        Assert.DoesNotContain("ASPNETCORE_URLS=http://0.0.0.0:80", template, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -85,5 +118,16 @@ public sealed class AwsDeploymentStartupTests : IDisposable
     {
         foreach (var (key, value) in _savedEnv)
             Environment.SetEnvironmentVariable(key, value);
+    }
+
+    private static string GetSolutionRoot()
+    {
+        var currentDir = Directory.GetCurrentDirectory();
+        while (currentDir is not null && !File.Exists(Path.Combine(currentDir, "Payslip4All.sln")))
+        {
+            currentDir = Directory.GetParent(currentDir)?.FullName;
+        }
+
+        return currentDir ?? throw new InvalidOperationException("Could not find solution root.");
     }
 }
