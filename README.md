@@ -180,6 +180,8 @@ Operators then verify deployment success using the documented signal set: `Appli
 
 This deployment path is designed to use as much of the AWS free tier as practical while keeping the public edge repository-owned through nginx instead of relying on an ALB, Route 53, or ACM.
 
+For repo-owned custom settings, the hosted AWS path now supports an optional AWS Secrets Manager app-config artifact rendered to `/etc/payslip4all/app-config.secrets.json`. The documented precedence is `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
+
 ### First-run walkthrough
 
 1. Navigate to `/Auth/Register` and create an employer account
@@ -226,7 +228,7 @@ Set up these values before you try a wallet top-up:
 ### Where to put the values
 
 - **Local development**: put PayFast secrets in `src/Payslip4All.Web/appsettings.Development.Private.json`. This file is already ignored by git.
-- **Deployed environments**: prefer environment variables or your platform's secret store.
+- **Deployed environments**: prefer the AWS CloudFormation `AppConfigSecretArn` contract or platform-managed environment variables for emergency overrides.
 - **Do not commit** sandbox or live merchant credentials to `appsettings.json`, `appsettings.Development.json`, or any tracked file.
 
 Example local sandbox configuration:
@@ -336,7 +338,9 @@ After you save the configuration:
 | `Auth:Cookie:ExpireDays` | `30` | Session lifetime in days |
 | `BCrypt:WorkFactor` | `12` | Password hashing cost (10–15 recommended) |
 
-Configuration is loaded from `appsettings.json`, overridden by `appsettings.Development.json` in development, and can be further overridden via environment variables using the standard `__` separator (e.g. `Auth__Cookie__ExpireDays=7`).
+Configuration is loaded from `appsettings.json`, overridden by `appsettings.Development.json` in development, then optionally overridden by the rendered AWS app-config artifact at `/etc/payslip4all/app-config.secrets.json`, and can finally be overridden via environment variables using the standard `__` separator (e.g. `Auth__Cookie__ExpireDays=7`).
+
+For hosted AWS deployments, the covered AWS Secrets Manager catalog includes `ConnectionStrings:DefaultConnection`, `ConnectionStrings:MySqlConnection`, `DYNAMODB_*`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `Auth:Cookie:ExpireDays`, and `HostedPayments:PayFast:*`.
 
 ### DynamoDB startup behavior
 

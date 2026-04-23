@@ -11,11 +11,11 @@ public sealed class DynamoDbUnmatchedPaymentReturnRecordRepository : IUnmatchedP
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbUnmatchedPaymentReturnRecordRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbUnmatchedPaymentReturnRecordRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_unmatched_payment_return_records";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.UnmatchedPaymentReturnRecords;
     }
 
     public Task AddAsync(UnmatchedPaymentReturnRecord record, CancellationToken cancellationToken = default)

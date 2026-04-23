@@ -13,11 +13,11 @@ public sealed class DynamoDbUserRepository : IUserRepository
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbUserRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbUserRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_users";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.Users;
     }
 
     public async Task AddAsync(User user)

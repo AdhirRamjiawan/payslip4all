@@ -13,6 +13,8 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("PERSISTENCE_PROVIDER=dynamodb", readme, StringComparison.Ordinal);
         Assert.Contains("DYNAMODB_REGION", readme, StringComparison.Ordinal);
         Assert.Contains("DYNAMODB_TABLE_PREFIX", readme, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretArn", readme, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/app-config.secrets.json", readme, StringComparison.Ordinal);
         Assert.Contains("HostedPaymentsSecretArn", readme, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretArn", readme, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", readme, StringComparison.Ordinal);
@@ -44,12 +46,27 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("InstanceId", readme, StringComparison.Ordinal);
         Assert.Contains("InstanceSecurityGroupId", readme, StringComparison.Ordinal);
         Assert.Contains("SsmStartSessionCommand", readme, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretReference", readme, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretsFilePath", readme, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretReference", readme, StringComparison.Ordinal);
         Assert.Contains("BackupProtectionMode", readme, StringComparison.Ordinal);
         Assert.Contains("/health", readme, StringComparison.Ordinal);
         Assert.Contains("http://payslip4all.co.za", readme, StringComparison.Ordinal);
         Assert.Contains("https://payslip4all.co.za", readme, StringComparison.Ordinal);
         Assert.Contains("nginx -t", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeploymentGuide_DocumentsAppConfigSecretCatalog_Precedence_And_FailureScenarios()
+    {
+        var readme = LoadDeploymentReadme();
+
+        Assert.Contains("environment variables > rendered AWS-secret config > checked-in appsettings", readme, StringComparison.Ordinal);
+        Assert.Contains("Auth:Cookie:ExpireDays", readme, StringComparison.Ordinal);
+        Assert.Contains("ConnectionStrings:DefaultConnection", readme, StringComparison.Ordinal);
+        Assert.Contains("HostedPayments:PayFast:MerchantId", readme, StringComparison.Ordinal);
+        Assert.Contains("mixed-source", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("missing or unreadable", readme, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -88,6 +105,8 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("AWS CloudFormation Deployment", rootReadme, StringComparison.Ordinal);
         Assert.Contains("infra/aws/cloudformation/README.md", rootReadme, StringComparison.Ordinal);
         Assert.Contains("infra/nginx/README.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("AWS Secrets Manager", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/app-config.secrets.json", rootReadme, StringComparison.Ordinal);
         Assert.Contains("payslip4all.co.za", rootReadme, StringComparison.Ordinal);
     }
 

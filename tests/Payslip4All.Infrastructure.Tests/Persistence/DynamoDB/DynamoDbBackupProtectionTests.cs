@@ -138,9 +138,21 @@ public class DynamoDbBackupProtectionTests
 
     private static IHostedService CreateSut(IAmazonDynamoDB dynamoDb)
     {
+        var options = new DynamoDbConfigurationOptions
+        {
+            TablePrefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX") ?? "payslip4all",
+            Endpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT"),
+            EnablePointInTimeRecovery = !string.Equals(
+                Environment.GetEnvironmentVariable("DYNAMODB_ENABLE_PITR"),
+                "false",
+                StringComparison.OrdinalIgnoreCase),
+        };
+
         return new DynamoDbBackupProtectionHostedService(
             dynamoDb,
-            NullLogger<DynamoDbBackupProtectionHostedService>.Instance);
+            NullLogger<DynamoDbBackupProtectionHostedService>.Instance,
+            options,
+            new DynamoDbTableNameProvider(options));
     }
 
     private static async Task WithEnvironment(string prefix, string? endpoint, string? enablePointInTimeRecovery, Func<Task> action)

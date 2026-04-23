@@ -17,9 +17,11 @@ public static class DynamoDbServiceExtensions
     /// <summary>
     /// Registers all DynamoDB services: SDK client, repositories, unit of work, and table provisioner.
     /// </summary>
-    public static IServiceCollection AddDynamoDbPersistence(this IServiceCollection services)
+    public static IServiceCollection AddDynamoDbPersistence(this IServiceCollection services, DynamoDbConfigurationOptions options)
     {
-        services.AddSingleton<IAmazonDynamoDB>(_ => DynamoDbClientFactory.Create());
+        services.AddSingleton(options);
+        services.AddSingleton<DynamoDbTableNameProvider>();
+        services.AddSingleton<IAmazonDynamoDB>(sp => DynamoDbClientFactory.Create(sp.GetRequiredService<DynamoDbConfigurationOptions>()));
 
         services.AddScoped<IUserRepository, DynamoDbUserRepository>();
         services.AddScoped<ICompanyRepository, DynamoDbCompanyRepository>();

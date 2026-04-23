@@ -13,11 +13,11 @@ public sealed class DynamoDbWalletActivityRepository : IWalletActivityRepository
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbWalletActivityRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbWalletActivityRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_wallet_activities";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.WalletActivities;
     }
 
     public async Task<IReadOnlyList<WalletActivity>> GetByWalletIdAsync(Guid walletId)

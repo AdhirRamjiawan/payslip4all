@@ -9,22 +9,21 @@ public sealed class DynamoDbBackupProtectionHostedService : IHostedService
 {
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly ILogger<DynamoDbBackupProtectionHostedService> _logger;
-    private readonly string _prefix;
+    private readonly DynamoDbTableNameProvider _tableNames;
     private readonly string? _endpoint;
     private readonly bool _enablePointInTimeRecovery;
 
     public DynamoDbBackupProtectionHostedService(
         IAmazonDynamoDB dynamoDb,
-        ILogger<DynamoDbBackupProtectionHostedService> logger)
+        ILogger<DynamoDbBackupProtectionHostedService> logger,
+        DynamoDbConfigurationOptions options,
+        DynamoDbTableNameProvider tableNames)
     {
         _dynamoDb = dynamoDb;
         _logger = logger;
-        _prefix = DynamoDbTableProvisioner.GetCurrentTablePrefix();
-        _endpoint = Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT")?.Trim();
-        _enablePointInTimeRecovery = !string.Equals(
-            Environment.GetEnvironmentVariable("DYNAMODB_ENABLE_PITR")?.Trim(),
-            "false",
-            StringComparison.OrdinalIgnoreCase);
+        _tableNames = tableNames;
+        _endpoint = options.Endpoint;
+        _enablePointInTimeRecovery = options.EnablePointInTimeRecovery;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -42,7 +41,7 @@ public sealed class DynamoDbBackupProtectionHostedService : IHostedService
             return;
         }
 
-        foreach (var tableName in DynamoDbTableProvisioner.GetRequiredTableNames(_prefix))
+        foreach (var tableName in _tableNames.GetRequiredTableNames())
         {
             DescribeContinuousBackupsResponse describeResponse;
             try

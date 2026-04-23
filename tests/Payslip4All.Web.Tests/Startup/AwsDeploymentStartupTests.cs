@@ -59,6 +59,21 @@ public sealed class AwsDeploymentStartupTests : IDisposable
     }
 
     [Fact]
+    public void AwsHostedDeployment_RendersOptionalAppConfigSecretToProtectedJsonFile()
+    {
+        var solutionRoot = GetSolutionRoot();
+        var bootstrap = File.ReadAllText(Path.Combine(solutionRoot, "infra", "aws", "cloudformation", "user-data", "bootstrap-payslip4all.sh"));
+        var template = File.ReadAllText(Path.Combine(solutionRoot, "infra", "aws", "cloudformation", "payslip4all-web.yaml"));
+
+        Assert.Contains("APP_CONFIG_SECRET_ARN", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/app-config.secrets.json", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("jq -e 'if type == \"object\" then . else error(\"App config secret must be a JSON object.\") end'", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("chmod 600 \"$APP_CONFIG_SECRETS_FILE\"", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretArn", template, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/app-config.secrets.json", template, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DynamoDbProvider_WhenHostedAwsConfigured_RegistersBackupProtectionHostedService_AndTableProvisioner()
     {
         SetEnv("DYNAMODB_REGION", "af-south-1");

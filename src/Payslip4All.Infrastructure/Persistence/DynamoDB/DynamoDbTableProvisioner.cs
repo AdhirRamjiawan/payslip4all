@@ -16,27 +16,22 @@ public sealed class DynamoDbTableProvisioner : IHostedService
 
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly ILogger<DynamoDbTableProvisioner> _logger;
-    private readonly string _prefix;
+    private readonly DynamoDbTableNameProvider _tableNames;
     private readonly TimeSpan _activationTimeout;
     private readonly TimeSpan _pollInterval;
 
     public DynamoDbTableProvisioner(
         IAmazonDynamoDB dynamoDb,
         ILogger<DynamoDbTableProvisioner> logger,
+        DynamoDbTableNameProvider? tableNames = null,
         TimeSpan? activationTimeout = null,
         TimeSpan? pollInterval = null)
     {
         _dynamoDb = dynamoDb;
         _logger = logger;
-        _prefix = GetCurrentTablePrefix();
+        _tableNames = tableNames ?? DynamoDbTableNameProvider.CreateDefault();
         _activationTimeout = activationTimeout ?? DefaultActivationTimeout;
         _pollInterval = pollInterval ?? DefaultPollInterval;
-    }
-
-    public static string GetCurrentTablePrefix()
-    {
-        return Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim()
-               ?? "payslip4all";
     }
 
     public static IReadOnlyList<string> GetRequiredTableNames(string prefix)
@@ -135,7 +130,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_users — PK: id (S), GSI: email-index on email
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_users",
+                TableName = _tableNames.Users,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -163,7 +158,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_companies — PK: id (S), GSI: userId-index on userId
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_companies",
+                TableName = _tableNames.Companies,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -191,7 +186,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_employees — PK: id (S), GSI: companyId-index on companyId
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_employees",
+                TableName = _tableNames.Employees,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -219,7 +214,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_employee_loans — PK: id (S), GSI: employeeId-index on employeeId
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_employee_loans",
+                TableName = _tableNames.EmployeeLoans,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -247,7 +242,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_payslips — PK: id (S), GSI: employeeId-index on employeeId + SK generatedAt
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_payslips",
+                TableName = _tableNames.Payslips,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -277,7 +272,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_payslip_loan_deductions — PK: id (S), GSI: payslipId-index on payslipId
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_payslip_loan_deductions",
+                TableName = _tableNames.PayslipLoanDeductions,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -305,7 +300,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_wallets — PK: id (S), where id is the canonical userId-backed wallet identifier
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_wallets",
+                TableName = _tableNames.Wallets,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -320,7 +315,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_wallet_activities — PK: id (S), GSI: walletId-index on walletId + occurredAt
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_wallet_activities",
+                TableName = _tableNames.WalletActivities,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -350,7 +345,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_payslip_pricing — PK: id (S)
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_payslip_pricing",
+                TableName = _tableNames.PayslipPricing,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -365,7 +360,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_payment_return_evidences — PK: id (S)
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_payment_return_evidences",
+                TableName = _tableNames.PaymentReturnEvidences,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -380,7 +375,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_outcome_normalization_decisions — PK: id (S)
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_outcome_normalization_decisions",
+                TableName = _tableNames.OutcomeNormalizationDecisions,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -395,7 +390,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_unmatched_payment_return_records — PK: id (S)
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_unmatched_payment_return_records",
+                TableName = _tableNames.UnmatchedPaymentReturnRecords,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {
@@ -409,7 +404,7 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             // payslip4all_wallet_topup_attempts — PK: id (S), GSI: userId-createdAt-index on userId + createdAt
             new CreateTableRequest
             {
-                TableName = $"{_prefix}_wallet_topup_attempts",
+                TableName = _tableNames.WalletTopUpAttempts,
                 BillingMode = BillingMode.PAY_PER_REQUEST,
                 KeySchema = new List<KeySchemaElement>
                 {

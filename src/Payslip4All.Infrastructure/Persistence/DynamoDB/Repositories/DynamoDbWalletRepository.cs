@@ -11,11 +11,11 @@ public sealed class DynamoDbWalletRepository : IWalletRepository
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbWalletRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbWalletRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_wallets";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.Wallets;
     }
 
     public async Task<Wallet?> GetByUserIdAsync(Guid userId)

@@ -16,13 +16,13 @@ public sealed class DynamoDbWalletTopUpAttemptRepository : IWalletTopUpAttemptRe
     private readonly string _walletsTableName;
     private readonly string _walletActivitiesTableName;
 
-    public DynamoDbWalletTopUpAttemptRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbWalletTopUpAttemptRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_wallet_topup_attempts";
-        _walletsTableName = $"{prefix}_wallets";
-        _walletActivitiesTableName = $"{prefix}_wallet_activities";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.WalletTopUpAttempts;
+        _walletsTableName = tableNames.Wallets;
+        _walletActivitiesTableName = tableNames.WalletActivities;
     }
 
     public async Task AddAsync(WalletTopUpAttempt attempt, CancellationToken cancellationToken = default)

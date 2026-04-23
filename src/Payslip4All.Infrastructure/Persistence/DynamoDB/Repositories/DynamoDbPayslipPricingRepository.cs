@@ -11,11 +11,11 @@ public sealed class DynamoDbPayslipPricingRepository : IPayslipPricingRepository
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbPayslipPricingRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbPayslipPricingRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_payslip_pricing";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.PayslipPricing;
     }
 
     public async Task<PayslipPricingSetting?> GetCurrentAsync()

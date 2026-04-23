@@ -23,10 +23,14 @@ Parameters:
     Type: String
     Default: payslip4all
     Description: Prefix used by the application-owned DynamoDB tables.
+  AppConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: Optional Secrets Manager ARN that stores flat ASP.NET Core app-configuration keys in JSON form.
   HostedPaymentsSecretArn:
     Type: String
     Default: ''
-    Description: Optional Secrets Manager ARN that stores hosted-payment and app secrets.
+    Description: Optional legacy Secrets Manager ARN that appends direct environment-style overrides into the service environment file.
   TlsCertificateSecretArn:
     Type: String
     Default: ''
@@ -96,6 +100,13 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
               - !If
+                - HasAppConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref AppConfigSecretArn
+                - !Ref AWS::NoValue
+              - !If
                 - HasHostedPaymentsSecret
                 - Effect: Allow
                   Action:
@@ -137,15 +148,16 @@ Resources:
         Fn::Base64: !Sub |
           #!/usr/bin/env bash
           set -euo pipefail
-          APP_ROOT="/opt/payslip4all"
-          APP_USER="payslip4all"
-          ENV_DIR="/etc/payslip4all"
-          ENV_FILE="$ENV_DIR/payslip4all.env"
-          SERVICE_FILE="/etc/systemd/system/payslip4all.service"
-          NGINX_CERT_DIR="/etc/nginx/certs"
-          NGINX_SITE_CONFIG="/etc/nginx/conf.d/payslip4all.conf"
-          PUBLIC_DOMAIN="payslip4all.co.za"
-          UPSTREAM_APP_URL="http://127.0.0.1:8080"
+           APP_ROOT="/opt/payslip4all"
+           APP_USER="payslip4all"
+           ENV_DIR="/etc/payslip4all"
+           ENV_FILE="$ENV_DIR/payslip4all.env"
+           APP_CONFIG_SECRETS_FILE="/etc/payslip4all/app-config.secrets.json"
+           SERVICE_FILE="/etc/systemd/system/payslip4all.service"
+           NGINX_CERT_DIR="/etc/nginx/certs"
+           NGINX_SITE_CONFIG="/etc/nginx/conf.d/payslip4all.conf"
+           PUBLIC_DOMAIN="payslip4all.co.za"
+           UPSTREAM_APP_URL="http://127.0.0.1:8080"
           dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0 nginx
           if ! id "$APP_USER" >/dev/null 2>&1; then
             useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
@@ -157,19 +169,26 @@ Resources:
           tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
           cat > "$ENV_FILE" <<EOF
           ASPNETCORE_ENVIRONMENT=Production
-          ASPNETCORE_URLS=http://127.0.0.1:8080
-          PERSISTENCE_PROVIDER=dynamodb
-          DYNAMODB_REGION=${AWS::Region}
-          DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
-          DYNAMODB_ENABLE_PITR=true
-          EOF
-          if [[ -n "${HostedPaymentsSecretArn}" ]]; then
-            aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
-          fi
-          if [[ -z "${TlsCertificateSecretArn}" ]]; then
-            echo "TlsCertificateSecretArn must reference a Secrets Manager secret containing fullchainPem and privkeyPem." >&2
-            exit 1
-          fi
+           ASPNETCORE_URLS=http://127.0.0.1:8080
+           PERSISTENCE_PROVIDER=dynamodb
+           DYNAMODB_REGION=${AWS::Region}
+           DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
+           DYNAMODB_ENABLE_PITR=true
+           EOF
+           if [[ -n "${HostedPaymentsSecretArn}" ]]; then
+             aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
+           fi
+           rm -f "$APP_CONFIG_SECRETS_FILE"
+           if [[ -n "${AppConfigSecretArn}" ]]; then
+             APP_CONFIG_JSON="$(aws secretsmanager get-secret-value --secret-id "${AppConfigSecretArn}" --query SecretString --output text)"
+             printf '%s' "$APP_CONFIG_JSON" | jq -e 'if type == "object" then . else error("App config secret must be a JSON object.") end' > "$APP_CONFIG_SECRETS_FILE"
+             chmod 600 "$APP_CONFIG_SECRETS_FILE"
+             chown "$APP_USER:$APP_USER" "$APP_CONFIG_SECRETS_FILE"
+           fi
+           if [[ -z "${TlsCertificateSecretArn}" ]]; then
+             echo "TlsCertificateSecretArn must reference a Secrets Manager secret containing fullchainPem and privkeyPem." >&2
+             exit 1
+           fi
           CERTIFICATE_JSON="$(aws secretsmanager get-secret-value --secret-id "${TlsCertificateSecretArn}" --query SecretString --output text)"
           printf '%s' "$CERTIFICATE_JSON" | jq -r '.fullchainPem' > "$NGINX_CERT_DIR/fullchain.pem"
           printf '%s' "$CERTIFICATE_JSON" | jq -r '.privkeyPem' > "$NGINX_CERT_DIR/privkey.pem"
@@ -301,6 +320,7 @@ Resources:
           Value: !Sub payslip4all-web-eip-${EnvironmentName}
 
 Conditions:
+  HasAppConfigSecret: !Not [!Equals [!Ref AppConfigSecretArn, '']]
   HasHostedPaymentsSecret: !Not [!Equals [!Ref HostedPaymentsSecretArn, '']]
   HasTlsCertificateSecret: !Not [!Equals [!Ref TlsCertificateSecretArn, '']]
 
@@ -320,8 +340,17 @@ Outputs:
   SsmStartSessionCommand:
     Description: AWS CLI command to open an SSM shell on the instance.
     Value: !Sub aws ssm start-session --target ${WebInstance}
+  AppConfigSecretReference:
+    Description: Secret reference used for the rendered custom app-configuration JSON artifact.
+    Value: !If
+      - HasAppConfigSecret
+      - !Ref AppConfigSecretArn
+      - no-app-config-secret-configured
+  AppConfigSecretsFilePath:
+    Description: Rendered custom app-configuration artifact path on the instance.
+    Value: /etc/payslip4all/app-config.secrets.json
   HostedPaymentsSecretReference:
-    Description: Secret reference used for hosted-payment and runtime app configuration updates.
+    Description: Legacy secret reference used for direct environment-style override injection.
     Value: !If
       - HasHostedPaymentsSecret
       - !Ref HostedPaymentsSecretArn

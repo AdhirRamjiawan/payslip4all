@@ -14,12 +14,12 @@ public sealed class DynamoDbCompanyRepository : ICompanyRepository
     private readonly string _tableName;
     private readonly string _employeeTableName;
 
-    public DynamoDbCompanyRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbCompanyRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_companies";
-        _employeeTableName = $"{prefix}_employees";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.Companies;
+        _employeeTableName = tableNames.Employees;
     }
 
     public async Task<IReadOnlyList<Company>> GetAllByUserIdAsync(Guid userId)
