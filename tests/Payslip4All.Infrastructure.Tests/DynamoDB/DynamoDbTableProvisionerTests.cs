@@ -51,7 +51,8 @@ public class DynamoDbTableProvisionerTests : IAsyncLifetime
         // Arrange
         Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", _prefix);
         var logger = new Mock<ILogger<DynamoDbTableProvisioner>>();
-        var provisioner = new DynamoDbTableProvisioner(_fixture.Client, logger.Object);
+        var options = new DynamoDbConfigurationOptions { TablePrefix = _prefix };
+        var provisioner = new DynamoDbTableProvisioner(_fixture.Client, logger.Object, new DynamoDbTableNameProvider(options));
 
         // Act
         await provisioner.StartAsync(CancellationToken.None);
@@ -76,7 +77,8 @@ public class DynamoDbTableProvisionerTests : IAsyncLifetime
         // Arrange — create tables first
         Environment.SetEnvironmentVariable("DYNAMODB_TABLE_PREFIX", _prefix);
         var logger = new Mock<ILogger<DynamoDbTableProvisioner>>();
-        var provisioner = new DynamoDbTableProvisioner(_fixture.Client, logger.Object);
+        var options = new DynamoDbConfigurationOptions { TablePrefix = _prefix };
+        var provisioner = new DynamoDbTableProvisioner(_fixture.Client, logger.Object, new DynamoDbTableNameProvider(options));
         await provisioner.StartAsync(CancellationToken.None);
 
         // Reset mock to track second call

@@ -11,11 +11,11 @@ public sealed class DynamoDbOutcomeNormalizationDecisionRepository : IOutcomeNor
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbOutcomeNormalizationDecisionRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbOutcomeNormalizationDecisionRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_outcome_normalization_decisions";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.OutcomeNormalizationDecisions;
     }
 
     public Task AddAsync(OutcomeNormalizationDecision decision, CancellationToken cancellationToken = default)

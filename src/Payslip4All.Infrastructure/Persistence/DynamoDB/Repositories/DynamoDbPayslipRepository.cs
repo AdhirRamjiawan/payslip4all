@@ -20,15 +20,15 @@ public sealed class DynamoDbPayslipRepository : IPayslipRepository
     private readonly string _companyTableName;
     private readonly string _loanTableName;
 
-    public DynamoDbPayslipRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbPayslipRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_payslips";
-        _deductionTableName = $"{prefix}_payslip_loan_deductions";
-        _employeeTableName = $"{prefix}_employees";
-        _companyTableName = $"{prefix}_companies";
-        _loanTableName = $"{prefix}_employee_loans";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.Payslips;
+        _deductionTableName = tableNames.PayslipLoanDeductions;
+        _employeeTableName = tableNames.Employees;
+        _companyTableName = tableNames.Companies;
+        _loanTableName = tableNames.EmployeeLoans;
     }
 
     public async Task<IReadOnlyList<Payslip>> GetAllByEmployeeIdAsync(Guid employeeId, Guid userId)

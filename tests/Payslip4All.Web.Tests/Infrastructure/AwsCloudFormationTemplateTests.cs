@@ -12,6 +12,7 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("InstanceType:", template, StringComparison.Ordinal);
         Assert.Contains("ArtifactSource:", template, StringComparison.Ordinal);
         Assert.Contains("DynamoDbTablePrefix:", template, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretArn:", template, StringComparison.Ordinal);
         Assert.Contains("HostedPaymentsSecretArn:", template, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretArn:", template, StringComparison.Ordinal);
         Assert.Contains("payslip4all.co.za", template, StringComparison.Ordinal);
@@ -28,6 +29,8 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("ElasticIpAddress:", template, StringComparison.Ordinal);
         Assert.Contains("InstanceSecurityGroupId:", template, StringComparison.Ordinal);
         Assert.Contains("SsmStartSessionCommand:", template, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretReference:", template, StringComparison.Ordinal);
+        Assert.Contains("AppConfigSecretsFilePath:", template, StringComparison.Ordinal);
         Assert.Contains("HostedPaymentsSecretReference:", template, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretReference:", template, StringComparison.Ordinal);
         Assert.Contains("NginxConfigPath:", template, StringComparison.Ordinal);
@@ -68,6 +71,7 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("secretsmanager:GetSecretValue", template, StringComparison.Ordinal);
         Assert.Contains("/etc/nginx/certs/fullchain.pem", template, StringComparison.Ordinal);
         Assert.Contains("/etc/nginx/certs/privkey.pem", template, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/app-config.secrets.json", template, StringComparison.Ordinal);
         Assert.Contains("/etc/nginx/conf.d/payslip4all.conf", template, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", template, StringComparison.Ordinal);
         Assert.Contains("nginx -t", template, StringComparison.Ordinal);
@@ -84,6 +88,8 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("dynamodb:RestoreTableToPointInTime", template, StringComparison.Ordinal);
         Assert.Contains("dynamodb:UpdateContinuousBackups", template, StringComparison.Ordinal);
         Assert.Contains("dynamodb:ListTables", template, StringComparison.Ordinal);
+        Assert.Contains("HasAppConfigSecret", template, StringComparison.Ordinal);
+        Assert.Contains("Resource: !Ref AppConfigSecretArn", template, StringComparison.Ordinal);
         Assert.Contains("recovery", template, StringComparison.OrdinalIgnoreCase);
     }
 

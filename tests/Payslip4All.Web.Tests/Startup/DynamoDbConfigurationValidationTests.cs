@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Payslip4All.Infrastructure.HostedServices;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
+using System.Text.Json;
 
 namespace Payslip4All.Web.Tests.Startup;
 
@@ -130,6 +131,68 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
     }
 
     [Fact]
+    public void DynamoDbProvider_WithRegionFromSecretArtifact_RegistersClientWithoutEnvironmentRegion()
+    {
+        var secretPath = WriteSecretsArtifact(new Dictionary<string, string?>
+        {
+            ["DYNAMODB_REGION"] = "us-east-1",
+            ["DYNAMODB_ENDPOINT"] = "http://localhost:8000",
+            ["DYNAMODB_TABLE_PREFIX"] = "secret-prefix",
+        });
+
+        SetEnv("PAYSLIP4ALL_AWS_SECRETS_CONFIG_PATH", secretPath);
+        SetEnv("DYNAMODB_REGION", null);
+        SetEnv("DYNAMODB_ENDPOINT", null);
+        SetEnv("DYNAMODB_TABLE_PREFIX", null);
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        try
+        {
+            using var factory = BuildFactory();
+            using var scope = factory.Services.CreateScope();
+            var client = Assert.IsType<AmazonDynamoDBClient>(scope.ServiceProvider.GetRequiredService<IAmazonDynamoDB>());
+
+            Assert.Equal("http://localhost:8000/", client.Config.ServiceURL);
+        }
+        finally
+        {
+            File.Delete(secretPath);
+        }
+    }
+
+    [Fact]
+    public void DynamoDbProvider_WithOnlyAccessKeyInSecretArtifact_ThrowsInvalidOperationException()
+    {
+        var secretPath = WriteSecretsArtifact(new Dictionary<string, string?>
+        {
+            ["DYNAMODB_REGION"] = "us-east-1",
+            ["AWS_ACCESS_KEY_ID"] = "secret-artifact-key",
+        });
+
+        SetEnv("PAYSLIP4ALL_AWS_SECRETS_CONFIG_PATH", secretPath);
+        SetEnv("DYNAMODB_REGION", null);
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        try
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var factory = BuildFactory();
+                _ = factory.Services;
+            });
+
+            Assert.Contains("AWS_ACCESS_KEY_ID", ex.Message);
+            Assert.Contains("AWS_SECRET_ACCESS_KEY", ex.Message);
+        }
+        finally
+        {
+            File.Delete(secretPath);
+        }
+    }
+
+    [Fact]
     public void DynamoDbProvider_WhenBootstrapHostedServiceFails_StartupFailsFast()
     {
         SetEnv("DYNAMODB_REGION", "us-east-1");
@@ -162,10 +225,20 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
                         services.Remove(descriptor);
                     }
 
+                    var options = new DynamoDbConfigurationOptions
+                    {
+                        Region = "us-east-1",
+                        Endpoint = "http://localhost:8000",
+                        TablePrefix = "payslip4all",
+                    };
+
+                    services.AddSingleton(options);
+                    services.AddSingleton(new DynamoDbTableNameProvider(options));
                     services.AddSingleton(neverActive.Object);
                     services.AddSingleton(new DynamoDbTableProvisioner(
                         neverActive.Object,
                         NullLogger<DynamoDbTableProvisioner>.Instance,
+                        new DynamoDbTableNameProvider(options),
                         activationTimeout: TimeSpan.Zero,
                         pollInterval: TimeSpan.Zero));
                     services.AddSingleton<DynamoDbPaymentBootstrapHostedService>();
@@ -177,5 +250,12 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
         });
 
         Assert.Contains("ACTIVE", ex.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string WriteSecretsArtifact(IReadOnlyDictionary<string, string?> values)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"p4a-dynamodb-secrets-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(values));
+        return path;
     }
 }

@@ -25,7 +25,8 @@ You must prepare these values before launching the stack:
 | `InstanceType` | Defaults to a low-cost option such as `t3.micro`, but can be overridden |
 | `ArtifactSource` | Points the bootstrap process at the published Payslip4All bundle |
 | `DynamoDbTablePrefix` | Namespaces the application-owned table set |
-| `HostedPaymentsSecretArn` | Optional secret reference for hosted-payment and app-specific configuration |
+| `AppConfigSecretArn` | Optional secret reference for the rendered custom app-configuration JSON artifact |
+| `HostedPaymentsSecretArn` | Optional legacy secret reference for direct environment-style overrides |
 | `TlsCertificateSecretArn` | External TLS certificate secret that supplies the nginx `fullchainPem` and `privkeyPem` values |
 
 ## Runtime environment variables
@@ -38,7 +39,9 @@ The EC2 bootstrap process writes these values into the service environment:
 - `DYNAMODB_ENABLE_PITR=true`
 - `ASPNETCORE_URLS=http://127.0.0.1:8080`
 
-If `HostedPaymentsSecretArn` is provided, the instance also appends the secret values to the app environment file using AWS Secrets Manager. Keep reusable secrets out of the template itself.
+If `AppConfigSecretArn` is provided, bootstrap renders the secret to `/etc/payslip4all/app-config.secrets.json` and the app resolves it with the precedence `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
+
+If `HostedPaymentsSecretArn` is provided, the instance also appends the secret values to the app environment file as direct environment-style overrides. That legacy path therefore still wins over the rendered app-config secret because environment variables remain the highest-precedence deployment source.
 
 ## Architecture and traffic flow
 
@@ -55,7 +58,7 @@ This is a no-ALB, no-Route53, no-ACM deployment flow. DNS publishing for `paysli
 
 Operators should verify the deployment with this explicit signal set:
 
-- CloudFormation outputs: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `HostedPaymentsSecretReference`, `TlsCertificateSecretReference`, `NginxConfigPath`, `BackupProtectionMode`, and `RestoreRunbook`
+- CloudFormation outputs: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `AppConfigSecretReference`, `AppConfigSecretsFilePath`, `HostedPaymentsSecretReference`, `TlsCertificateSecretReference`, `NginxConfigPath`, `BackupProtectionMode`, and `RestoreRunbook`
 - `https://payslip4all.co.za/health`
 - the `http://payslip4all.co.za` redirect to HTTPS
 - successful `nginx -t` validation on the host
@@ -69,7 +72,7 @@ These signals are intentionally minimal: enough to verify stack identity, secure
 1. Publish or upload the application artifact that `ArtifactSource` will reference.
 2. Stage the TLS certificate secret for nginx so it exposes `fullchainPem` and `privkeyPem`.
 3. Reserve or confirm the Elastic IP workflow, then point `payslip4all.co.za` at that public address.
-4. Gather the external secret references required for hosted-payment and application runtime configuration.
+4. Gather the external secret references required for the rendered app-config secret, any legacy direct environment overrides, and TLS certificate delivery.
 5. Launch `infra/aws/cloudformation/payslip4all-web.yaml` with the required parameters.
 
 ## Post-launch verification
@@ -81,6 +84,35 @@ These signals are intentionally minimal: enough to verify stack identity, secure
 5. Start an SSM session using the `SsmStartSessionCommand` output.
 6. Run `nginx -t`.
 7. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, and `ASPNETCORE_URLS=http://127.0.0.1:8080`.
+8. If `AppConfigSecretArn` is set, confirm `/etc/payslip4all/app-config.secrets.json` exists with mode `600`.
+
+## Custom app-config secret contract
+
+Use `AppConfigSecretArn` for repo-owned custom settings that need AWS Secrets Manager support without flattening them into environment variable names.
+
+- The secret payload must be a JSON object with flat ASP.NET Core keys such as `ConnectionStrings:DefaultConnection`, `Auth:Cookie:ExpireDays`, and `HostedPayments:PayFast:MerchantId`.
+- The covered catalog includes persistence-provider selection, relational connection strings, `DYNAMODB_*`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `Auth:Cookie:ExpireDays`, and `HostedPayments:PayFast:*`.
+- Keep TLS certificate keys in the separate `TlsCertificateSecretArn` secret.
+- Mixed-source deployments are supported: some covered keys may stay in checked-in appsettings, others may come from `/etc/payslip4all/app-config.secrets.json`, and emergency overrides may still come from environment variables.
+
+Example payload:
+
+```json
+{
+  "ConnectionStrings:DefaultConnection": "Data Source=/opt/payslip4all/payslip4all.db",
+  "Auth:Cookie:ExpireDays": "30",
+  "HostedPayments:PayFast:MerchantId": "10047421",
+  "HostedPayments:PayFast:MerchantKey": "merchant-key",
+  "HostedPayments:PayFast:PublicNotifyUrl": "https://payslip4all.co.za/api/payments/payfast/notify"
+}
+```
+
+## Mixed-source and failure validation
+
+- To validate mixed-source behaviour, place one covered setting only in checked-in appsettings, one only in `AppConfigSecretArn`, and one in both the rendered secret and a direct environment override, then confirm the effective order remains `environment variables > rendered AWS-secret config > checked-in appsettings`.
+- Missing or unreadable `AppConfigSecretArn` references must fail bootstrap before the service starts.
+- Malformed or incomplete rendered values must fail safely at app startup or before the affected feature executes, without printing secret contents.
+- Validate operator diagnostics by checking the bootstrap output and service logs for key names or groups only; secret values should never appear.
 
 ## Cost notes
 

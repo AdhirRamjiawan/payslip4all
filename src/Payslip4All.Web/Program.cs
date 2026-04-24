@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.EntityFrameworkCore;
 using Payslip4All.Application.Interfaces;
 using Payslip4All.Application.Interfaces.Repositories;
 using Payslip4All.Application.Services;
 using Payslip4All.Infrastructure.Auth;
+using Payslip4All.Infrastructure.Configuration;
 using Payslip4All.Infrastructure.HostedPayments;
 using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
@@ -18,11 +20,13 @@ using Payslip4All.Web.Extensions;
 using Payslip4All.Web.Endpoints;
 using QuestPDF.Infrastructure;
 using Serilog;
+using System.Text.Json;
 
 // Bootstrap Serilog early so startup errors are captured
 Serilog.Debugging.SelfLog.Enable(msg => Console.Error.WriteLine(msg));
 
 var builder = WebApplication.CreateBuilder(args);
+InsertAwsSecretsConfigurationSource(builder.Configuration);
 
 builder.Host.UseSerilog((ctx, lc) =>
     lc.ReadFrom.Configuration(ctx.Configuration)
@@ -44,21 +48,57 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // QuestPDF community licence
 QuestPDF.Settings.License = LicenseType.Community;
 
-static void ValidateDynamoDbStartupConfiguration()
+static void InsertAwsSecretsConfigurationSource(ConfigurationManager configuration)
 {
-    var region = Environment.GetEnvironmentVariable("DYNAMODB_REGION")?.Trim();
-    if (string.IsNullOrWhiteSpace(region))
-        throw new InvalidOperationException(
-            "PERSISTENCE_PROVIDER is set to 'dynamodb' but the required environment variable DYNAMODB_REGION is not set.");
+    var secretValues = LoadAwsSecretsConfigurationValues(configuration);
+    if (secretValues.Count == 0)
+        return;
 
-    var accessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID")?.Trim();
-    var secretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY")?.Trim();
-    var hasAccessKey = !string.IsNullOrWhiteSpace(accessKey);
-    var hasSecretKey = !string.IsNullOrWhiteSpace(secretKey);
+    var originalSources = configuration.Sources.ToList();
+    configuration.Sources.Clear();
 
-    if (hasAccessKey != hasSecretKey)
-        throw new InvalidOperationException(
-            "When using explicit DynamoDB credentials, both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set.");
+    var inserted = false;
+    foreach (var source in originalSources)
+    {
+        if (!inserted
+            && source is EnvironmentVariablesConfigurationSource environmentSource
+            && string.IsNullOrEmpty(environmentSource.Prefix))
+        {
+            ((IConfigurationBuilder)configuration).AddInMemoryCollection(secretValues);
+            inserted = true;
+        }
+
+        ((IConfigurationBuilder)configuration).Add(source);
+    }
+
+    if (!inserted)
+        ((IConfigurationBuilder)configuration).AddInMemoryCollection(secretValues);
+}
+
+static IReadOnlyDictionary<string, string?> LoadAwsSecretsConfigurationValues(IConfiguration configuration)
+{
+    var path = AwsSecretsConfigurationDefaults.ResolveSecretsFilePath(configuration);
+    if (!File.Exists(path))
+        return new Dictionary<string, string?>();
+
+    using var document = JsonDocument.Parse(File.ReadAllText(path));
+    if (document.RootElement.ValueKind != JsonValueKind.Object)
+        throw new InvalidOperationException("The AWS app-config secret artifact must contain a JSON object.");
+
+    var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+    foreach (var property in document.RootElement.EnumerateObject())
+    {
+        values[property.Name] = property.Value.ValueKind switch
+        {
+            JsonValueKind.String => property.Value.GetString(),
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => property.Value.GetRawText(),
+            JsonValueKind.Null => null,
+            _ => throw new InvalidOperationException(
+                $"The AWS app-config secret artifact value for '{property.Name}' must be a scalar JSON value."),
+        };
+    }
+
+    return values;
 }
 
 // Add services
@@ -70,8 +110,9 @@ builder.Services.AddCascadingAuthenticationState();
 // Database provider switching
 // Read PERSISTENCE_PROVIDER from configuration (supports env var, appsettings, test overrides).
 // Defaults to "sqlite".
-var provider = (builder.Configuration["PERSISTENCE_PROVIDER"]?.Trim().ToLowerInvariant())
+var provider = (builder.Configuration[Payslip4AllCustomConfigurationKeys.PersistenceProvider]?.Trim().ToLowerInvariant())
                ?? "sqlite";
+var dynamoDbOptions = DynamoDbConfigurationOptions.FromConfiguration(builder.Configuration);
 
 // Validate provider value
 if (provider is not ("sqlite" or "mysql" or "dynamodb"))
@@ -79,12 +120,12 @@ if (provider is not ("sqlite" or "mysql" or "dynamodb"))
         $"Unknown persistence provider '{provider}'. Valid values are: sqlite, mysql, dynamodb.");
 
 if (provider == "dynamodb")
-    ValidateDynamoDbStartupConfiguration();
+    dynamoDbOptions.ValidateForStartup();
 
 if (provider == "dynamodb")
 {
     // Register DynamoDB client (singleton), repositories, unit of work, and table provisioner
-    builder.Services.AddDynamoDbPersistence();
+    builder.Services.AddDynamoDbPersistence(dynamoDbOptions);
 }
 else
 {

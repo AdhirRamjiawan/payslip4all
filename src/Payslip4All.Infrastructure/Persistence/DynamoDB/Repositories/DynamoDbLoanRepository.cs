@@ -17,12 +17,12 @@ public sealed class DynamoDbLoanRepository : ILoanRepository
     private readonly string _tableName;
     private readonly string _employeeTableName;
 
-    public DynamoDbLoanRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbLoanRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_employee_loans";
-        _employeeTableName = $"{prefix}_employees";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.EmployeeLoans;
+        _employeeTableName = tableNames.Employees;
     }
 
     public async Task<IReadOnlyList<EmployeeLoan>> GetAllByEmployeeIdAsync(Guid employeeId, Guid userId)

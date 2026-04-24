@@ -5,6 +5,7 @@ APP_ROOT="/opt/payslip4all"
 APP_USER="payslip4all"
 ENV_DIR="/etc/payslip4all"
 ENV_FILE="$ENV_DIR/payslip4all.env"
+APP_CONFIG_SECRETS_FILE="${APP_CONFIG_SECRETS_FILE:-/etc/payslip4all/app-config.secrets.json}"
 SERVICE_FILE="/etc/systemd/system/payslip4all.service"
 NGINX_CERT_DIR="/etc/nginx/certs"
 NGINX_SITE_CONFIG="/etc/nginx/conf.d/payslip4all.conf"
@@ -17,6 +18,7 @@ PERSISTENCE_PROVIDER="${PERSISTENCE_PROVIDER:-dynamodb}"
 DYNAMODB_REGION="${DYNAMODB_REGION:?DYNAMODB_REGION is required}"
 DYNAMODB_TABLE_PREFIX="${DYNAMODB_TABLE_PREFIX:-payslip4all}"
 DYNAMODB_ENABLE_PITR="${DYNAMODB_ENABLE_PITR:-true}"
+APP_CONFIG_SECRET_ARN="${APP_CONFIG_SECRET_ARN:-}"
 HOSTED_PAYMENTS_SECRET_ARN="${HOSTED_PAYMENTS_SECRET_ARN:-}"
 TLS_CERTIFICATE_SECRET_ARN="${TLS_CERTIFICATE_SECRET_ARN:?TLS_CERTIFICATE_SECRET_ARN is required}"
 TLS_CERTIFICATE_FULLCHAIN_KEY="${TLS_CERTIFICATE_FULLCHAIN_KEY:-fullchainPem}"
@@ -48,6 +50,21 @@ if [[ -n "${HOSTED_PAYMENTS_SECRET_ARN}" ]]; then
     --secret-id "${HOSTED_PAYMENTS_SECRET_ARN}" \
     --query SecretString \
     --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
+fi
+
+rm -f "$APP_CONFIG_SECRETS_FILE"
+if [[ -n "${APP_CONFIG_SECRET_ARN}" ]]; then
+  APP_CONFIG_JSON="$(aws secretsmanager get-secret-value \
+    --secret-id "${APP_CONFIG_SECRET_ARN}" \
+    --query SecretString \
+    --output text)"
+
+  printf '%s' "$APP_CONFIG_JSON" \
+    | jq -e 'if type == "object" then . else error("App config secret must be a JSON object.") end' \
+    > "$APP_CONFIG_SECRETS_FILE"
+
+  chmod 600 "$APP_CONFIG_SECRETS_FILE"
+  chown "$APP_USER:$APP_USER" "$APP_CONFIG_SECRETS_FILE"
 fi
 
 CERTIFICATE_JSON="$(aws secretsmanager get-secret-value \

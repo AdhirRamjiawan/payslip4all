@@ -12,11 +12,11 @@ public sealed class DynamoDbPaymentReturnEvidenceRepository : IPaymentReturnEvid
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly string _tableName;
 
-    public DynamoDbPaymentReturnEvidenceRepository(IAmazonDynamoDB dynamoDb)
+    public DynamoDbPaymentReturnEvidenceRepository(IAmazonDynamoDB dynamoDb, DynamoDbTableNameProvider? tableNames = null)
     {
         _dynamoDb = dynamoDb;
-        var prefix = Environment.GetEnvironmentVariable("DYNAMODB_TABLE_PREFIX")?.Trim() ?? "payslip4all";
-        _tableName = $"{prefix}_payment_return_evidences";
+        tableNames ??= DynamoDbTableNameProvider.CreateDefault();
+        _tableName = tableNames.PaymentReturnEvidences;
     }
 
     public Task AddAsync(PaymentReturnEvidence evidence, CancellationToken cancellationToken = default)

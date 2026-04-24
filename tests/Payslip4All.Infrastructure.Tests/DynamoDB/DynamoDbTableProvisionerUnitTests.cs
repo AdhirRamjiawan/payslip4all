@@ -36,6 +36,7 @@ public class DynamoDbTableProvisionerUnitTests
             var sut = new DynamoDbTableProvisioner(
                 dynamoDb.Object,
                 logger.Object,
+                new DynamoDbTableNameProvider(new DynamoDbConfigurationOptions { TablePrefix = "unitprov" }),
                 activationTimeout: TimeSpan.FromSeconds(1),
                 pollInterval: TimeSpan.Zero);
 
@@ -75,6 +76,7 @@ public class DynamoDbTableProvisionerUnitTests
             var sut = new DynamoDbTableProvisioner(
                 dynamoDb.Object,
                 logger.Object,
+                new DynamoDbTableNameProvider(new DynamoDbConfigurationOptions { TablePrefix = "unitprov" }),
                 activationTimeout: TimeSpan.FromSeconds(1),
                 pollInterval: TimeSpan.Zero);
 
@@ -120,6 +122,7 @@ public class DynamoDbTableProvisionerUnitTests
             var sut = new DynamoDbTableProvisioner(
                 dynamoDb.Object,
                 logger.Object,
+                new DynamoDbTableNameProvider(new DynamoDbConfigurationOptions { TablePrefix = "unitprov" }),
                 activationTimeout: TimeSpan.Zero,
                 pollInterval: TimeSpan.Zero);
 
