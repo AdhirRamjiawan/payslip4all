@@ -98,6 +98,14 @@ static IReadOnlyDictionary<string, string?> LoadAwsSecretsConfigurationValues(IC
         };
     }
 
+    // Feature 015: Validate the refined AWS Secrets scope before merging values into configuration.
+    // Reject excluded DynamoDB runtime and credential keys while accepting eligible repo-owned settings.
+    var validationResult = AwsSecretsScopeValidator.Validate(values.Keys);
+    if (!validationResult.IsValid)
+    {
+        throw new InvalidOperationException(validationResult.ValidationMessage);
+    }
+
     return values;
 }
 

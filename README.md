@@ -182,6 +182,8 @@ This deployment path is designed to use as much of the AWS free tier as practica
 
 For repo-owned custom settings, the hosted AWS path now supports an optional AWS Secrets Manager app-config artifact rendered to `/etc/payslip4all/app-config.secrets.json`. The documented precedence is `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
 
+**Refined scope (feature 015)**: The AWS app-config secret supports eligible repo-owned application settings (persistence selection, relational connection strings, authentication cookie configuration, and PayFast hosted payment settings) while explicitly excluding DynamoDB runtime keys (`DYNAMODB_*`) and AWS credential keys (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). Excluded keys must be supplied through environment variables, IAM instance profiles, or deployment/bootstrap-managed sources. See `infra/aws/cloudformation/README.md` for the complete supported-versus-excluded catalog and migration guidance from feature 014.
+
 ### First-run walkthrough
 
 1. Navigate to `/Auth/Register` and create an employer account
@@ -228,7 +230,7 @@ Set up these values before you try a wallet top-up:
 ### Where to put the values
 
 - **Local development**: put PayFast secrets in `src/Payslip4All.Web/appsettings.Development.Private.json`. This file is already ignored by git.
-- **Deployed environments**: prefer the AWS CloudFormation `AppConfigSecretArn` contract or platform-managed environment variables for emergency overrides.
+- **Deployed environments**: prefer the AWS CloudFormation `AppConfigSecretArn` contract (feature 015 refined scope: eligible repo-owned settings only) or platform-managed environment variables for emergency overrides.
 - **Do not commit** sandbox or live merchant credentials to `appsettings.json`, `appsettings.Development.json`, or any tracked file.
 
 Example local sandbox configuration:

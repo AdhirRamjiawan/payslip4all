@@ -19,21 +19,172 @@ public sealed class SecretsConfigurationStartupTests : IDisposable
 {
     private readonly Dictionary<string, string?> _savedEnv = new();
 
+    // ====================================================================
+    // Feature 015 Tests: US1 - Keep compliant secret-backed settings
+    // ====================================================================
+
+    [Fact]
+    public void EligibleSettings_ResolveSuccessfullyFromAwsSecrets()
+    {
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["PERSISTENCE_PROVIDER"] = "sqlite",
+            ["Auth:Cookie:ExpireDays"] = "45",
+            ["HostedPayments:PayFast:MerchantId"] = "eligible-merchant",
+            ["HostedPayments:PayFast:MerchantKey"] = "eligible-key",
+            ["HostedPayments:PayFast:PublicNotifyUrl"] = "https://eligible.example.com/notify",
+        });
+
+        SetEnv("PERSISTENCE_PROVIDER", null);
+
+        using var factory = new SqliteTestFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var cookieOptions = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme);
+        var payfastOptions = scope.ServiceProvider.GetRequiredService<PayFastHostedPaymentOptions>();
+
+        Assert.Equal(TimeSpan.FromDays(45), cookieOptions.ExpireTimeSpan);
+        Assert.Equal("eligible-merchant", payfastOptions.MerchantId);
+        Assert.Equal("eligible-key", payfastOptions.MerchantKey);
+    }
+
+    [Fact]
+    public void EligibleSettings_PreservePrecedence_EnvironmentOverridesSecrets()
+    {
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["Auth:Cookie:ExpireDays"] = "60",
+        });
+
+        SetEnv("Auth__Cookie__ExpireDays", "14");
+
+        using var factory = new SqliteTestFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        Assert.Equal(TimeSpan.FromDays(14), options.ExpireTimeSpan);
+    }
+
+    [Fact]
+    public void EligibleSettings_PreservePrecedence_SecretsOverrideAppSettings()
+    {
+        // appsettings.json has Auth:Cookie:ExpireDays: 30
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["Auth:Cookie:ExpireDays"] = "90",
+        });
+
+        SetEnv("Auth__Cookie__ExpireDays", null);
+
+        using var factory = new SqliteTestFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        Assert.Equal(TimeSpan.FromDays(90), options.ExpireTimeSpan);
+    }
+
+    // ====================================================================
+    // Feature 015 Tests: US3 - Fail safely on scope violations
+    // ====================================================================
+
+    [Fact]
+    public void ExcludedDynamoDbKeys_BlockStartupWithSafeDiagnostics()
+    {
+        const string secretValue = "af-south-1";
+
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["PERSISTENCE_PROVIDER"] = "dynamodb",
+            ["DYNAMODB_REGION"] = secretValue,
+        });
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureServices(services =>
+                {
+                    foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
+                        services.Remove(descriptor);
+                });
+            });
+
+            _ = factory.Services;
+        });
+
+        Assert.Contains("excluded keys", exception.Message);
+        Assert.Contains("DYNAMODB_REGION", exception.Message);
+        Assert.DoesNotContain(secretValue, exception.Message);
+    }
+
+    [Fact]
+    public void ExcludedAwsCredentialKeys_BlockStartupWithSafeDiagnostics()
+    {
+        const string secretKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["AWS_ACCESS_KEY_ID"] = "AKIAIOSFODNN7EXAMPLE",
+            ["AWS_SECRET_ACCESS_KEY"] = secretKey,
+        });
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new SqliteTestFactory();
+            _ = factory.Services;
+        });
+
+        Assert.Contains("excluded keys", exception.Message);
+        Assert.Contains("AWS_ACCESS_KEY_ID", exception.Message);
+        Assert.Contains("AWS_SECRET_ACCESS_KEY", exception.Message);
+        Assert.DoesNotContain(secretKey, exception.Message);
+    }
+
+    [Fact]
+    public void MixedEligibleAndExcludedKeys_BlockStartup()
+    {
+        using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
+        {
+            ["Auth:Cookie:ExpireDays"] = "30",
+            ["DYNAMODB_ENDPOINT"] = "http://localhost:8000",
+            ["HostedPayments:PayFast:MerchantId"] = "10047421",
+        });
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new SqliteTestFactory();
+            _ = factory.Services;
+        });
+
+        Assert.Contains("DYNAMODB_ENDPOINT", exception.Message);
+        Assert.Contains("excluded keys", exception.Message);
+    }
+
+    // ====================================================================
+    // Legacy Feature 014 Tests (preserved for regression)
+    // ====================================================================
+
     [Fact]
     public void SecretsArtifact_WithDynamoDbSettingsOnly_RegistersDynamoDbServices()
     {
         using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
         {
             ["PERSISTENCE_PROVIDER"] = "dynamodb",
-            ["DYNAMODB_REGION"] = "us-east-1",
-            ["DYNAMODB_ENDPOINT"] = "http://localhost:8000",
-            ["DYNAMODB_TABLE_PREFIX"] = "secret-prefix",
         });
 
         SetEnv("PERSISTENCE_PROVIDER", null);
-        SetEnv("DYNAMODB_REGION", null);
-        SetEnv("DYNAMODB_ENDPOINT", null);
-        SetEnv("DYNAMODB_TABLE_PREFIX", null);
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", "http://localhost:8000");
+        SetEnv("DYNAMODB_TABLE_PREFIX", "secret-prefix");
         SetEnv("AWS_ACCESS_KEY_ID", null);
         SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
@@ -62,12 +213,11 @@ public sealed class SecretsConfigurationStartupTests : IDisposable
         using var secrets = new SecretsArtifactScope(_savedEnv, new Dictionary<string, string?>
         {
             ["PERSISTENCE_PROVIDER"] = "dynamodb",
-            ["AWS_ACCESS_KEY_ID"] = secretValue,
         });
 
         SetEnv("PERSISTENCE_PROVIDER", null);
         SetEnv("DYNAMODB_REGION", null);
-        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_ACCESS_KEY_ID", secretValue);
         SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
         var exception = Assert.Throws<InvalidOperationException>(() =>

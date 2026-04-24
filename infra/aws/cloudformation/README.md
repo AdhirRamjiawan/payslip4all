@@ -86,26 +86,65 @@ These signals are intentionally minimal: enough to verify stack identity, secure
 7. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, and `ASPNETCORE_URLS=http://127.0.0.1:8080`.
 8. If `AppConfigSecretArn` is set, confirm `/etc/payslip4all/app-config.secrets.json` exists with mode `600`.
 
-## Custom app-config secret contract
+## Custom app-config secret contract (Feature 015: refined scope)
 
-Use `AppConfigSecretArn` for repo-owned custom settings that need AWS Secrets Manager support without flattening them into environment variable names.
+Use `AppConfigSecretArn` for eligible repo-owned custom settings that need AWS Secrets Manager support without flattening them into environment variable names.
 
-- The secret payload must be a JSON object with flat ASP.NET Core keys such as `ConnectionStrings:DefaultConnection`, `Auth:Cookie:ExpireDays`, and `HostedPayments:PayFast:MerchantId`.
-- The covered catalog includes persistence-provider selection, relational connection strings, `DYNAMODB_*`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `Auth:Cookie:ExpireDays`, and `HostedPayments:PayFast:*`.
+### Supported scope (eligible keys)
+
+The following repo-owned application settings MAY be supplied through the AWS app-config secret:
+
+- **Persistence selection and relational settings**: `PERSISTENCE_PROVIDER`, `ConnectionStrings:DefaultConnection`, `ConnectionStrings:MySqlConnection`
+- **Authentication**: `Auth:Cookie:ExpireDays`
+- **Hosted payments (PayFast)**: `HostedPayments:PayFast:ProviderKey`, `HostedPayments:PayFast:UseSandbox`, `HostedPayments:PayFast:MerchantId`, `HostedPayments:PayFast:MerchantKey`, `HostedPayments:PayFast:Passphrase`, `HostedPayments:PayFast:PublicNotifyUrl`, `HostedPayments:PayFast:SandboxBaseUrl`, `HostedPayments:PayFast:LiveBaseUrl`, `HostedPayments:PayFast:SandboxValidationUrl`, `HostedPayments:PayFast:LiveValidationUrl`, `HostedPayments:PayFast:ItemName`
+
+### Excluded scope (keys that MUST NOT be in the app-config secret)
+
+The following keys are **explicitly excluded** from the AWS app-config secret and must be supplied through alternate sources:
+
+- **DynamoDB runtime settings**: `DYNAMODB_REGION`, `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE_PREFIX`, `DYNAMODB_ENABLE_PITR`
+- **AWS credentials**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
+**Why excluded**: DynamoDB runtime and AWS credential keys are infrastructure concerns that violate the constitution when secret-backed. They must be supplied through environment variables, IAM instance profiles, or deployment/bootstrap-managed runtime wiring.
+
+### Secret payload format
+
+- The secret payload must be a JSON object with flat ASP.NET Core keys.
+- Only scalar values are supported.
+- The payload is rendered to `/etc/payslip4all/app-config.secrets.json` and merged with precedence `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
 - Keep TLS certificate keys in the separate `TlsCertificateSecretArn` secret.
-- Mixed-source deployments are supported: some covered keys may stay in checked-in appsettings, others may come from `/etc/payslip4all/app-config.secrets.json`, and emergency overrides may still come from environment variables.
 
-Example payload:
+### Example compliant payload
 
 ```json
 {
-  "ConnectionStrings:DefaultConnection": "Data Source=/opt/payslip4all/payslip4all.db",
+  "PERSISTENCE_PROVIDER": "dynamodb",
   "Auth:Cookie:ExpireDays": "30",
   "HostedPayments:PayFast:MerchantId": "10047421",
   "HostedPayments:PayFast:MerchantKey": "merchant-key",
-  "HostedPayments:PayFast:PublicNotifyUrl": "https://payslip4all.co.za/api/payments/payfast/notify"
+  "HostedPayments:PayFast:Passphrase": "example-passphrase",
+  "HostedPayments:PayFast:PublicNotifyUrl": "https://payslip4all.co.za/api/payments/payfast/notify",
+  "HostedPayments:PayFast:UseSandbox": "false"
 }
 ```
+
+### Migration from feature 014
+
+If you have an existing AWS app-config secret from feature 014:
+
+1. **Audit** your current secret payload for excluded keys (`DYNAMODB_*`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+2. **Remove** all excluded keys from the AWS app-config secret.
+3. **Migrate** excluded runtime inputs:
+   - DynamoDB runtime settings → environment variables via the service environment file or stack parameters
+   - AWS credentials → IAM instance profile / AWS SDK default credential chain (preferred for hosted AWS)
+4. **Keep** eligible settings (persistence selection, auth cookie, PayFast) in the app-config secret if they still need AWS Secrets backing.
+5. **Deploy** and verify the refined payload passes scope validation at startup.
+
+### Scope validation
+
+- If the AWS app-config secret contains any excluded key, startup will **block** with an actionable error message.
+- The error message identifies the excluded key or group without revealing secret values.
+- Eligible settings continue to resolve with the documented precedence order.
 
 ## Mixed-source and failure validation
 
