@@ -1,5 +1,6 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
+using Amazon.Runtime;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -94,6 +95,42 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
 
         Assert.Contains("AWS_ACCESS_KEY_ID", ex.Message);
         Assert.Contains("AWS_SECRET_ACCESS_KEY", ex.Message);
+    }
+
+    [Fact]
+    public void DynamoDbProvider_WithInvalidEndpointUri_ThrowsInvalidOperationException()
+    {
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", "not-a-valid-uri");
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = BuildFactory();
+            _ = factory.Services;
+        });
+
+        Assert.Contains("DYNAMODB_ENDPOINT", ex.Message);
+        Assert.Contains("absolute http or https URL", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DynamoDbProvider_WithUnsupportedEndpointScheme_ThrowsInvalidOperationException()
+    {
+        SetEnv("DYNAMODB_REGION", "us-east-1");
+        SetEnv("DYNAMODB_ENDPOINT", "ftp://localhost:8000");
+        SetEnv("AWS_ACCESS_KEY_ID", null);
+        SetEnv("AWS_SECRET_ACCESS_KEY", null);
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = BuildFactory();
+            _ = factory.Services;
+        });
+
+        Assert.Contains("DYNAMODB_ENDPOINT", ex.Message);
+        Assert.Contains("absolute http or https URL", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -193,20 +230,22 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
     }
 
     [Fact]
-    public void DynamoDbProvider_WhenBootstrapHostedServiceFails_StartupFailsFast()
+    public void DynamoDbProvider_WhenLocalEndpointIsUnreachable_StartupFailsWithActionableGuidance()
     {
         SetEnv("DYNAMODB_REGION", "us-east-1");
         SetEnv("DYNAMODB_ENDPOINT", "http://localhost:8000");
         SetEnv("AWS_ACCESS_KEY_ID", null);
         SetEnv("AWS_SECRET_ACCESS_KEY", null);
 
-        var neverActive = new Mock<IAmazonDynamoDB>();
-        neverActive
+        var unreachable = new Mock<IAmazonDynamoDB>();
+        var connectivityFailure = new AmazonServiceException("Connection refused by local emulator");
+
+        unreachable
             .Setup(x => x.DescribeTableAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new ResourceNotFoundException("missing"));
-        neverActive
+            .ThrowsAsync(connectivityFailure);
+        unreachable
             .Setup(x => x.CreateTableAsync(It.IsAny<CreateTableRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CreateTableResponse());
+            .ThrowsAsync(connectivityFailure);
 
         var ex = Assert.ThrowsAny<Exception>(() =>
         {
@@ -219,8 +258,8 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
                     foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
                         services.Remove(descriptor);
                     foreach (var descriptor in services.Where(d => d.ServiceType == typeof(DynamoDbTableProvisioner)
-                                                                  || d.ServiceType == typeof(DynamoDbPaymentBootstrapHostedService)
-                                                                  || d.ServiceType == typeof(IAmazonDynamoDB)).ToList())
+                                                                   || d.ServiceType == typeof(DynamoDbPaymentBootstrapHostedService)
+                                                                   || d.ServiceType == typeof(IAmazonDynamoDB)).ToList())
                     {
                         services.Remove(descriptor);
                     }
@@ -234,13 +273,14 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
 
                     services.AddSingleton(options);
                     services.AddSingleton(new DynamoDbTableNameProvider(options));
-                    services.AddSingleton(neverActive.Object);
+                    services.AddSingleton(unreachable.Object);
                     services.AddSingleton(new DynamoDbTableProvisioner(
-                        neverActive.Object,
+                        unreachable.Object,
                         NullLogger<DynamoDbTableProvisioner>.Instance,
                         new DynamoDbTableNameProvider(options),
                         activationTimeout: TimeSpan.Zero,
-                        pollInterval: TimeSpan.Zero));
+                        pollInterval: TimeSpan.Zero,
+                        options: options));
                     services.AddSingleton<DynamoDbPaymentBootstrapHostedService>();
                     services.AddHostedService(sp => sp.GetRequiredService<DynamoDbPaymentBootstrapHostedService>());
                 });
@@ -249,7 +289,8 @@ public sealed class DynamoDbConfigurationValidationTests : IDisposable
             _ = factory.CreateClient();
         });
 
-        Assert.Contains("ACTIVE", ex.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DYNAMODB_ENDPOINT", ex.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("LocalStack", ex.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string WriteSecretsArtifact(IReadOnlyDictionary<string, string?> values)

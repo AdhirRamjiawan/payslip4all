@@ -1,6 +1,6 @@
 # payslip4all Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-23
+Auto-generated from all feature plans. Last updated: 2026-04-24
 
 ## Active Technologies
 - C# 12 / .NET 8 (LTS) + Blazor Server (ASP.NET Core 8), Entity Framework Core 8, QuestPDF 2024.10.4, BCrypt.Net-Next 4.0.3, Pomelo.EntityFrameworkCore.MySql 8.0.2 (001-payslip-generation)
@@ -51,6 +51,8 @@ Auto-generated from all feature plans. Last updated: 2026-04-23
 - N/A (no application persistence or schema changes) (013-nginx-https-proxy)
 - C# 12 / .NET 8 (LTS), Bash, and AWS CloudFormation YAML + ASP.NET Core 8 Blazor Server, existing `awscli`/`jq` bootstrap flow under `/infra/aws/cloudformation/`, Serilog, xUnit + WebApplicationFactory, existing `AWSSDK.DynamoDBv2` runtime path (014-aws-secrets-config)
 - N/A for business persistence; configuration resolves from checked-in JSON, deployment environment variables, and an optional bootstrap-rendered AWS-secrets JSON artifac (014-aws-secrets-config)
+- C# 12 / .NET 8 (LTS), Dockerfile, Markdown documentation + ASP.NET Core Blazor Server, `AWSSDK.DynamoDBv2`, LocalStack Docker image, xUnit, `Microsoft.AspNetCore.Mvc.Testing` (016-localstack-dynamodb-dockerfile)
+- DynamoDB via LocalStack emulator for local development; no production or schema-model changes (016-localstack-dynamodb-dockerfile)
 
 - C# 12 / .NET 8 (LTS) + ASP.NET Core Blazor Server, Entity Framework Core 8, QuestPDF, BCrypt.Net-Next, Pomelo.EntityFrameworkCore.MySql, Microsoft.EntityFrameworkCore.Sqlite, bUnit, xUnit, Moq (001-payslip-generation)
 
@@ -71,9 +73,9 @@ tests/
 C# 12 / .NET 8 (LTS): Follow standard conventions
 
 ## Recent Changes
+- 016-localstack-dynamodb-dockerfile: Added C# 12 / .NET 8 (LTS), Dockerfile, Markdown documentation + ASP.NET Core Blazor Server, `AWSSDK.DynamoDBv2`, LocalStack Docker image, xUnit, `Microsoft.AspNetCore.Mvc.Testing`
 - 014-aws-secrets-config: Added C# 12 / .NET 8 (LTS), Bash, and AWS CloudFormation YAML + ASP.NET Core 8 Blazor Server, existing `awscli`/`jq` bootstrap flow under `/infra/aws/cloudformation/`, Serilog, xUnit + WebApplicationFactory, existing `AWSSDK.DynamoDBv2` runtime path
 - 013-nginx-https-proxy: Added nginx configuration, Bash bootstrap scripting, and existing C# 12 / .NET 8 application runtime + nginx, ASP.NET Core 8 reverse-proxy support, AWS CloudFormation/EC2/Secrets Manager deployment assets, Serilog request logging, xUnit + WebApplicationFactory
-- 009-payfast-card-integration: Added C# 12 on .NET 8 / ASP.NET Core 8 Blazor Web App + ASP.NET Core Blazor Server, Entity Framework Core 8, `AWSSDK.DynamoDBv2`, Serilog, xUnit, bUnit, Moq, PayFast hosted-payment integration
 
 
 <!-- MANUAL ADDITIONS START -->
