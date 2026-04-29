@@ -25,14 +25,15 @@ public static class DynamoDbClientFactory
     public static IAmazonDynamoDB Create(DynamoDbConfigurationOptions options)
     {
         options.ValidateForStartup();
+        var endpointUri = options.GetValidatedEndpointUriOrNull();
 
         var config = new AmazonDynamoDBConfig
         {
             RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region),
         };
 
-        if (!string.IsNullOrWhiteSpace(options.Endpoint))
-            config.ServiceURL = options.Endpoint;
+        if (endpointUri is not null)
+            config.ServiceURL = endpointUri.AbsoluteUri;
 
         if (options.HasExplicitCredentials)
         {
@@ -40,7 +41,7 @@ public static class DynamoDbClientFactory
             return new AmazonDynamoDBClient(credentials, config);
         }
 
-        if (!string.IsNullOrWhiteSpace(options.Endpoint))
+        if (endpointUri is not null)
         {
             // Local emulators commonly require syntactically valid credentials even though
             // they do not authenticate them, so use standard dummy values when no explicit

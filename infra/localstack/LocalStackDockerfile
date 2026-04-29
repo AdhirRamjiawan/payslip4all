@@ -1,0 +1,11 @@
+# Development-only LocalStack runtime for the repository's local DynamoDB smoke tests.
+FROM localstack/localstack:3.5
+
+ENV SERVICES=dynamodb \
+    GATEWAY_LISTEN=0.0.0.0:8000 \
+    EDGE_PORT=8000 \
+    AWS_DEFAULT_REGION=us-east-1 \
+    EAGER_SERVICE_LOADING=1 \
+    PERSISTENCE=0
+
+EXPOSE 8000

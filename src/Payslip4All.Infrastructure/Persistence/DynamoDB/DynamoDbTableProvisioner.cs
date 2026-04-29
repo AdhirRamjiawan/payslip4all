@@ -1,5 +1,6 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
+using Amazon.Runtime;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -19,19 +20,22 @@ public sealed class DynamoDbTableProvisioner : IHostedService
     private readonly DynamoDbTableNameProvider _tableNames;
     private readonly TimeSpan _activationTimeout;
     private readonly TimeSpan _pollInterval;
+    private readonly string? _configuredEndpoint;
 
     public DynamoDbTableProvisioner(
         IAmazonDynamoDB dynamoDb,
         ILogger<DynamoDbTableProvisioner> logger,
         DynamoDbTableNameProvider? tableNames = null,
         TimeSpan? activationTimeout = null,
-        TimeSpan? pollInterval = null)
+        TimeSpan? pollInterval = null,
+        DynamoDbConfigurationOptions? options = null)
     {
         _dynamoDb = dynamoDb;
         _logger = logger;
         _tableNames = tableNames ?? DynamoDbTableNameProvider.CreateDefault();
         _activationTimeout = activationTimeout ?? DefaultActivationTimeout;
         _pollInterval = pollInterval ?? DefaultPollInterval;
+        _configuredEndpoint = options?.GetValidatedEndpointUriOrNull()?.AbsoluteUri.TrimEnd('/');
     }
 
     public static IReadOnlyList<string> GetRequiredTableNames(string prefix)
@@ -94,6 +98,10 @@ public sealed class DynamoDbTableProvisioner : IHostedService
 
             await WaitForTableActiveAsync(request.TableName, cancellationToken);
         }
+        catch (AmazonServiceException ex)
+        {
+            throw CreateRuntimeUnavailableException(request.TableName, ex);
+        }
     }
 
     private async Task WaitForTableActiveAsync(string tableName, CancellationToken cancellationToken)
@@ -114,10 +122,13 @@ public sealed class DynamoDbTableProvisioner : IHostedService
             {
                 // Table creation is eventually consistent; keep polling until it becomes visible.
             }
+            catch (AmazonServiceException ex)
+            {
+                throw CreateRuntimeUnavailableException(tableName, ex);
+            }
 
             if (DateTimeOffset.UtcNow >= deadline)
-                throw new TimeoutException(
-                    $"Timed out waiting for DynamoDB table '{tableName}' to become ACTIVE.");
+                throw CreateActivationTimeoutException(tableName);
 
             await Task.Delay(_pollInterval, cancellationToken);
         }
@@ -431,5 +442,26 @@ public sealed class DynamoDbTableProvisioner : IHostedService
                 },
             },
         };
+    }
+
+    private InvalidOperationException CreateRuntimeUnavailableException(string tableName, Exception ex)
+    {
+        var guidance = _configuredEndpoint is null
+            ? "Check the configured AWS region and credential chain for the hosted DynamoDB path."
+            : $"Check that DYNAMODB_ENDPOINT points at a reachable LocalStack or emulator instance (current value: '{_configuredEndpoint}') and that the LocalStack container is running.";
+
+        return new InvalidOperationException(
+            $"Failed to reach DynamoDB while ensuring table '{tableName}'. {guidance}",
+            ex);
+    }
+
+    private TimeoutException CreateActivationTimeoutException(string tableName)
+    {
+        var guidance = _configuredEndpoint is null
+            ? "Check the configured AWS region, credentials, and table provisioning permissions."
+            : $"Check that DYNAMODB_ENDPOINT points at a healthy LocalStack or emulator instance (current value: '{_configuredEndpoint}') and that the LocalStack container finished starting.";
+
+        return new TimeoutException(
+            $"Timed out waiting for DynamoDB table '{tableName}' to become ACTIVE. {guidance}");
     }
 }

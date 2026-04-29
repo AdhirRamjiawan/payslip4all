@@ -19,8 +19,10 @@ public static class DynamoDbServiceExtensions
     /// </summary>
     public static IServiceCollection AddDynamoDbPersistence(this IServiceCollection services, DynamoDbConfigurationOptions options)
     {
+        options.ValidateForStartup();
+
         services.AddSingleton(options);
-        services.AddSingleton<DynamoDbTableNameProvider>();
+        services.AddSingleton(sp => new DynamoDbTableNameProvider(sp.GetRequiredService<DynamoDbConfigurationOptions>()));
         services.AddSingleton<IAmazonDynamoDB>(sp => DynamoDbClientFactory.Create(sp.GetRequiredService<DynamoDbConfigurationOptions>()));
 
         services.AddScoped<IUserRepository, DynamoDbUserRepository>();

@@ -35,12 +35,29 @@ public sealed class DynamoDbConfigurationOptions
             throw new InvalidOperationException(
                 $"PERSISTENCE_PROVIDER is set to 'dynamodb' but the required configuration value {Payslip4AllCustomConfigurationKeys.DynamoDb.Region} is not set.");
 
+        _ = GetValidatedEndpointUriOrNull();
+
         var hasAccessKey = !string.IsNullOrWhiteSpace(AccessKeyId);
         var hasSecretKey = !string.IsNullOrWhiteSpace(SecretAccessKey);
 
         if (hasAccessKey != hasSecretKey)
             throw new InvalidOperationException(
                 $"When using explicit DynamoDB credentials, both {Payslip4AllCustomConfigurationKeys.DynamoDb.AccessKeyId} and {Payslip4AllCustomConfigurationKeys.DynamoDb.SecretAccessKey} must be set.");
+    }
+
+    public Uri? GetValidatedEndpointUriOrNull()
+    {
+        if (string.IsNullOrWhiteSpace(Endpoint))
+            return null;
+
+        if (!Uri.TryCreate(Endpoint, UriKind.Absolute, out var endpointUri)
+            || (endpointUri.Scheme != Uri.UriSchemeHttp && endpointUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"{Payslip4AllCustomConfigurationKeys.DynamoDb.Endpoint} must be an absolute http or https URL when configuring a local or custom DynamoDB endpoint.");
+        }
+
+        return endpointUri;
     }
 
     private static string? Normalize(string? value)

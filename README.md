@@ -123,20 +123,47 @@ Migrations are applied automatically on startup for SQLite and MySQL.
 #### Local DynamoDB emulator
 
 ```bash
-docker run -d --name dynamodb-local -p 8000:8000 amazon/dynamodb-local \
-  -jar DynamoDBLocal.jar -sharedDb -inMemory
+docker -H ssh://adhir-server build -f infra/localstack/Dockerfile -t payslip4all-localstack .
+docker -H ssh://adhir-server run --rm --name payslip4all-localstack -p 8000:8000 payslip4all-localstack
 
 export PERSISTENCE_PROVIDER=dynamodb
 export DYNAMODB_REGION=us-east-1
-export DYNAMODB_ENDPOINT=http://localhost:8000
+export DYNAMODB_ENDPOINT=http://adhir-server:8000
 export DYNAMODB_TABLE_PREFIX=payslip4all
+
+dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj --filter Category=Integration
 
 cd src/Payslip4All.Web
 dotnet run
+
+docker -H ssh://adhir-server stop payslip4all-localstack
 ```
+
+The LocalStack Dockerfile lives at `infra/localstack/Dockerfile` and the full operator guide lives at `infra/localstack/README.md`. This workflow is intended for **development and smoke testing** with `DynamoDbLocalStartupTests`, `DynamoDbLocalWorkflowTests`, and local manual verification.
+
+The Docker commands above target the Docker daemon on `adhir-server`. If you run the application or tests from a shell on `adhir-server` itself, you can keep `DYNAMODB_ENDPOINT=http://localhost:8000` instead.
 
 If `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are both unset while `DYNAMODB_ENDPOINT`
 is configured, the app supplies dummy credentials automatically for local emulators.
+
+Recommended LocalStack verification from the repository root:
+
+```bash
+dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj --filter Category=Integration
+```
+
+Run that verification before stopping the LocalStack container on `adhir-server`.
+
+Configurable local values:
+
+- `DYNAMODB_ENDPOINT=http://adhir-server:8000` keeps the documented remote LocalStack port. If port `8000` is already in use on `adhir-server`, choose a different host port in `docker run` and update `DYNAMODB_ENDPOINT` to match.
+- `DYNAMODB_TABLE_PREFIX=payslip4all` controls the prefixed local table names so contributors can avoid collisions.
+
+Local troubleshooting:
+
+- If the app cannot reach the emulator, check that the LocalStack container is still running and that `DYNAMODB_ENDPOINT` matches the current `docker run` port mapping.
+- If startup fails immediately, confirm `DYNAMODB_REGION` is set and that explicit credentials are either both set or both omitted.
+- Use the dedicated LocalStack guide in `infra/localstack/README.md` for build, run, stop, verify, and troubleshooting details.
 
 #### Hosted AWS
 
@@ -394,6 +421,7 @@ dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj
 When `DYNAMODB_ENDPOINT` is configured for a local emulator, you can additionally run the DynamoDB integration repository suite.
 
 ```bash
+dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj --filter Category=Integration
 dotnet test tests/Payslip4All.Infrastructure.Tests/Payslip4All.Infrastructure.Tests.csproj --filter "Category=Integration"
 ```
 
