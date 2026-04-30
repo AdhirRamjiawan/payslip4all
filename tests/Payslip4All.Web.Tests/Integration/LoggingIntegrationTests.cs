@@ -17,15 +17,29 @@ namespace Payslip4All.Web.Tests.Integration;
 public class LoggingIntegrationTests : IDisposable
 {
     private readonly string _tempLogDir;
+    private readonly string _dbPath;
 
     public LoggingIntegrationTests()
     {
         _tempLogDir = Path.Combine(Path.GetTempPath(), $"payslip4all-test-logs-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempLogDir);
+        _dbPath = Path.Combine(_tempLogDir, "test.db");
     }
 
     public void Dispose()
     {
+        try
+        {
+            if (File.Exists(_dbPath))
+            {
+                File.Delete(_dbPath);
+            }
+        }
+        catch
+        {
+            // best-effort cleanup
+        }
+
         try { Directory.Delete(_tempLogDir, recursive: true); } catch { /* best-effort cleanup */ }
     }
 
@@ -61,13 +75,8 @@ public class LoggingIntegrationTests : IDisposable
                 cfg.AddInMemoryCollection(overrides);
             });
 
-            // Use in-memory SQLite for tests to avoid migration side-effects
-            builder.ConfigureAppConfiguration((_, cfg) =>
-                cfg.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["PERSISTENCE_PROVIDER"] = "sqlite",
-                    ["ConnectionStrings:DefaultConnection"] = $"Data Source={Path.Combine(_tempLogDir, "test.db")}"
-                }));
+            builder.UseSetting("PERSISTENCE_PROVIDER", "sqlite");
+            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
         });
     }
 

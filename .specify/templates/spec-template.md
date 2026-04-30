@@ -9,7 +9,7 @@
 
 <!--
   All features MUST comply with the Payslip4All Constitution (.specify/memory/constitution.md).
-  Key obligations per principle:
+  Key obligations from the constitution:
 
   I.  TDD — Every functional requirement listed below must have acceptance scenarios
       usable as test specifications. Tests MUST be written before implementation.
@@ -24,9 +24,15 @@
   IV. Basic Authentication — Any story involving user data MUST specify ownership
       filtering (Company Owner sees only their own data).
 
-  V.  Database — Any story that introduces new entities MUST list them under
-      Key Entities below; schema changes become EF Core migrations.
--->
+   V.  Database — Any story that introduces new entities MUST list them under
+       Key Entities below; schema changes become EF Core migrations.
+
+   Technology Stack & Constraints — Specs that add or change a third-party
+       library for public edge, authentication, persistence, messaging,
+       logging, payment, or document generation MUST identify the library,
+       affected project, and approving constitution section/version, or mark
+       the feature blocked pending amendment.
+ -->
 
 
 

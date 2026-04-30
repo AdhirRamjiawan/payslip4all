@@ -18,6 +18,8 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("HostedPaymentsSecretArn", readme, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretArn", readme, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", readme, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_ENABLED=true", readme, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080", readme, StringComparison.Ordinal);
         Assert.Contains("payslip4all.co.za", readme, StringComparison.Ordinal);
     }
 
@@ -37,7 +39,7 @@ public class AwsDeploymentDocumentationTests
     }
 
     [Fact]
-    public void DeploymentGuide_DocumentsOperatorVisibleSignals_And_NginxSmokeChecks()
+    public void DeploymentGuide_DocumentsOperatorVisibleSignals_And_GatewaySmokeChecks()
     {
         var readme = LoadDeploymentReadme();
 
@@ -53,7 +55,33 @@ public class AwsDeploymentDocumentationTests
         Assert.Contains("/health", readme, StringComparison.Ordinal);
         Assert.Contains("http://payslip4all.co.za", readme, StringComparison.Ordinal);
         Assert.Contains("https://payslip4all.co.za", readme, StringComparison.Ordinal);
-        Assert.Contains("nginx -t", readme, StringComparison.Ordinal);
+        Assert.Contains("GatewayServiceName", readme, StringComparison.Ordinal);
+        Assert.Contains("payslip4all-gateway.service", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Quickstart_IsTheSingleOperatorEntrypoint_And_LinksToTheCanonicalContract()
+    {
+        var quickstart = LoadQuickstart();
+
+        Assert.Contains("single operator-facing entrypoint", quickstart, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("contracts/yarp-gateway-contract.md", quickstart, StringComparison.Ordinal);
+        Assert.Contains("infra/yarp/README.md", quickstart, StringComparison.Ordinal);
+        Assert.Contains("infra/aws/cloudformation/README.md", quickstart, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Quickstart_DocumentsThreeConsecutiveHealthChecks_And_ExactCertificateActivationFailure()
+    {
+        var quickstart = LoadQuickstart();
+
+        Assert.Contains("/health", quickstart, StringComparison.Ordinal);
+        Assert.Contains("3 consecutive requests", quickstart, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("within 5 seconds", quickstart, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled.",
+            quickstart,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -76,7 +104,7 @@ public class AwsDeploymentDocumentationTests
 
         Assert.Contains("payslip4all.co.za", readme, StringComparison.Ordinal);
         Assert.Contains("Elastic IP", readme, StringComparison.Ordinal);
-        Assert.Contains("nginx", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("YARP", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no-ALB", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no-Route53", readme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no-ACM", readme, StringComparison.OrdinalIgnoreCase);
@@ -98,13 +126,16 @@ public class AwsDeploymentDocumentationTests
     }
 
     [Fact]
-    public void RootReadme_ReferencesNginxAndCloudFormationDeploymentGuides()
+    public void RootReadme_ReferencesYarpAndCloudFormationDeploymentGuides()
     {
         var rootReadme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "README.md"));
 
         Assert.Contains("AWS CloudFormation Deployment", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("specs/017-yarp-https-proxy/quickstart.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("reference-only", rootReadme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("infra/aws/cloudformation/README.md", rootReadme, StringComparison.Ordinal);
-        Assert.Contains("infra/nginx/README.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("infra/yarp/README.md", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("YARP", rootReadme, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AWS Secrets Manager", rootReadme, StringComparison.Ordinal);
         Assert.Contains("/etc/payslip4all/app-config.secrets.json", rootReadme, StringComparison.Ordinal);
         Assert.Contains("payslip4all.co.za", rootReadme, StringComparison.Ordinal);
@@ -113,6 +144,11 @@ public class AwsDeploymentDocumentationTests
     private static string LoadDeploymentReadme()
     {
         return File.ReadAllText(Path.Combine(GetSolutionRoot(), "infra", "aws", "cloudformation", "README.md"));
+    }
+
+    private static string LoadQuickstart()
+    {
+        return File.ReadAllText(Path.Combine(GetSolutionRoot(), "specs", "017-yarp-https-proxy", "quickstart.md"));
     }
 
     private static IReadOnlyList<string> ExtractOrderedListItems(string markdown, string heading)

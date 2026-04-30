@@ -6,7 +6,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Payslip4All.Application.Interfaces;
+using Payslip4All.Infrastructure.Persistence;
 using Payslip4All.Infrastructure.Persistence.DynamoDB;
+using Payslip4All.Web.Tests.Infrastructure;
+using Yarp.ReverseProxy.Configuration;
 
 namespace Payslip4All.Web.Tests.Startup;
 
@@ -46,7 +50,106 @@ public sealed class AwsDeploymentStartupTests : IDisposable
     }
 
     [Fact]
-    public void AwsHostedDeployment_KeepsTheUpstreamOnLoopbackOnly()
+    public void ReverseProxyMode_WhenEnabled_RegistersYarpServices_WithoutTheApplicationRuntime()
+    {
+        using var certificate = TestTlsCertificate.Create();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
+            builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
+            builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", "http://127.0.0.1:8080");
+            builder.UseSetting("Kestrel:Certificates:Default:Path", certificate.CertificatePath);
+            builder.UseSetting("Kestrel:Certificates:Default:Password", certificate.Password);
+        });
+
+        using var scope = factory.Services.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IProxyConfigProvider>());
+        Assert.Null(scope.ServiceProvider.GetService<IPayslipService>());
+        Assert.Null(scope.ServiceProvider.GetService<PayslipDbContext>());
+    }
+
+    [Fact]
+    public void ReverseProxyMode_WhenCertificateSettingsAreMissing_FailsClosedWithExactActivationError()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
+                builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
+                builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", "http://127.0.0.1:8080");
+            });
+
+            using var client = factory.CreateClient();
+        });
+
+        Assert.Equal(
+            "HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void ReverseProxyMode_WhenCertificateMaterialIsInvalid_FailsClosedWithExactActivationError()
+    {
+        var invalidCertificatePath = Path.Combine(Path.GetTempPath(), $"p4a-invalid-{Guid.NewGuid():N}.pfx");
+        File.WriteAllText(invalidCertificatePath, "invalid-pfx");
+
+        try
+        {
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Development");
+                    builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
+                    builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
+                    builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", "http://127.0.0.1:8080");
+                    builder.UseSetting("Kestrel:Certificates:Default:Path", invalidCertificatePath);
+                    builder.UseSetting("Kestrel:Certificates:Default:Password", "not-a-real-password");
+                });
+
+                using var client = factory.CreateClient();
+            });
+
+            Assert.Equal(
+                "HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled.",
+                exception.Message);
+        }
+        finally
+        {
+            if (File.Exists(invalidCertificatePath))
+                File.Delete(invalidCertificatePath);
+        }
+    }
+
+    [Fact]
+    public void ReverseProxyMode_WhenUpstreamTargetIsPublic_FailsFastDuringStartup()
+    {
+        using var certificate = TestTlsCertificate.Create();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
+                builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
+                builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", "http://8.8.8.8:8080");
+                builder.UseSetting("Kestrel:Certificates:Default:Path", certificate.CertificatePath);
+                builder.UseSetting("Kestrel:Certificates:Default:Password", certificate.Password);
+            });
+
+            using var client = factory.CreateClient();
+        });
+
+        Assert.Contains("internal-only", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AwsHostedDeployment_KeepsTheBackendOnLoopback_AndPublishesYarpOn80And443()
     {
         var solutionRoot = GetSolutionRoot();
         var bootstrap = File.ReadAllText(Path.Combine(solutionRoot, "infra", "aws", "cloudformation", "user-data", "bootstrap-payslip4all.sh"));
@@ -54,8 +157,10 @@ public sealed class AwsDeploymentStartupTests : IDisposable
 
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", bootstrap, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", template, StringComparison.Ordinal);
-        Assert.DoesNotContain("ASPNETCORE_URLS=http://0.0.0.0:80", bootstrap, StringComparison.Ordinal);
-        Assert.DoesNotContain("ASPNETCORE_URLS=http://0.0.0.0:80", template, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://0.0.0.0:80;https://0.0.0.0:443", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://0.0.0.0:80;https://0.0.0.0:443", template, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080", template, StringComparison.Ordinal);
     }
 
     [Fact]

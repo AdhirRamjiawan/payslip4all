@@ -5,7 +5,7 @@ public sealed class LocalStackIntegrationConfigTests
     [Fact]
     public void LocalStackDockerfile_PinsTheDynamoDbRuntimeContract()
     {
-        var dockerfile = File.ReadAllText(Path.Combine(GetSolutionRoot(), "infra", "localstack", "Dockerfile"));
+        var dockerfile = File.ReadAllText(Path.Combine(GetSolutionRoot(), "infra", "localstack", "LocalStackDockerfile"));
 
         Assert.Contains("FROM localstack/localstack:3.5", dockerfile, StringComparison.Ordinal);
         Assert.Contains("SERVICES=dynamodb", dockerfile, StringComparison.Ordinal);
@@ -23,7 +23,7 @@ public sealed class LocalStackIntegrationConfigTests
         var rootReadme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "README.md"));
 
         Assert.Contains("LocalStack", rootReadme, StringComparison.Ordinal);
-        Assert.Contains("infra/localstack/Dockerfile", rootReadme, StringComparison.Ordinal);
+        Assert.Contains("infra/localstack/LocalStackDockerfile", rootReadme, StringComparison.Ordinal);
         Assert.Contains("infra/localstack/README.md", rootReadme, StringComparison.Ordinal);
         Assert.Contains("PERSISTENCE_PROVIDER=dynamodb", rootReadme, StringComparison.Ordinal);
         Assert.Contains("http://adhir-server:8000", rootReadme, StringComparison.Ordinal);

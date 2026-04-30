@@ -16,4 +16,14 @@ public static class Payslip4AllCustomConfigurationKeys
         public const string AccessKeyId = "AWS_ACCESS_KEY_ID";
         public const string SecretAccessKey = "AWS_SECRET_ACCESS_KEY";
     }
+
+    public static class ReverseProxy
+    {
+        public const string Enabled = "REVERSE_PROXY_ENABLED";
+        public const string PublicHost = "REVERSE_PROXY_PUBLIC_HOST";
+        public const string UpstreamBaseUrl = "REVERSE_PROXY_UPSTREAM_BASE_URL";
+        public const string ActivityTimeoutSeconds = "REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS";
+        public const string CertificatePath = "Kestrel:Certificates:Default:Path";
+        public const string CertificatePassword = "Kestrel:Certificates:Default:Password";
+    }
 }

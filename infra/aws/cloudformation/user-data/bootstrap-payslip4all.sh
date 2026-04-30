@@ -4,13 +4,20 @@ set -euo pipefail
 APP_ROOT="/opt/payslip4all"
 APP_USER="payslip4all"
 ENV_DIR="/etc/payslip4all"
-ENV_FILE="$ENV_DIR/payslip4all.env"
+APP_ENV_FILE="$ENV_DIR/payslip4all.env"
+GATEWAY_ENV_FILE="$ENV_DIR/payslip4all-gateway.env"
 APP_CONFIG_SECRETS_FILE="${APP_CONFIG_SECRETS_FILE:-/etc/payslip4all/app-config.secrets.json}"
-SERVICE_FILE="/etc/systemd/system/payslip4all.service"
-NGINX_CERT_DIR="/etc/nginx/certs"
-NGINX_SITE_CONFIG="/etc/nginx/conf.d/payslip4all.conf"
+APP_SERVICE_FILE="/etc/systemd/system/payslip4all.service"
+GATEWAY_SERVICE_FILE="/etc/systemd/system/payslip4all-gateway.service"
+TLS_CERT_DIR="/etc/payslip4all/certs"
+TLS_FULLCHAIN_PATH="/etc/payslip4all/certs/fullchain.pem"
+TLS_PRIVATE_KEY_PATH="/etc/payslip4all/certs/privkey.pem"
+TLS_PFX_PATH="/etc/payslip4all/certs/payslip4all.pfx"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-payslip4all.co.za}"
-UPSTREAM_APP_URL="${UPSTREAM_APP_URL:-http://127.0.0.1:8080}"
+UPSTREAM_APP_URL="http://127.0.0.1:8080"
+PUBLIC_EDGE_URLS="${PUBLIC_EDGE_URLS:-http://0.0.0.0:80;https://0.0.0.0:443}"
+REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS="${REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS:-10}"
+CERTIFICATE_ACTIVATION_ERROR="HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled."
 
 ARTIFACT_SOURCE="${ARTIFACT_SOURCE:?ARTIFACT_SOURCE is required}"
 ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Production}"
@@ -28,15 +35,17 @@ if ! id "$APP_USER" >/dev/null 2>&1; then
   useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
 fi
 
-dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0 nginx
+dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0 openssl
 
-mkdir -p "$APP_ROOT" "$ENV_DIR" "$NGINX_CERT_DIR"
-install -m 0600 /dev/null "$ENV_FILE"
+mkdir -p "$APP_ROOT" "$ENV_DIR" "$TLS_CERT_DIR"
+install -m 0600 /dev/null "$APP_ENV_FILE"
+install -m 0600 /dev/null "$GATEWAY_ENV_FILE"
+
 curl --fail --location --silent --show-error "${ARTIFACT_SOURCE}" --output /tmp/payslip4all.tgz
 find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
 tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
 
-cat > "$ENV_FILE" <<EOF
+cat > "$APP_ENV_FILE" <<EOF
 ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}
 ASPNETCORE_URLS=http://127.0.0.1:8080
 PERSISTENCE_PROVIDER=${PERSISTENCE_PROVIDER}
@@ -49,7 +58,7 @@ if [[ -n "${HOSTED_PAYMENTS_SECRET_ARN}" ]]; then
   aws secretsmanager get-secret-value \
     --secret-id "${HOSTED_PAYMENTS_SECRET_ARN}" \
     --query SecretString \
-    --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
+    --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$APP_ENV_FILE"
 fi
 
 rm -f "$APP_CONFIG_SECRETS_FILE"
@@ -72,13 +81,39 @@ CERTIFICATE_JSON="$(aws secretsmanager get-secret-value \
   --query SecretString \
   --output text)"
 
-printf '%s' "$CERTIFICATE_JSON" | jq -r --arg key "$TLS_CERTIFICATE_FULLCHAIN_KEY" '.[$key]' > "$NGINX_CERT_DIR/fullchain.pem"
-printf '%s' "$CERTIFICATE_JSON" | jq -r --arg key "$TLS_PRIVATE_KEY_KEY" '.[$key]' > "$NGINX_CERT_DIR/privkey.pem"
+printf '%s' "$CERTIFICATE_JSON" | jq -r --arg key "$TLS_CERTIFICATE_FULLCHAIN_KEY" '.[$key]' > "$TLS_FULLCHAIN_PATH"
+printf '%s' "$CERTIFICATE_JSON" | jq -r --arg key "$TLS_PRIVATE_KEY_KEY" '.[$key]' > "$TLS_PRIVATE_KEY_PATH"
 
-chmod 600 "$ENV_FILE" "$NGINX_CERT_DIR/privkey.pem"
-chmod 644 "$NGINX_CERT_DIR/fullchain.pem"
+if [[ ! -s "$TLS_FULLCHAIN_PATH" || ! -s "$TLS_PRIVATE_KEY_PATH" || "$(cat "$TLS_FULLCHAIN_PATH")" == "null" || "$(cat "$TLS_PRIVATE_KEY_PATH")" == "null" ]]; then
+  echo "$CERTIFICATE_ACTIVATION_ERROR" >&2
+  exit 1
+fi
 
-cat > "$SERVICE_FILE" <<EOF
+TLS_PFX_PASSWORD="$(openssl rand -hex 24)"
+if ! openssl pkcs12 -export \
+  -out "$TLS_PFX_PATH" \
+  -inkey "$TLS_PRIVATE_KEY_PATH" \
+  -in "$TLS_FULLCHAIN_PATH" \
+  -password "pass:${TLS_PFX_PASSWORD}"; then
+  echo "$CERTIFICATE_ACTIVATION_ERROR" >&2
+  exit 1
+fi
+
+cat > "$GATEWAY_ENV_FILE" <<EOF
+ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}
+ASPNETCORE_URLS=http://0.0.0.0:80;https://0.0.0.0:443
+REVERSE_PROXY_ENABLED=true
+REVERSE_PROXY_PUBLIC_HOST=${PUBLIC_DOMAIN}
+REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080
+REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS=${REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS}
+Kestrel__Certificates__Default__Path=/etc/payslip4all/certs/payslip4all.pfx
+Kestrel__Certificates__Default__Password=${TLS_PFX_PASSWORD}
+EOF
+
+chmod 600 "$APP_ENV_FILE" "$GATEWAY_ENV_FILE" "$TLS_PRIVATE_KEY_PATH" "$TLS_PFX_PATH"
+chmod 644 "$TLS_FULLCHAIN_PATH"
+
+cat > "$APP_SERVICE_FILE" <<EOF
 [Unit]
 Description=Payslip4All web application
 After=network-online.target
@@ -88,7 +123,7 @@ Wants=network-online.target
 Type=simple
 User=$APP_USER
 WorkingDirectory=$APP_ROOT
-EnvironmentFile=$ENV_FILE
+EnvironmentFile=$APP_ENV_FILE
 ExecStart=/usr/bin/dotnet $APP_ROOT/Payslip4All.Web.dll
 Restart=always
 RestartSec=5
@@ -97,99 +132,31 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-cat > "$NGINX_SITE_CONFIG" <<EOF
-map \$http_upgrade \$connection_upgrade {
-    default upgrade;
-    '' close;
-}
+cat > "$GATEWAY_SERVICE_FILE" <<EOF
+[Unit]
+Description=Payslip4All YARP gateway
+After=network-online.target payslip4all.service
+Wants=network-online.target
 
-upstream payslip4all_app {
-    server 127.0.0.1:8080;
-    keepalive 32;
-}
+[Service]
+Type=simple
+User=$APP_USER
+WorkingDirectory=$APP_ROOT
+EnvironmentFile=$GATEWAY_ENV_FILE
+ExecStart=/usr/bin/dotnet $APP_ROOT/Payslip4All.Web.dll
+Restart=always
+RestartSec=5
 
-server {
-    listen 80 default_server;
-    server_name _;
-
-    return 421;
-}
-
-server {
-    listen 80;
-    server_name ${PUBLIC_DOMAIN};
-
-    return 301 https://${PUBLIC_DOMAIN}\$request_uri;
-}
-
-server {
-    listen 443 ssl default_server;
-    server_name _;
-
-    ssl_certificate ${NGINX_CERT_DIR}/fullchain.pem;
-    ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
-
-    return 421;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name ${PUBLIC_DOMAIN};
-
-    ssl_certificate ${NGINX_CERT_DIR}/fullchain.pem;
-    ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:10m;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    server_tokens off;
-
-    proxy_intercept_errors on;
-    error_page 502 503 504 =503 /503.html;
-
-    location = /health {
-        proxy_http_version 1.1;
-        proxy_connect_timeout 5s;
-        proxy_send_timeout 10s;
-        proxy_read_timeout 10s;
-        proxy_pass ${UPSTREAM_APP_URL};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host \$host;
-    }
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_connect_timeout 5s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 300s;
-        proxy_buffering off;
-        proxy_pass ${UPSTREAM_APP_URL};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-    }
-
-    location = /503.html {
-        internal;
-        default_type text/plain;
-        return 503 "Service temporarily unavailable.\n";
-    }
-}
+[Install]
+WantedBy=multi-user.target
 EOF
 
-chmod 644 "$NGINX_SITE_CONFIG"
-chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
+chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR" "$TLS_CERT_DIR"
 
 systemctl daemon-reload
 systemctl enable payslip4all.service
-systemctl enable nginx
+systemctl enable payslip4all-gateway.service
 systemctl restart payslip4all.service
 systemctl is-active --quiet payslip4all.service
-nginx -t
-systemctl restart nginx
+systemctl restart payslip4all-gateway.service
+systemctl is-active --quiet payslip4all-gateway.service

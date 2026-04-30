@@ -36,13 +36,18 @@ Verify compliance with each Payslip4All constitution principle before proceeding
 | # | Principle | Gate Question | Status |
 |---|-----------|---------------|--------|
 | I | TDD | Are failing tests planned/written before any implementation task begins? | ☐ |
-| II | Clean Architecture | Does the feature touch ≤ 4 projects (Domain/Application/Infrastructure/Web)? Does each layer only depend inward? | ☐ |
+| II | Clean Architecture | Does the feature touch ≤ 4 projects (Domain/Application/Infrastructure/Web)? If it adds a runtime edge or adapter, does it stay inside the existing projects and keep dependencies inward-only? | ☐ |
 | III | Blazor Web App | Are all new UI surfaces Razor components? Is business logic kept out of `.razor` files? | ☐ |
 | IV | Basic Authentication | Do new pages carry `[Authorize]`? Do new service methods filter by `UserId`? | ☐ |
 | V | Database Support | For EF Core providers (SQLite/MySQL): are all schema changes EF Core migrations? Is raw SQL avoided? For DynamoDB provider (`PERSISTENCE_PROVIDER=dynamodb`): do DynamoDB repositories implement all Application interfaces? Is ownership filtering enforced? | ☐ |
 | VI | Manual Test Gate | Is the Manual Test Gate prompt planned at the end of each implementation task, before any `git commit`, `git merge`, or `git push`? | ☐ |
 
 > **Any ☐ remaining = blocked.** Document justified exceptions in the Complexity Tracking table below.
+>
+> **Governed dependency gate**: If the feature adds or changes a third-party
+> package for a governed concern (public edge, authentication, persistence,
+> messaging, payment, logging, or document generation), cite the approving
+> constitution section/version here or block the plan pending amendment.
 
 ## Project Structure
 
