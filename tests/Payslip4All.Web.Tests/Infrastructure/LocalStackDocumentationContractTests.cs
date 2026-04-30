@@ -8,7 +8,7 @@ public sealed class LocalStackDocumentationContractTests
         var rootReadme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "README.md"));
         var localStackReadme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "infra", "localstack", "README.md"));
 
-        const string buildCommand = "docker -H ssh://adhir-server build -f infra/localstack/Dockerfile -t payslip4all-localstack .";
+        const string buildCommand = "docker -H ssh://adhir-server build -f infra/localstack/LocalStackDockerfile -t payslip4all-localstack .";
         const string runCommand = "docker -H ssh://adhir-server run --rm --name payslip4all-localstack -p 8000:8000 payslip4all-localstack";
         const string integrationCommand = "dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj --filter Category=Integration";
 

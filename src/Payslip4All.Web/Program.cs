@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.EntityFrameworkCore;
@@ -21,18 +22,88 @@ using Payslip4All.Web.Endpoints;
 using QuestPDF.Infrastructure;
 using Serilog;
 using System.Text.Json;
+using Yarp.ReverseProxy.Forwarder;
+using Yarp.ReverseProxy.Configuration;
+using Yarp.ReverseProxy.Transforms;
 
 // Bootstrap Serilog early so startup errors are captured
 Serilog.Debugging.SelfLog.Enable(msg => Console.Error.WriteLine(msg));
 
 var builder = WebApplication.CreateBuilder(args);
 InsertAwsSecretsConfigurationSource(builder.Configuration);
+// Reverse proxy mode is driven by REVERSE_PROXY_ENABLED, REVERSE_PROXY_PUBLIC_HOST,
+// and REVERSE_PROXY_UPSTREAM_BASE_URL through Payslip4AllCustomConfigurationKeys.
+var reverseProxyOptions = ReverseProxyModeOptions.FromConfiguration(builder.Configuration);
 
 builder.Host.UseSerilog((ctx, lc) =>
     lc.ReadFrom.Configuration(ctx.Configuration)
       .Enrich.FromLogContext());
 
-// Configure forwarded headers for reverse-proxy deployments (nginx, Apache, Azure, etc.).
+if (reverseProxyOptions.Enabled)
+{
+    reverseProxyOptions.ValidateForStartup();
+
+    builder.Services
+        .AddReverseProxy()
+        .LoadFromMemory(
+            routes: [CreatePublicEdgeRoute()],
+            clusters: [CreatePublicEdgeCluster(reverseProxyOptions)])
+        .AddTransforms(transformBuilderContext => transformBuilderContext.AddOriginalHost(true));
+
+    var proxyApp = builder.Build();
+
+    if (!proxyApp.Environment.IsDevelopment())
+    {
+        proxyApp.UseExceptionHandler(errorApp =>
+        {
+            errorApp.Run(async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                context.Response.ContentType = "text/plain";
+                await context.Response.WriteAsync("Gateway error.\n");
+            });
+        });
+        proxyApp.UseHsts();
+    }
+
+    proxyApp.UseSerilogRequestLogging();
+    proxyApp.Use(async (context, next) =>
+    {
+        if (!string.Equals(context.Request.Host.Host, reverseProxyOptions.PublicHost, StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status421MisdirectedRequest;
+            return;
+        }
+
+        if (!context.Request.IsHttps)
+        {
+            context.Response.Redirect(
+                $"https://{reverseProxyOptions.PublicHost}{context.Request.PathBase}{context.Request.Path}{context.Request.QueryString}",
+                permanent: true);
+            return;
+        }
+
+        await next();
+    });
+    proxyApp.UseStatusCodePages(async context =>
+    {
+        var response = context.HttpContext.Response;
+        if (response.StatusCode is StatusCodes.Status502BadGateway
+            or StatusCodes.Status503ServiceUnavailable
+            or StatusCodes.Status504GatewayTimeout)
+        {
+            response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            response.ContentType = "text/plain";
+            await response.WriteAsync("Service temporarily unavailable.");
+        }
+    });
+    proxyApp.MapReverseProxy();
+
+    await proxyApp.RunAsync();
+    return;
+}
+
+// Configure forwarded headers for reverse-proxy deployments (YARP, Apache, Azure, etc.).
 // Must be registered before the middleware pipeline is built.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -275,6 +346,44 @@ app.MapGet("/payslips/{payslipId:guid}/download",
     });
 
 await app.RunAsync();
+
+static string NormalizeProxyDestination(string upstreamBaseUrl)
+{
+    var normalized = upstreamBaseUrl.Trim();
+    return normalized.EndsWith("/", StringComparison.Ordinal) ? normalized : $"{normalized}/";
+}
+
+static RouteConfig CreatePublicEdgeRoute()
+{
+    return new RouteConfig
+    {
+        RouteId = "public-edge",
+        ClusterId = "app-backend",
+        Match = new RouteMatch
+        {
+            Path = "/{**catch-all}"
+        }
+    };
+}
+
+static ClusterConfig CreatePublicEdgeCluster(ReverseProxyModeOptions reverseProxyOptions)
+{
+    return new ClusterConfig
+    {
+        ClusterId = "app-backend",
+        HttpRequest = new ForwarderRequestConfig
+        {
+            ActivityTimeout = TimeSpan.FromSeconds(reverseProxyOptions.ActivityTimeoutSeconds)
+        },
+        Destinations = new Dictionary<string, DestinationConfig>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["primary"] = new()
+            {
+                Address = NormalizeProxyDestination(reverseProxyOptions.UpstreamBaseUrl)
+            }
+        }
+    };
+}
 
 // Required by WebApplicationFactory<Program> in integration tests.
 // Top-level statements generate a private Program class; this partial declaration

@@ -123,7 +123,7 @@ Migrations are applied automatically on startup for SQLite and MySQL.
 #### Local DynamoDB emulator
 
 ```bash
-docker -H ssh://adhir-server build -f infra/localstack/Dockerfile -t payslip4all-localstack .
+docker -H ssh://adhir-server build -f infra/localstack/LocalStackDockerfile -t payslip4all-localstack .
 docker -H ssh://adhir-server run --rm --name payslip4all-localstack -p 8000:8000 payslip4all-localstack
 
 export PERSISTENCE_PROVIDER=dynamodb
@@ -139,7 +139,7 @@ dotnet run
 docker -H ssh://adhir-server stop payslip4all-localstack
 ```
 
-The LocalStack Dockerfile lives at `infra/localstack/Dockerfile` and the full operator guide lives at `infra/localstack/README.md`. This workflow is intended for **development and smoke testing** with `DynamoDbLocalStartupTests`, `DynamoDbLocalWorkflowTests`, and local manual verification.
+The LocalStack Dockerfile lives at `infra/localstack/LocalStackDockerfile` and the full operator guide lives at `infra/localstack/README.md`. This workflow is intended for **development and smoke testing** with `DynamoDbLocalStartupTests`, `DynamoDbLocalWorkflowTests`, and local manual verification.
 
 The Docker commands above target the Docker daemon on `adhir-server`. If you run the application or tests from a shell on `adhir-server` itself, you can keep `DYNAMODB_ENDPOINT=http://localhost:8000` instead.
 
@@ -185,27 +185,30 @@ credentials, instance metadata, `AWS_PROFILE`, or shared credentials files).
 Payslip4All includes a repository-owned AWS deployment guide for a low-cost hosted setup using:
 
 - one EC2 instance for the web application,
-- nginx on the EC2 host for public HTTPS access at `payslip4all.co.za`,
+- a YARP gateway on the EC2 host for public HTTPS access at `payslip4all.co.za`,
 - one Elastic IP that you point the public DNS record at,
 - DynamoDB persistence with hosted AWS point-in-time recovery backups.
 
 Start with:
 
-- nginx operator guide: `infra/nginx/README.md`
+- quickstart first: `specs/017-yarp-https-proxy/quickstart.md`
+- YARP operator guide: `infra/yarp/README.md`
 - template: `infra/aws/cloudformation/payslip4all-web.yaml`
 - operator guide: `infra/aws/cloudformation/README.md`
+
+The quickstart is the single operator-facing entrypoint. The infra guides are reference-only supporting documents.
 
 The deployment guide keeps the operator workflow intentionally small:
 
 1. publish the application artifact,
-2. stage the nginx certificate secret externally,
+2. stage the YARP certificate secret externally,
 3. point `payslip4all.co.za` at the hosted Elastic IP,
 4. gather external secret references,
 5. launch the CloudFormation stack.
 
 Operators then verify deployment success using the documented signal set: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `TlsCertificateSecretReference`, `BackupProtectionMode`, the public `/health` endpoint, and the HTTP→HTTPS redirect.
 
-This deployment path is designed to use as much of the AWS free tier as practical while keeping the public edge repository-owned through nginx instead of relying on an ALB, Route 53, or ACM.
+This deployment path is designed to use as much of the AWS free tier as practical while keeping the public edge repository-owned through YARP instead of relying on an ALB, Route 53, or ACM.
 
 For repo-owned custom settings, the hosted AWS path now supports an optional AWS Secrets Manager app-config artifact rendered to `/etc/payslip4all/app-config.secrets.json`. The documented precedence is `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
 

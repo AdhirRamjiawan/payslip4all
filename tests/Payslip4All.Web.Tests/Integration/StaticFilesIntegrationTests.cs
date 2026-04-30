@@ -19,61 +19,110 @@ namespace Payslip4All.Web.Tests.Integration;
 [Collection("WebIntegration")]
 public class StaticFilesIntegrationTests
 {
-    private static WebApplicationFactory<Program> BuildFactory(string? environment = null)
+    private static WebApplicationFactory<Program> BuildFactory(string dbPath, string? environment = null)
     {
-        var factory = new WebApplicationFactory<Program>();
-        if (environment is null) return factory;
+        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            if (environment is not null)
+            {
+                builder.UseEnvironment(environment);
+            }
 
-        return factory.WithWebHostBuilder(builder =>
-            builder.UseEnvironment(environment));
+            builder.UseSetting("PERSISTENCE_PROVIDER", "sqlite");
+            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={dbPath}");
+        });
     }
 
     [Fact]
     public async Task BootstrapCss_IsServed_InDevelopmentEnvironment()
     {
-        await using var factory = BuildFactory();
-        var client = factory.CreateClient();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"payslip4all-static-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = BuildFactory(dbPath);
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/css/bootstrap/bootstrap.min.css");
+            var response = await client.GetAsync("/css/bootstrap/bootstrap.min.css");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
     }
 
     [Fact]
     public async Task SiteCss_IsServed_InDevelopmentEnvironment()
     {
-        await using var factory = BuildFactory();
-        var client = factory.CreateClient();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"payslip4all-static-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = BuildFactory(dbPath);
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/css/site.css");
+            var response = await client.GetAsync("/css/site.css");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
     }
 
     [Fact]
     public async Task Favicon_IsServed_InDevelopmentEnvironment()
     {
-        await using var factory = BuildFactory();
-        var client = factory.CreateClient();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"payslip4all-static-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = BuildFactory(dbPath);
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/favicon.png");
+            var response = await client.GetAsync("/favicon.png");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("image/png", response.Content.Headers.ContentType?.MediaType ?? "");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("image/png", response.Content.Headers.ContentType?.MediaType ?? "");
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
     }
 
     [Fact]
     public async Task CssIsolationBundle_IsServed_InDevelopmentEnvironment()
     {
-        await using var factory = BuildFactory();
-        var client = factory.CreateClient();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"payslip4all-static-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = BuildFactory(dbPath);
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/Payslip4All.Web.styles.css");
+            var response = await client.GetAsync("/Payslip4All.Web.styles.css");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
     }
 
     /// <summary>
@@ -84,12 +133,23 @@ public class StaticFilesIntegrationTests
     [Fact]
     public async Task CssIsolationBundle_IsServed_InProductionEnvironment()
     {
-        await using var factory = BuildFactory("Production");
-        var client = factory.CreateClient();
+        var dbPath = Path.Combine(Path.GetTempPath(), $"payslip4all-static-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = BuildFactory(dbPath, "Production");
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/Payslip4All.Web.styles.css");
+            var response = await client.GetAsync("/Payslip4All.Web.styles.css");
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+            Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("text/css", response.Content.Headers.ContentType?.MediaType ?? "");
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
     }
 }

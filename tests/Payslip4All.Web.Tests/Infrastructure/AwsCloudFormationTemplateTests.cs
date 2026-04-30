@@ -3,7 +3,7 @@ namespace Payslip4All.Web.Tests.Infrastructure;
 public class AwsCloudFormationTemplateTests
 {
     [Fact]
-    public void Template_DeclaresRequiredParameters_And_NginxCertificateInputs()
+    public void Template_DeclaresRequiredParameters_And_YarpCertificateInputs()
     {
         var template = LoadTemplate();
 
@@ -33,7 +33,7 @@ public class AwsCloudFormationTemplateTests
         Assert.Contains("AppConfigSecretsFilePath:", template, StringComparison.Ordinal);
         Assert.Contains("HostedPaymentsSecretReference:", template, StringComparison.Ordinal);
         Assert.Contains("TlsCertificateSecretReference:", template, StringComparison.Ordinal);
-        Assert.Contains("NginxConfigPath:", template, StringComparison.Ordinal);
+        Assert.Contains("GatewayServiceName:", template, StringComparison.Ordinal);
         Assert.Contains("BackupProtectionMode:", template, StringComparison.Ordinal);
         Assert.Contains("RestoreRunbook:", template, StringComparison.Ordinal);
     }
@@ -51,7 +51,7 @@ public class AwsCloudFormationTemplateTests
     }
 
     [Fact]
-    public void Template_ExposesOnlyNginxPublicPorts_And_KeepsTheAppPortPrivate()
+    public void Template_ExposesOnlyGatewayPublicPorts_And_KeepsTheAppPortPrivate()
     {
         var template = LoadTemplate();
 
@@ -64,18 +64,32 @@ public class AwsCloudFormationTemplateTests
     }
 
     [Fact]
-    public void Template_UsesSecretsBackedCertificateBootstrap_And_NginxUserDataWiring()
+    public void Template_KeepsTheHostedDefaultUpstreamInternal_And_SetsTheGatewayTimeoutBound()
+    {
+        var template = LoadTemplate();
+
+        Assert.Contains("REVERSE_PROXY_PUBLIC_HOST=payslip4all.co.za", template, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080", template, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS=10", template, StringComparison.Ordinal);
+        Assert.DoesNotContain("ASPNETCORE_URLS=http://0.0.0.0:8080", template, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Template_UsesSecretsBackedCertificateBootstrap_And_YarpUserDataWiring()
     {
         var template = LoadTemplate();
 
         Assert.Contains("secretsmanager:GetSecretValue", template, StringComparison.Ordinal);
-        Assert.Contains("/etc/nginx/certs/fullchain.pem", template, StringComparison.Ordinal);
-        Assert.Contains("/etc/nginx/certs/privkey.pem", template, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/certs/fullchain.pem", template, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/certs/privkey.pem", template, StringComparison.Ordinal);
+        Assert.Contains("/etc/payslip4all/certs/payslip4all.pfx", template, StringComparison.Ordinal);
         Assert.Contains("/etc/payslip4all/app-config.secrets.json", template, StringComparison.Ordinal);
-        Assert.Contains("/etc/nginx/conf.d/payslip4all.conf", template, StringComparison.Ordinal);
         Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1:8080", template, StringComparison.Ordinal);
-        Assert.Contains("nginx -t", template, StringComparison.Ordinal);
-        Assert.Contains("systemctl restart nginx", template, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://0.0.0.0:80;https://0.0.0.0:443", template, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_ENABLED=true", template, StringComparison.Ordinal);
+        Assert.Contains("REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080", template, StringComparison.Ordinal);
+        Assert.Contains("Kestrel__Certificates__Default__Path", template, StringComparison.Ordinal);
+        Assert.Contains("systemctl restart payslip4all-gateway.service", template, StringComparison.Ordinal);
         Assert.Contains("systemctl restart payslip4all.service", template, StringComparison.Ordinal);
     }
 

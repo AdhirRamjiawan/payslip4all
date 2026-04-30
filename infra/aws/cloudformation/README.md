@@ -1,12 +1,12 @@
 # AWS CloudFormation Deployment
 
-This guide describes the repository-owned AWS deployment path for Payslip4All using a single EC2 instance, nginx, an Elastic IP, SSM Session Manager access, and DynamoDB.
+This guide is a secondary, reference-only AWS deployment note for Payslip4All. The single operator-facing entrypoint is `specs/017-yarp-https-proxy/quickstart.md`, and the canonical public-edge contract lives in `specs/017-yarp-https-proxy/contracts/yarp-gateway-contract.md`.
 
 ## What this deployment creates
 
 - One EC2 web host for Payslip4All
 - One Elastic IP attached directly to the EC2 instance
-- One security group that exposes nginx on ports `80` and `443`
+- One security group that exposes the YARP gateway on ports `80` and `443`
 - One IAM instance profile so the app can use the AWS SDK credential chain and SSM Session Manager
 - A DynamoDB-backed runtime with `PERSISTENCE_PROVIDER=dynamodb`
 - Automated DynamoDB point-in-time recovery for regular backups in hosted AWS
@@ -27,7 +27,7 @@ You must prepare these values before launching the stack:
 | `DynamoDbTablePrefix` | Namespaces the application-owned table set |
 | `AppConfigSecretArn` | Optional secret reference for the rendered custom app-configuration JSON artifact |
 | `HostedPaymentsSecretArn` | Optional legacy secret reference for direct environment-style overrides |
-| `TlsCertificateSecretArn` | External TLS certificate secret that supplies the nginx `fullchainPem` and `privkeyPem` values |
+| `TlsCertificateSecretArn` | External TLS certificate secret that supplies the `fullchainPem` and `privkeyPem` values that bootstrap converts into the YARP certificate |
 
 ## Runtime environment variables
 
@@ -38,6 +38,8 @@ The EC2 bootstrap process writes these values into the service environment:
 - `DYNAMODB_TABLE_PREFIX`
 - `DYNAMODB_ENABLE_PITR=true`
 - `ASPNETCORE_URLS=http://127.0.0.1:8080`
+- `REVERSE_PROXY_ENABLED=true`
+- `REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080`
 
 If `AppConfigSecretArn` is provided, bootstrap renders the secret to `/etc/payslip4all/app-config.secrets.json` and the app resolves it with the precedence `environment variables > rendered AWS-secret config > checked-in appsettings > code defaults`.
 
@@ -46,9 +48,9 @@ If `HostedPaymentsSecretArn` is provided, the instance also appends the secret v
 ## Architecture and traffic flow
 
 1. An Elastic IP is attached directly to the EC2 instance.
-2. Public HTTP and HTTPS traffic reaches nginx on ports `80` and `443`.
-3. nginx redirects `http://payslip4all.co.za` to `https://payslip4all.co.za`.
-4. nginx terminates TLS and reverse-proxies requests to the app on `127.0.0.1:8080`.
+2. Public HTTP and HTTPS traffic reaches the YARP gateway on ports `80` and `443`.
+3. YARP redirects `http://payslip4all.co.za` to `https://payslip4all.co.za`.
+4. YARP terminates TLS and reverse-proxies requests to the app on `127.0.0.1:8080`.
 5. Operators connect to the instance through SSM Session Manager instead of SSH.
 6. The web app starts with `PERSISTENCE_PROVIDER=dynamodb`, then provisions and uses the application-owned DynamoDB tables.
 
@@ -58,10 +60,10 @@ This is a no-ALB, no-Route53, no-ACM deployment flow. DNS publishing for `paysli
 
 Operators should verify the deployment with this explicit signal set:
 
-- CloudFormation outputs: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `AppConfigSecretReference`, `AppConfigSecretsFilePath`, `HostedPaymentsSecretReference`, `TlsCertificateSecretReference`, `NginxConfigPath`, `BackupProtectionMode`, and `RestoreRunbook`
+- CloudFormation outputs: `ApplicationUrl`, `ElasticIpAddress`, `InstanceId`, `InstanceSecurityGroupId`, `SsmStartSessionCommand`, `AppConfigSecretReference`, `AppConfigSecretsFilePath`, `HostedPaymentsSecretReference`, `TlsCertificateSecretReference`, `GatewayServiceName`, `BackupProtectionMode`, and `RestoreRunbook`
 - `https://payslip4all.co.za/health`
 - the `http://payslip4all.co.za` redirect to HTTPS
-- successful `nginx -t` validation on the host
+- successful `payslip4all-gateway.service` startup on the host
 - the `Name` tag on the EC2 instance
 - SSM Session Manager access to the instance
 
@@ -70,7 +72,7 @@ These signals are intentionally minimal: enough to verify stack identity, secure
 ## Five manual pre-launch actions
 
 1. Publish or upload the application artifact that `ArtifactSource` will reference.
-2. Stage the TLS certificate secret for nginx so it exposes `fullchainPem` and `privkeyPem`.
+2. Stage the TLS certificate secret for YARP so it exposes `fullchainPem` and `privkeyPem`.
 3. Reserve or confirm the Elastic IP workflow, then point `payslip4all.co.za` at that public address.
 4. Gather the external secret references required for the rendered app-config secret, any legacy direct environment overrides, and TLS certificate delivery.
 5. Launch `infra/aws/cloudformation/payslip4all-web.yaml` with the required parameters.
@@ -79,12 +81,14 @@ These signals are intentionally minimal: enough to verify stack identity, secure
 
 1. Wait for the stack to complete.
 2. Open the `ApplicationUrl` output after DNS for `payslip4all.co.za` is live.
-3. Confirm the instance responds on `/health`.
+3. Confirm 3 consecutive requests to `/health` each succeed within 5 seconds.
 4. Confirm `http://payslip4all.co.za` redirects once to `https://payslip4all.co.za`.
 5. Start an SSM session using the `SsmStartSessionCommand` output.
-6. Run `nginx -t`.
-7. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, and `ASPNETCORE_URLS=http://127.0.0.1:8080`.
+6. Confirm `payslip4all-gateway.service` is active.
+7. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, `ASPNETCORE_URLS=http://127.0.0.1:8080`, `REVERSE_PROXY_ENABLED=true`, `REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080`, and `REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS=10`.
 8. If `AppConfigSecretArn` is set, confirm `/etc/payslip4all/app-config.secrets.json` exists with mode `600`.
+9. If certificate material is missing or invalid, expect the exact fail-closed activation error `HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled.`
+10. If the upstream becomes unavailable, confirm the public edge returns `503 Service temporarily unavailable.` within 10 seconds.
 
 ## Custom app-config secret contract
 
@@ -126,8 +130,8 @@ This deployment is optimized for lower cost than the previous managed-edge versi
 ## Health checks and startup validation
 
 - Stack creation completes once AWS creates the instance resources; application bootstrap continues on the instance after launch.
-- nginx owns the public edge while the app stays local to `127.0.0.1:8080`.
-- `nginx -t` must pass before nginx is restarted.
+- YARP owns the public edge while the app stays local to `127.0.0.1:8080`.
+- `payslip4all-gateway.service` must start successfully before the public edge is considered healthy.
 - Startup fails fast if the DynamoDB configuration or TLS secret wiring is incomplete at runtime.
 - The preferred hosted AWS path uses the IAM instance profile, not static AWS credentials.
 
@@ -158,8 +162,8 @@ The hosted AWS deployment enables **point-in-time recovery** so the Payslip4All 
 After launch:
 
 1. Browse to `https://payslip4all.co.za`.
-2. Confirm `/health` returns a healthy response through nginx.
+2. Confirm `/health` returns a healthy response through YARP.
 3. Confirm the HTTP endpoint redirects to HTTPS in one step.
 4. Confirm the EC2 instance is tagged with a payslip4all-derived name.
 5. Confirm SSM Session Manager can open a shell on the instance.
-6. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, and `ASPNETCORE_URLS=http://127.0.0.1:8080`.
+6. Confirm the app starts with `PERSISTENCE_PROVIDER=dynamodb`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_PREFIX`, `ASPNETCORE_URLS=http://127.0.0.1:8080`, `REVERSE_PROXY_ENABLED=true`, and `REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080`.

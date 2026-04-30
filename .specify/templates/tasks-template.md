@@ -13,6 +13,12 @@ this project (xUnit for unit/integration, bUnit for Blazor components). Tests MU
 written and confirmed failing before implementation tasks begin. Do not mark test tasks
 as optional — TDD is non-negotiable.
 
+**Governed Dependencies**: If the feature introduces or changes a third-party
+library for a governed concern (public edge, authentication, persistence,
+messaging, payment, logging, or document generation), include a blocking task
+to cite or obtain the approving constitution amendment before implementation
+tasks begin.
+
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`

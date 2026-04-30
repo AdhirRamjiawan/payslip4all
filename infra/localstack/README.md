@@ -7,7 +7,7 @@ Use this image for **development and smoke testing only**. It pins a DynamoDB-on
 From the repository root:
 
 ```bash
-docker -H ssh://adhir-server build -f infra/localstack/Dockerfile -t payslip4all-localstack .
+docker -H ssh://adhir-server build -f infra/localstack/LocalStackDockerfile -t payslip4all-localstack .
 ```
 
 ## Run

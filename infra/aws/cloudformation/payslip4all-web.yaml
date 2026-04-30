@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy Payslip4All behind nginx on a single EC2 instance with an Elastic IP and DynamoDB persistence.
+Description: Deploy Payslip4All behind a YARP gateway on a single EC2 instance with an Elastic IP and DynamoDB persistence.
 
 Parameters:
   EnvironmentName:
@@ -34,13 +34,13 @@ Parameters:
   TlsCertificateSecretArn:
     Type: String
     Default: ''
-    Description: Secrets Manager ARN whose SecretString JSON contains fullchainPem and privkeyPem for nginx TLS.
+    Description: Secrets Manager ARN whose SecretString JSON contains fullchainPem and privkeyPem values that bootstrap converts into the YARP TLS certificate.
 
 Resources:
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Public ingress for the Payslip4All nginx host.
+      GroupDescription: Public ingress for the Payslip4All YARP gateway host.
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -148,164 +148,122 @@ Resources:
         Fn::Base64: !Sub |
           #!/usr/bin/env bash
           set -euo pipefail
-           APP_ROOT="/opt/payslip4all"
-           APP_USER="payslip4all"
-           ENV_DIR="/etc/payslip4all"
-           ENV_FILE="$ENV_DIR/payslip4all.env"
-           APP_CONFIG_SECRETS_FILE="/etc/payslip4all/app-config.secrets.json"
-           SERVICE_FILE="/etc/systemd/system/payslip4all.service"
-           NGINX_CERT_DIR="/etc/nginx/certs"
-           NGINX_SITE_CONFIG="/etc/nginx/conf.d/payslip4all.conf"
-           PUBLIC_DOMAIN="payslip4all.co.za"
-           UPSTREAM_APP_URL="http://127.0.0.1:8080"
-          dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0 nginx
+          APP_ROOT="/opt/payslip4all"
+          APP_USER="payslip4all"
+          ENV_DIR="/etc/payslip4all"
+          APP_ENV_FILE="$ENV_DIR/payslip4all.env"
+          GATEWAY_ENV_FILE="$ENV_DIR/payslip4all-gateway.env"
+          APP_CONFIG_SECRETS_FILE="/etc/payslip4all/app-config.secrets.json"
+          APP_SERVICE_FILE="/etc/systemd/system/payslip4all.service"
+          GATEWAY_SERVICE_FILE="/etc/systemd/system/payslip4all-gateway.service"
+          TLS_CERT_DIR="/etc/payslip4all/certs"
+          TLS_FULLCHAIN_PATH="/etc/payslip4all/certs/fullchain.pem"
+          TLS_PRIVATE_KEY_PATH="/etc/payslip4all/certs/privkey.pem"
+          TLS_PFX_PATH="/etc/payslip4all/certs/payslip4all.pfx"
+          PUBLIC_DOMAIN="payslip4all.co.za"
+          UPSTREAM_APP_URL="http://127.0.0.1:8080"
+          PUBLIC_EDGE_URLS="http://0.0.0.0:80;https://0.0.0.0:443"
+          dnf install -y curl tar gzip jq awscli aspnetcore-runtime-8.0 openssl
           if ! id "$APP_USER" >/dev/null 2>&1; then
             useradd --system --home "$APP_ROOT" --shell /sbin/nologin "$APP_USER"
           fi
-          mkdir -p "$APP_ROOT" "$ENV_DIR" "$NGINX_CERT_DIR"
-          install -m 0600 /dev/null "$ENV_FILE"
+          mkdir -p "$APP_ROOT" "$ENV_DIR" "$TLS_CERT_DIR"
+          install -m 0600 /dev/null "$APP_ENV_FILE"
+          install -m 0600 /dev/null "$GATEWAY_ENV_FILE"
           curl --fail --location --silent --show-error "${ArtifactSource}" --output /tmp/payslip4all.tgz
           find "$APP_ROOT" -mindepth 1 -exec rm -rf -- {} +
           tar -xzf /tmp/payslip4all.tgz -C "$APP_ROOT"
-          cat > "$ENV_FILE" <<EOF
+          cat > "$APP_ENV_FILE" <<EOF
           ASPNETCORE_ENVIRONMENT=Production
-           ASPNETCORE_URLS=http://127.0.0.1:8080
-           PERSISTENCE_PROVIDER=dynamodb
-           DYNAMODB_REGION=${AWS::Region}
-           DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
-           DYNAMODB_ENABLE_PITR=true
-           EOF
-           if [[ -n "${HostedPaymentsSecretArn}" ]]; then
-             aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$ENV_FILE"
-           fi
-           rm -f "$APP_CONFIG_SECRETS_FILE"
-           if [[ -n "${AppConfigSecretArn}" ]]; then
-             APP_CONFIG_JSON="$(aws secretsmanager get-secret-value --secret-id "${AppConfigSecretArn}" --query SecretString --output text)"
-             printf '%s' "$APP_CONFIG_JSON" | jq -e 'if type == "object" then . else error("App config secret must be a JSON object.") end' > "$APP_CONFIG_SECRETS_FILE"
-             chmod 600 "$APP_CONFIG_SECRETS_FILE"
-             chown "$APP_USER:$APP_USER" "$APP_CONFIG_SECRETS_FILE"
-           fi
-           if [[ -z "${TlsCertificateSecretArn}" ]]; then
-             echo "TlsCertificateSecretArn must reference a Secrets Manager secret containing fullchainPem and privkeyPem." >&2
-             exit 1
-           fi
+          ASPNETCORE_URLS=http://127.0.0.1:8080
+          PERSISTENCE_PROVIDER=dynamodb
+          DYNAMODB_REGION=${AWS::Region}
+          DYNAMODB_TABLE_PREFIX=${DynamoDbTablePrefix}
+          DYNAMODB_ENABLE_PITR=true
+          EOF
+          if [[ -n "${HostedPaymentsSecretArn}" ]]; then
+            aws secretsmanager get-secret-value --secret-id "${HostedPaymentsSecretArn}" --query SecretString --output text | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$APP_ENV_FILE"
+          fi
+          rm -f "$APP_CONFIG_SECRETS_FILE"
+          if [[ -n "${AppConfigSecretArn}" ]]; then
+            APP_CONFIG_JSON="$(aws secretsmanager get-secret-value --secret-id "${AppConfigSecretArn}" --query SecretString --output text)"
+            printf '%s' "$APP_CONFIG_JSON" | jq -e 'if type == "object" then . else error("App config secret must be a JSON object.") end' > "$APP_CONFIG_SECRETS_FILE"
+            chmod 600 "$APP_CONFIG_SECRETS_FILE"
+            chown "$APP_USER:$APP_USER" "$APP_CONFIG_SECRETS_FILE"
+          fi
+          if [[ -z "${TlsCertificateSecretArn}" ]]; then
+            echo "TlsCertificateSecretArn must reference a Secrets Manager secret containing fullchainPem and privkeyPem." >&2
+            exit 1
+          fi
+          CERTIFICATE_ACTIVATION_ERROR="HTTPS activation failed for payslip4all.co.za: certificate material is missing or invalid; public traffic remains disabled."
           CERTIFICATE_JSON="$(aws secretsmanager get-secret-value --secret-id "${TlsCertificateSecretArn}" --query SecretString --output text)"
-          printf '%s' "$CERTIFICATE_JSON" | jq -r '.fullchainPem' > "$NGINX_CERT_DIR/fullchain.pem"
-          printf '%s' "$CERTIFICATE_JSON" | jq -r '.privkeyPem' > "$NGINX_CERT_DIR/privkey.pem"
-          chmod 600 "$ENV_FILE" "$NGINX_CERT_DIR/privkey.pem"
-          chmod 644 "$NGINX_CERT_DIR/fullchain.pem"
-          cat > "$SERVICE_FILE" <<EOF
+          printf '%s' "$CERTIFICATE_JSON" | jq -r '.fullchainPem' > "$TLS_FULLCHAIN_PATH"
+          printf '%s' "$CERTIFICATE_JSON" | jq -r '.privkeyPem' > "$TLS_PRIVATE_KEY_PATH"
+          if [[ ! -s "$TLS_FULLCHAIN_PATH" || ! -s "$TLS_PRIVATE_KEY_PATH" || "$(cat "$TLS_FULLCHAIN_PATH")" == "null" || "$(cat "$TLS_PRIVATE_KEY_PATH")" == "null" ]]; then
+            echo "$CERTIFICATE_ACTIVATION_ERROR" >&2
+            exit 1
+          fi
+          TLS_PFX_PASSWORD="$(openssl rand -hex 24)"
+          if ! openssl pkcs12 -export -out "$TLS_PFX_PATH" -inkey "$TLS_PRIVATE_KEY_PATH" -in "$TLS_FULLCHAIN_PATH" -password "pass:${TLS_PFX_PASSWORD}"; then
+            echo "$CERTIFICATE_ACTIVATION_ERROR" >&2
+            exit 1
+          fi
+          cat > "$GATEWAY_ENV_FILE" <<EOF
+          ASPNETCORE_ENVIRONMENT=Production
+          ASPNETCORE_URLS=http://0.0.0.0:80;https://0.0.0.0:443
+          REVERSE_PROXY_ENABLED=true
+          REVERSE_PROXY_PUBLIC_HOST=payslip4all.co.za
+          REVERSE_PROXY_UPSTREAM_BASE_URL=http://127.0.0.1:8080
+          REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS=10
+          Kestrel__Certificates__Default__Path=/etc/payslip4all/certs/payslip4all.pfx
+          Kestrel__Certificates__Default__Password=${TLS_PFX_PASSWORD}
+          EOF
+          chmod 600 "$APP_ENV_FILE" "$GATEWAY_ENV_FILE" "$TLS_PRIVATE_KEY_PATH" "$TLS_PFX_PATH"
+          chmod 644 "$TLS_FULLCHAIN_PATH"
+          cat > "$APP_SERVICE_FILE" <<EOF
           [Unit]
           Description=Payslip4All web application
           After=network-online.target
           Wants=network-online.target
-          
+
           [Service]
           Type=simple
           User=$APP_USER
           WorkingDirectory=$APP_ROOT
-          EnvironmentFile=$ENV_FILE
+          EnvironmentFile=$APP_ENV_FILE
           ExecStart=/usr/bin/dotnet $APP_ROOT/Payslip4All.Web.dll
           Restart=always
           RestartSec=5
-          
+
           [Install]
           WantedBy=multi-user.target
           EOF
-          cat > "$NGINX_SITE_CONFIG" <<EOF
-          map \$http_upgrade \$connection_upgrade {
-              default upgrade;
-              '' close;
-          }
-          
-          upstream payslip4all_app {
-              server 127.0.0.1:8080;
-              keepalive 32;
-          }
-          
-          server {
-              listen 80 default_server;
-              server_name _;
-          
-              return 421;
-          }
-          
-          server {
-              listen 80;
-              server_name payslip4all.co.za;
-          
-              return 301 https://payslip4all.co.za\$request_uri;
-          }
-          
-          server {
-              listen 443 ssl default_server;
-              server_name _;
-          
-              ssl_certificate /etc/nginx/certs/fullchain.pem;
-              ssl_certificate_key /etc/nginx/certs/privkey.pem;
-          
-              return 421;
-          }
-          
-          server {
-              listen 443 ssl http2;
-              server_name payslip4all.co.za;
-          
-              ssl_certificate /etc/nginx/certs/fullchain.pem;
-              ssl_certificate_key /etc/nginx/certs/privkey.pem;
-              ssl_session_timeout 1d;
-              ssl_session_cache shared:SSL:10m;
-              ssl_protocols TLSv1.2 TLSv1.3;
-              server_tokens off;
-          
-              proxy_intercept_errors on;
-              error_page 502 503 504 =503 /503.html;
-          
-              location = /health {
-                  proxy_http_version 1.1;
-                  proxy_connect_timeout 5s;
-                  proxy_send_timeout 10s;
-                  proxy_read_timeout 10s;
-                  proxy_pass http://payslip4all_app;
-                  proxy_set_header Host \$host;
-                  proxy_set_header X-Real-IP \$remote_addr;
-                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto https;
-                  proxy_set_header X-Forwarded-Host \$host;
-              }
-          
-              location / {
-                  proxy_http_version 1.1;
-                  proxy_connect_timeout 5s;
-                  proxy_send_timeout 60s;
-                  proxy_read_timeout 300s;
-                  proxy_buffering off;
-                  proxy_pass http://payslip4all_app;
-                  proxy_set_header Host \$host;
-                  proxy_set_header X-Real-IP \$remote_addr;
-                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto https;
-                  proxy_set_header X-Forwarded-Host \$host;
-                  proxy_set_header Upgrade \$http_upgrade;
-                  proxy_set_header Connection \$connection_upgrade;
-              }
-          
-              location = /503.html {
-                  internal;
-                  default_type text/plain;
-                  return 503 "Service temporarily unavailable.\n";
-              }
-          }
+          cat > "$GATEWAY_SERVICE_FILE" <<EOF
+          [Unit]
+          Description=Payslip4All YARP gateway
+          After=network-online.target payslip4all.service
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=$APP_USER
+          WorkingDirectory=$APP_ROOT
+          EnvironmentFile=$GATEWAY_ENV_FILE
+          ExecStart=/usr/bin/dotnet $APP_ROOT/Payslip4All.Web.dll
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
           EOF
-          chmod 644 "$NGINX_SITE_CONFIG"
-          chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR"
+          chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$ENV_DIR" "$TLS_CERT_DIR"
           systemctl daemon-reload
           systemctl enable payslip4all.service
-          systemctl enable nginx
+          systemctl enable payslip4all-gateway.service
           systemctl restart payslip4all.service
           systemctl is-active --quiet payslip4all.service
-          nginx -t
-          systemctl restart nginx
+          systemctl restart payslip4all-gateway.service
+          systemctl is-active --quiet payslip4all-gateway.service
       Tags:
         - Key: Name
           Value: !Sub payslip4all-web-${EnvironmentName}
@@ -356,14 +314,14 @@ Outputs:
       - !Ref HostedPaymentsSecretArn
       - no-external-secret-configured
   TlsCertificateSecretReference:
-    Description: Secret reference used to stage nginx TLS certificate material on the host.
+    Description: Secret reference used to stage YARP TLS certificate material on the host.
     Value: !If
       - HasTlsCertificateSecret
       - !Ref TlsCertificateSecretArn
       - no-tls-secret-configured
-  NginxConfigPath:
-    Description: Repository path of the nginx gateway definition.
-    Value: infra/nginx/payslip4all.conf
+  GatewayServiceName:
+    Description: Public-edge YARP systemd service name.
+    Value: payslip4all-gateway.service
   BackupProtectionMode:
     Description: DynamoDB backup protection mode for hosted AWS.
     Value: point-in-time recovery via hosted service

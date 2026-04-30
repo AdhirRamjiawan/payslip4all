@@ -7,7 +7,7 @@ public sealed class LocalStackReadmeContractTests
     {
         var readme = File.ReadAllText(Path.Combine(GetSolutionRoot(), "infra", "localstack", "README.md"));
 
-        Assert.Contains("docker -H ssh://adhir-server build -f infra/localstack/Dockerfile -t payslip4all-localstack .", readme, StringComparison.Ordinal);
+        Assert.Contains("docker -H ssh://adhir-server build -f infra/localstack/LocalStackDockerfile -t payslip4all-localstack .", readme, StringComparison.Ordinal);
         Assert.Contains("docker -H ssh://adhir-server run --rm --name payslip4all-localstack -p 8000:8000 payslip4all-localstack", readme, StringComparison.Ordinal);
         Assert.Contains("The container must remain running", readme, StringComparison.Ordinal);
         Assert.Contains("dotnet test tests/Payslip4All.Web.Tests/Payslip4All.Web.Tests.csproj --filter Category=Integration", readme, StringComparison.Ordinal);
