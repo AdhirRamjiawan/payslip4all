@@ -75,7 +75,7 @@ if (reverseProxyOptions.Enabled)
             return;
         }
 
-        if (!context.Request.IsHttps)
+        if (reverseProxyOptions.HttpsListenerConfigured && !context.Request.IsHttps)
         {
             context.Response.Redirect(
                 $"https://{reverseProxyOptions.PublicHost}{context.Request.PathBase}{context.Request.Path}{context.Request.QueryString}",
