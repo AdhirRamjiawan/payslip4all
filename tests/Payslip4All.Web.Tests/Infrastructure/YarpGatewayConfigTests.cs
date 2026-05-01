@@ -91,6 +91,30 @@ public class YarpGatewayConfigTests
         Assert.DoesNotContain("nginx requirement", cloudFormationReadme, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void AppSettings_DeclareReverseProxyDefaults_AndDevelopmentTlsPlaceholders()
+    {
+        var sharedConfiguration = LoadWebAppSettings("appsettings.json");
+        var developmentConfiguration = LoadWebAppSettings("appsettings.Development.json");
+        var developmentPrivateConfiguration = LoadWebAppSettings("appsettings.Development.Private.json");
+
+        Assert.Contains("\"REVERSE_PROXY_ENABLED\": false", sharedConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_PUBLIC_HOST\": \"payslip4all.co.za\"", sharedConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_UPSTREAM_BASE_URL\": \"http://127.0.0.1:8080\"", sharedConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS\": 10", sharedConfiguration, StringComparison.Ordinal);
+
+        Assert.Contains("\"REVERSE_PROXY_ENABLED\": false", developmentConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_PUBLIC_HOST\": \"payslip4all.co.za\"", developmentConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_UPSTREAM_BASE_URL\": \"http://127.0.0.1:8080\"", developmentConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"REVERSE_PROXY_ACTIVITY_TIMEOUT_SECONDS\": 10", developmentConfiguration, StringComparison.Ordinal);
+
+        Assert.Contains("\"Kestrel\"", developmentPrivateConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"Certificates\"", developmentPrivateConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"Default\"", developmentPrivateConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"Path\": \"\"", developmentPrivateConfiguration, StringComparison.Ordinal);
+        Assert.Contains("\"Password\": \"\"", developmentPrivateConfiguration, StringComparison.Ordinal);
+    }
+
     private static string LoadProgram()
     {
         return File.ReadAllText(Path.Combine(GetSolutionRoot(), "src", "Payslip4All.Web", "Program.cs"));
@@ -99,6 +123,11 @@ public class YarpGatewayConfigTests
     private static string LoadWebProject()
     {
         return File.ReadAllText(Path.Combine(GetSolutionRoot(), "src", "Payslip4All.Web", "Payslip4All.Web.csproj"));
+    }
+
+    private static string LoadWebAppSettings(string fileName)
+    {
+        return File.ReadAllText(Path.Combine(GetSolutionRoot(), "src", "Payslip4All.Web", fileName));
     }
 
     private static string LoadBootstrap()

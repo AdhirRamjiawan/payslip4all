@@ -126,6 +126,24 @@ public sealed class AwsDeploymentStartupTests : IDisposable
     }
 
     [Fact]
+    public void ReverseProxyMode_WhenConfiguredForHttpOnly_DoesNotRequireCertificateSettings()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
+            builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
+            builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", "http://127.0.0.1:8080");
+            builder.UseSetting("ASPNETCORE_URLS", "http://0.0.0.0:80");
+        });
+
+        using var client = factory.CreateClient();
+        using var scope = factory.Services.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IProxyConfigProvider>());
+    }
+
+    [Fact]
     public void ReverseProxyMode_WhenUpstreamTargetIsPublic_FailsFastDuringStartup()
     {
         using var certificate = TestTlsCertificate.Create();

@@ -58,6 +58,30 @@ public class ReverseProxyForwardingTests
     }
 
     [Fact]
+    public async Task GatewayMode_WhenConfiguredForHttpOnly_ForwardsHttpRequestsWithoutRedirect()
+    {
+        await using var upstream = await ReverseProxyTestSupport.UpstreamProbe.StartAsync(app =>
+        {
+            app.MapGet("/", (HttpContext context) => Results.Json(new
+            {
+                scheme = context.Request.Scheme,
+                host = context.Request.Host.Value
+            }));
+        });
+
+        using var factory = BuildGatewayFactory(upstream.BaseUrl, certificate: null, listenUrls: "http://0.0.0.0:80");
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.BaseAddress = new Uri("http://payslip4all.co.za");
+
+        using var response = await client.GetAsync("/");
+        var payload = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"scheme\":\"http\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"host\":\"payslip4all.co.za\"", payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GatewayMode_AllowsThreeConsecutiveHealthRequestsWithinFiveSecondsEach()
     {
         await using var upstream = await ReverseProxyTestSupport.UpstreamProbe.StartAsync(app =>
@@ -153,15 +177,24 @@ public class ReverseProxyForwardingTests
         Assert.Equal("https://payslip4all.co.za/after-form", response.Headers.Location?.ToString());
     }
 
-    private static WebApplicationFactory<Program> BuildGatewayFactory(string upstreamBaseUrl, TestTlsCertificate certificate)
+    private static WebApplicationFactory<Program> BuildGatewayFactory(
+        string upstreamBaseUrl,
+        TestTlsCertificate? certificate,
+        string? listenUrls = null)
     {
         return new TestWebApplicationFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("REVERSE_PROXY_ENABLED", "true");
             builder.UseSetting("REVERSE_PROXY_PUBLIC_HOST", "payslip4all.co.za");
             builder.UseSetting("REVERSE_PROXY_UPSTREAM_BASE_URL", upstreamBaseUrl);
-            builder.UseSetting("Kestrel:Certificates:Default:Path", certificate.CertificatePath);
-            builder.UseSetting("Kestrel:Certificates:Default:Password", certificate.Password);
+            if (!string.IsNullOrWhiteSpace(listenUrls))
+                builder.UseSetting("ASPNETCORE_URLS", listenUrls);
+
+            if (certificate is not null)
+            {
+                builder.UseSetting("Kestrel:Certificates:Default:Path", certificate.CertificatePath);
+                builder.UseSetting("Kestrel:Certificates:Default:Password", certificate.Password);
+            }
         });
     }
 }
